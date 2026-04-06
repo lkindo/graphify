@@ -527,6 +527,43 @@ _PHP_CONFIG = LanguageConfig(
 )
 
 
+def _import_lua(node, source: bytes, file_nid: str, stem: str, edges: list, str_path: str) -> None:
+    """Extract require('module') from Lua variable_declaration nodes."""
+    text = _read_text(node, source)
+    import re
+    m = re.search(r"""require\s*[\('"]\s*['"]?([^'")\s]+)""", text)
+    if m:
+        module_name = m.group(1).split(".")[-1]
+        if module_name:
+            edges.append({
+                "source": file_nid,
+                "target": module_name,
+                "relation": "imports",
+                "confidence": "EXTRACTED",
+                "confidence_score": 1.0,
+                "source_file": str_path,
+                "source_location": str(node.start_point[0] + 1),
+                "weight": 1.0,
+            })
+
+
+_LUA_CONFIG = LanguageConfig(
+    ts_module="tree_sitter_lua",
+    ts_language_fn="language",
+    class_types=frozenset(),
+    function_types=frozenset({"function_declaration"}),
+    import_types=frozenset({"variable_declaration"}),
+    call_types=frozenset({"function_call"}),
+    call_function_field="name",
+    call_accessor_node_types=frozenset({"method_index_expression"}),
+    call_accessor_field="name",
+    name_fallback_child_types=("identifier", "method_index_expression"),
+    body_fallback_child_types=("block",),
+    function_boundary_types=frozenset({"function_declaration"}),
+    import_handler=_import_lua,
+)
+
+
 # ── Generic extractor ─────────────────────────────────────────────────────────
 
 def _extract_generic(path: Path, config: LanguageConfig) -> dict:
@@ -982,6 +1019,11 @@ def extract_scala(path: Path) -> dict:
 def extract_php(path: Path) -> dict:
     """Extract classes, functions, methods, namespace uses, and calls from a .php file."""
     return _extract_generic(path, _PHP_CONFIG)
+
+
+def extract_lua(path: Path) -> dict:
+    """Extract functions, methods, require() imports, and calls from a .lua file."""
+    return _extract_generic(path, _LUA_CONFIG)
 
 
 # ── Go extractor (custom walk) ────────────────────────────────────────────────
@@ -1523,6 +1565,8 @@ def extract(paths: list[Path]) -> dict:
         ".kts": extract_kotlin,
         ".scala": extract_scala,
         ".php": extract_php,
+        ".lua": extract_lua,
+        ".toc": extract_lua,
     }
 
     for path in paths:
