@@ -50,7 +50,15 @@ After building a graph, run this once in your project:
 graphify claude install
 ```
 
-This writes a `CLAUDE.md` section and a `.claude/settings.json` PreToolUse hook. From that point on, Claude checks the knowledge graph before searching raw files - every Glob and Grep triggers a reminder to use the graph first. Uninstall with `graphify claude uninstall`.
+This does two things:
+
+1. **CLAUDE.md rules** - tells Claude to read `graphify-out/GRAPH_REPORT.md` before answering architecture questions, and to rebuild the graph after editing code files.
+
+2. **PreToolUse hook** (`settings.json`) - fires automatically before every Glob and Grep call. If a knowledge graph exists, Claude sees: _"graphify: Knowledge graph exists. Read GRAPH_REPORT.md for god nodes and community structure before searching raw files."_ This means Claude navigates via the graph instead of grepping through every file - faster answers, fewer wasted tool calls, and responses grounded in the actual structure of your codebase rather than keyword matches.
+
+Without this, Claude will grep raw files by default even when a graph exists. With it, the graph becomes the first thing Claude reaches for.
+
+Uninstall with `graphify claude uninstall`.
 
 <details>
 <summary>Manual install (curl)</summary>
