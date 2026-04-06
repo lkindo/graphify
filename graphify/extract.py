@@ -527,6 +527,39 @@ _PHP_CONFIG = LanguageConfig(
 )
 
 
+def _import_swift(node, source: bytes, file_nid: str, stem: str, edges: list, str_path: str) -> None:
+    for child in node.children:
+        if child.type == "identifier":
+            raw = _read_text(child, source)
+            tgt_nid = _make_id(raw)
+            edges.append({
+                "source": file_nid,
+                "target": tgt_nid,
+                "relation": "imports",
+                "confidence": "EXTRACTED",
+                "source_file": str_path,
+                "source_location": f"L{node.start_point[0] + 1}",
+                "weight": 1.0,
+            })
+            break
+
+
+_SWIFT_CONFIG = LanguageConfig(
+    ts_module="tree_sitter_swift",
+    class_types=frozenset({"class_declaration", "protocol_declaration"}),
+    function_types=frozenset({"function_declaration", "init_declaration"}),
+    import_types=frozenset({"import_declaration"}),
+    call_types=frozenset({"call_expression"}),
+    call_function_field="",
+    call_accessor_node_types=frozenset({"navigation_expression"}),
+    call_accessor_field="",
+    name_fallback_child_types=("simple_identifier", "type_identifier"),
+    body_fallback_child_types=("class_body", "protocol_body", "function_body"),
+    function_boundary_types=frozenset({"function_declaration", "init_declaration"}),
+    import_handler=_import_swift,
+)
+
+
 # ── Generic extractor ─────────────────────────────────────────────────────────
 
 def _extract_generic(path: Path, config: LanguageConfig) -> dict:
@@ -713,7 +746,19 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
             callee_name: str | None = None
 
             # Special handling per language
-            if config.ts_module == "tree_sitter_kotlin":
+            if config.ts_module == "tree_sitter_swift":
+                # Swift: first child may be simple_identifier or navigation_expression
+                first = node.children[0] if node.children else None
+                if first:
+                    if first.type == "simple_identifier":
+                        callee_name = _read_text(first, source)
+                    elif first.type == "navigation_expression":
+                        for child in first.children:
+                            if child.type == "navigation_suffix":
+                                for sc in child.children:
+                                    if sc.type == "simple_identifier":
+                                        callee_name = _read_text(sc, source)
+            elif config.ts_module == "tree_sitter_kotlin":
                 # Kotlin: first child may be simple_identifier or navigation_expression
                 first = node.children[0] if node.children else None
                 if first:
@@ -982,6 +1027,11 @@ def extract_scala(path: Path) -> dict:
 def extract_php(path: Path) -> dict:
     """Extract classes, functions, methods, namespace uses, and calls from a .php file."""
     return _extract_generic(path, _PHP_CONFIG)
+
+
+def extract_swift(path: Path) -> dict:
+    """Extract classes, structs, protocols, functions, imports, and calls from a .swift file."""
+    return _extract_generic(path, _SWIFT_CONFIG)
 
 
 # ── Go extractor (custom walk) ────────────────────────────────────────────────
@@ -1523,6 +1573,7 @@ def extract(paths: list[Path]) -> dict:
         ".kts": extract_kotlin,
         ".scala": extract_scala,
         ".php": extract_php,
+        ".swift": extract_swift,
     }
 
     for path in paths:
@@ -1564,7 +1615,7 @@ def collect_files(target: Path) -> list[Path]:
     _EXTENSIONS = (
         "*.py", "*.js", "*.ts", "*.tsx", "*.go", "*.rs",
         "*.java", "*.c", "*.h", "*.cpp", "*.cc", "*.cxx", "*.hpp",
-        "*.rb", "*.cs", "*.kt", "*.kts", "*.scala", "*.php",
+        "*.rb", "*.cs", "*.kt", "*.kts", "*.scala", "*.php", "*.swift",
     )
     results: list[Path] = []
     for pattern in _EXTENSIONS:

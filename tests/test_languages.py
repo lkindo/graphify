@@ -1,10 +1,11 @@
-"""Tests for the 8 new language extractors: Java, C, C++, Ruby, C#, Kotlin, Scala, PHP."""
+"""Tests for language extractors: Java, C, C++, Ruby, C#, Kotlin, Scala, PHP, Swift."""
 from __future__ import annotations
 from pathlib import Path
 import pytest
 from graphify.extract import (
     extract_java, extract_c, extract_cpp, extract_ruby,
     extract_csharp, extract_kotlin, extract_scala, extract_php,
+    extract_swift,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -217,3 +218,42 @@ def test_php_finds_function():
 def test_php_finds_imports():
     r = extract_php(FIXTURES / "sample.php")
     assert "imports" in _relations(r)
+
+
+# ── Swift ────────────────────────────────────────────────────────────────────
+
+def test_swift_no_error():
+    r = extract_swift(FIXTURES / "sample.swift")
+    assert "error" not in r
+
+def test_swift_finds_class():
+    r = extract_swift(FIXTURES / "sample.swift")
+    assert any("DataProcessor" in l for l in _labels(r))
+
+def test_swift_finds_protocol():
+    r = extract_swift(FIXTURES / "sample.swift")
+    assert any("Processor" in l for l in _labels(r))
+
+def test_swift_finds_struct():
+    r = extract_swift(FIXTURES / "sample.swift")
+    assert any("Config" in l for l in _labels(r))
+
+def test_swift_finds_methods():
+    r = extract_swift(FIXTURES / "sample.swift")
+    labels = _labels(r)
+    assert any("addItem" in l for l in labels)
+    assert any("process" in l for l in labels)
+
+def test_swift_finds_function():
+    r = extract_swift(FIXTURES / "sample.swift")
+    assert any("createProcessor" in l for l in _labels(r))
+
+def test_swift_finds_imports():
+    r = extract_swift(FIXTURES / "sample.swift")
+    assert "imports" in _relations(r)
+
+def test_swift_no_dangling_edges():
+    r = extract_swift(FIXTURES / "sample.swift")
+    node_ids = {n["id"] for n in r["nodes"]}
+    for e in r["edges"]:
+        assert e["source"] in node_ids
