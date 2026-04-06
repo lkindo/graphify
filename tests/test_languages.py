@@ -1,10 +1,11 @@
-"""Tests for the 8 new language extractors: Java, C, C++, Ruby, C#, Kotlin, Scala, PHP."""
+"""Tests for language extractors: Java, C, C++, Ruby, C#, Kotlin, Scala, PHP, Zig, PowerShell."""
 from __future__ import annotations
 from pathlib import Path
 import pytest
 from graphify.extract import (
     extract_java, extract_c, extract_cpp, extract_ruby,
     extract_csharp, extract_kotlin, extract_scala, extract_php,
+    extract_zig, extract_powershell,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -217,3 +218,79 @@ def test_php_finds_function():
 def test_php_finds_imports():
     r = extract_php(FIXTURES / "sample.php")
     assert "imports" in _relations(r)
+
+
+# ── Zig ──────────────────────────────────────────────────────────────────────
+
+def test_zig_no_error():
+    r = extract_zig(FIXTURES / "sample.zig")
+    assert "error" not in r
+
+def test_zig_finds_struct():
+    r = extract_zig(FIXTURES / "sample.zig")
+    assert any("Config" in l for l in _labels(r))
+
+def test_zig_finds_enum():
+    r = extract_zig(FIXTURES / "sample.zig")
+    assert any("Status" in l for l in _labels(r))
+
+def test_zig_finds_functions():
+    r = extract_zig(FIXTURES / "sample.zig")
+    labels = _labels(r)
+    assert any("processData" in l for l in labels)
+    assert any("createConfig" in l for l in labels)
+    assert any("main" in l for l in labels)
+
+def test_zig_finds_struct_methods():
+    r = extract_zig(FIXTURES / "sample.zig")
+    labels = _labels(r)
+    assert any(".init()" in l for l in labels)
+    assert any(".getName()" in l for l in labels)
+
+def test_zig_finds_imports():
+    r = extract_zig(FIXTURES / "sample.zig")
+    assert "imports_from" in _relations(r)
+
+def test_zig_no_dangling_edges():
+    r = extract_zig(FIXTURES / "sample.zig")
+    node_ids = {n["id"] for n in r["nodes"]}
+    for e in r["edges"]:
+        assert e["source"] in node_ids
+
+
+# ── PowerShell ───────────────────────────────────────────────────────────────
+
+def test_powershell_no_error():
+    r = extract_powershell(FIXTURES / "sample.ps1")
+    assert "error" not in r
+
+def test_powershell_finds_class():
+    r = extract_powershell(FIXTURES / "sample.ps1")
+    assert any("DataProcessor" in l for l in _labels(r))
+
+def test_powershell_finds_functions():
+    r = extract_powershell(FIXTURES / "sample.ps1")
+    labels = _labels(r)
+    assert any("Get-Data" in l for l in labels)
+    assert any("Process-Items" in l for l in labels)
+
+def test_powershell_finds_methods():
+    r = extract_powershell(FIXTURES / "sample.ps1")
+    labels = _labels(r)
+    assert any(".Process()" in l for l in labels)
+    assert any(".ToString()" in l for l in labels)
+
+def test_powershell_finds_usings():
+    r = extract_powershell(FIXTURES / "sample.ps1")
+    assert "imports_from" in _relations(r)
+
+def test_powershell_emits_calls():
+    r = extract_powershell(FIXTURES / "sample.ps1")
+    calls = _calls(r)
+    assert any("Get-Data" in src for src, tgt in calls)
+
+def test_powershell_no_dangling_edges():
+    r = extract_powershell(FIXTURES / "sample.ps1")
+    node_ids = {n["id"] for n in r["nodes"]}
+    for e in r["edges"]:
+        assert e["source"] in node_ids
