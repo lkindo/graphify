@@ -31,7 +31,7 @@ Every relationship is tagged `EXTRACTED` (found directly in source), `INFERRED` 
 
 ## Install
 
-**Requires:** [Claude Code](https://claude.ai/code) and Python 3.10+
+**Requires:** Python 3.10+ and one of: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), or [OpenClaw](https://openclaw.ai)
 
 ```bash
 pip install graphifyy && graphify install
@@ -179,7 +179,7 @@ Token reduction scales with corpus size. 6 files fits in a context window anyway
 
 ## Privacy
 
-graphify sends file contents to the Claude API (Anthropic) for semantic extraction of docs, papers, and images. Code files are processed locally via tree-sitter AST — no file contents leave your machine for code. No telemetry, usage tracking, or analytics of any kind. The only network calls are to Anthropic's API during extraction, using your own API key via Claude Code.
+graphify sends file contents to the Claude API (Anthropic) for semantic extraction of docs, papers, and images. Code files are processed locally via tree-sitter AST — no file contents leave your machine for code. No telemetry, usage tracking, or analytics of any kind. The only network calls are to Anthropic's API during extraction, using your own API key via your AI coding assistant.
 
 ## Tech stack
 
