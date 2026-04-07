@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 import pytest
-from graphify.extract import extract_js, extract_go, extract_rust, extract
+from graphify.extract import extract_js, extract_go, extract_rust, extract, extract_elixir
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -171,3 +171,44 @@ def test_cache_miss_after_file_change(tmp_path):
     # bar() should appear in the second result
     labels2 = [n["label"] for n in r2["nodes"]]
     assert any("bar" in l for l in labels2)
+
+
+# ── Elixir ────────────────────────────────────────────────────────────────────
+
+def test_elixir_finds_module():
+    r = extract_elixir(FIXTURES / "sample.ex")
+    assert "error" not in r
+    labels = _labels(r)
+    assert any("MyApp.Accounts.User" in l for l in labels)
+
+def test_elixir_finds_functions():
+    r = extract_elixir(FIXTURES / "sample.ex")
+    labels = _labels(r)
+    assert any("create" in l for l in labels)
+    assert any("find" in l for l in labels)
+    assert any("validate" in l for l in labels)
+
+def test_elixir_finds_imports():
+    r = extract_elixir(FIXTURES / "sample.ex")
+    import_edges = [e for e in r["edges"] if e["relation"] == "imports"]
+    import_targets = [e["target"] for e in import_edges]
+    # alias MyApp.Repo and import Ecto.Query should produce import edges
+    assert len(import_edges) >= 2
+
+def test_elixir_finds_calls():
+    r = extract_elixir(FIXTURES / "sample.ex")
+    calls = _call_pairs(r)
+    # create() calls validate()
+    assert any("create" in src and "validate" in tgt for src, tgt in calls)
+
+def test_elixir_contains_edges():
+    r = extract_elixir(FIXTURES / "sample.ex")
+    contains = [(e["source"], e["target"]) for e in r["edges"] if e["relation"] == "contains"]
+    # File should contain the module
+    assert len(contains) >= 1
+
+def test_elixir_method_edges():
+    r = extract_elixir(FIXTURES / "sample.ex")
+    methods = [e for e in r["edges"] if e["relation"] == "method"]
+    # Module should have method edges for def/defp functions
+    assert len(methods) >= 3  # create, find, validate

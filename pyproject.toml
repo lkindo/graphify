@@ -30,6 +30,7 @@ dependencies = [
     "tree-sitter-lua",
     "tree-sitter-zig",
     "tree-sitter-powershell",
+    "tree-sitter-elixir",
 ]
 
 [project.urls]

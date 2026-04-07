@@ -1125,6 +1125,214 @@ def extract_swift(path: Path) -> dict:
     return _extract_generic(path, _SWIFT_CONFIG)
 
 
+# ── Elixir extractor (custom walk) ───────────────────────────────────────────
+
+def extract_elixir(path: Path) -> dict:
+    """Extract modules, functions, imports (alias/import/require/use), and calls from a .ex/.exs file."""
+    try:
+        import tree_sitter_elixir as tselixir
+        from tree_sitter import Language, Parser
+    except ImportError:
+        return {"nodes": [], "edges": [], "error": "tree_sitter_elixir not installed"}
+
+    try:
+        language = Language(tselixir.language())
+        parser = Parser(language)
+        source = path.read_bytes()
+        tree = parser.parse(source)
+        root = tree.root_node
+    except Exception as e:
+        return {"nodes": [], "edges": [], "error": str(e)}
+
+    stem = path.stem
+    str_path = str(path)
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    seen_ids: set[str] = set()
+    function_bodies: list[tuple[str, object]] = []
+
+    def add_node(nid: str, label: str, line: int) -> None:
+        if nid not in seen_ids:
+            seen_ids.add(nid)
+            nodes.append({"id": nid, "label": label, "file_type": "code",
+                          "source_file": str_path, "source_location": f"L{line}"})
+
+    def add_edge(src: str, tgt: str, relation: str, line: int,
+                 confidence: str = "EXTRACTED", weight: float = 1.0) -> None:
+        edges.append({"source": src, "target": tgt, "relation": relation,
+                      "confidence": confidence, "source_file": str_path,
+                      "source_location": f"L{line}", "weight": weight})
+
+    file_nid = _make_id(stem)
+    add_node(file_nid, path.name, 1)
+
+    # Elixir import keywords
+    _ELIXIR_IMPORT_KEYWORDS = frozenset({"alias", "import", "require", "use"})
+
+    def _get_alias_text(node) -> str | None:
+        """Get dotted module name from an alias node (e.g. MyApp.Repo)."""
+        for child in node.children:
+            if child.type == "alias":
+                return _read_text(child, source)
+        return None
+
+    def walk(node, parent_module_nid: str | None = None) -> None:
+        t = node.type
+
+        if t != "call":
+            for child in node.children:
+                walk(child, parent_module_nid)
+            return
+
+        # In Elixir, defmodule/def/defp/alias/import/require/use are all `call` nodes
+        # with an `identifier` child indicating the keyword.
+        identifier_node = None
+        arguments_node = None
+        do_block_node = None
+        for child in node.children:
+            if child.type == "identifier":
+                identifier_node = child
+            elif child.type == "arguments":
+                arguments_node = child
+            elif child.type == "do_block":
+                do_block_node = child
+
+        if identifier_node is None:
+            for child in node.children:
+                walk(child, parent_module_nid)
+            return
+
+        keyword = _read_text(identifier_node, source)
+
+        # ── defmodule ────────────────────────────────────────────────────
+        if keyword == "defmodule":
+            module_name = None
+            if arguments_node:
+                module_name = _get_alias_text(arguments_node)
+            if not module_name:
+                return
+            line = node.start_point[0] + 1
+            module_nid = _make_id(stem, module_name)
+            add_node(module_nid, module_name, line)
+            add_edge(file_nid, module_nid, "contains", line)
+            if do_block_node:
+                for child in do_block_node.children:
+                    walk(child, parent_module_nid=module_nid)
+            return
+
+        # ── def / defp ───────────────────────────────────────────────────
+        if keyword in ("def", "defp"):
+            func_name = None
+            if arguments_node:
+                # arguments contains a `call` node like: create(attrs)
+                for child in arguments_node.children:
+                    if child.type == "call":
+                        for sub in child.children:
+                            if sub.type == "identifier":
+                                func_name = _read_text(sub, source)
+                                break
+                        break
+                    elif child.type == "identifier":
+                        # def without parens: def foo do ... end
+                        func_name = _read_text(child, source)
+                        break
+            if not func_name:
+                return
+            line = node.start_point[0] + 1
+            container = parent_module_nid or file_nid
+            func_nid = _make_id(container, func_name)
+            add_node(func_nid, f"{func_name}()", line)
+            if parent_module_nid:
+                add_edge(parent_module_nid, func_nid, "method", line)
+            else:
+                add_edge(file_nid, func_nid, "contains", line)
+            if do_block_node:
+                function_bodies.append((func_nid, do_block_node))
+            return
+
+        # ── alias / import / require / use ───────────────────────────────
+        if keyword in _ELIXIR_IMPORT_KEYWORDS:
+            if arguments_node:
+                module_name = _get_alias_text(arguments_node)
+                if module_name:
+                    line = node.start_point[0] + 1
+                    tgt_nid = _make_id(module_name)
+                    add_edge(file_nid, tgt_nid, "imports", line)
+            return
+
+        # ── Other call nodes: recurse ────────────────────────────────────
+        for child in node.children:
+            walk(child, parent_module_nid)
+
+    walk(root)
+
+    # ── Second pass: resolve function calls ──────────────────────────────
+    label_to_nid: dict[str, str] = {}
+    for n in nodes:
+        raw = n["label"]
+        normalised = raw.strip("()").lstrip(".")
+        label_to_nid[normalised.lower()] = n["id"]
+
+    seen_call_pairs: set[tuple[str, str]] = set()
+
+    def walk_calls(node, caller_nid: str) -> None:
+        t = node.type
+        if t == "call":
+            # Check if this is a keyword call (def, defmodule, etc.) - skip those
+            for child in node.children:
+                if child.type == "identifier":
+                    kw = _read_text(child, source)
+                    if kw in ("def", "defp", "defmodule", "defmacro", "defmacrop",
+                              "defstruct", "defprotocol", "defimpl", "defguard",
+                              "defdelegate", "defexception", "defoverridable",
+                              "alias", "import", "require", "use",
+                              "if", "unless", "case", "cond", "with", "for",
+                              "raise", "reraise", "throw"):
+                        break
+            else:
+                # Not a keyword - might be a real function call
+                # Check for dot calls: Repo.insert(...)
+                dot_node = None
+                for child in node.children:
+                    if child.type == "dot":
+                        dot_node = child
+                        break
+
+                callee_name: str | None = None
+                if dot_node:
+                    # e.g. Repo.insert -> extract "insert"
+                    dot_text = _read_text(dot_node, source)
+                    parts = dot_text.rstrip(".").split(".")
+                    if parts:
+                        callee_name = parts[-1]
+                else:
+                    # Plain function call: validate(...)
+                    for child in node.children:
+                        if child.type == "identifier":
+                            callee_name = _read_text(child, source)
+                            break
+
+                if callee_name:
+                    tgt_nid = label_to_nid.get(callee_name.lower())
+                    if tgt_nid and tgt_nid != caller_nid:
+                        pair = (caller_nid, tgt_nid)
+                        if pair not in seen_call_pairs:
+                            seen_call_pairs.add(pair)
+                            add_edge(caller_nid, tgt_nid, "calls",
+                                     node.start_point[0] + 1,
+                                     confidence="INFERRED", weight=0.8)
+
+        for child in node.children:
+            walk_calls(child, caller_nid)
+
+    for caller_nid, body_node in function_bodies:
+        walk_calls(body_node, caller_nid)
+
+    clean_edges = [e for e in edges if e["source"] in seen_ids and
+                   (e["target"] in seen_ids or e["relation"] == "imports")]
+    return {"nodes": nodes, "edges": clean_edges}
+
+
 # ── Go extractor (custom walk) ────────────────────────────────────────────────
 
 def extract_go(path: Path) -> dict:
@@ -1980,6 +2188,8 @@ def extract(paths: list[Path]) -> dict:
         ".toc": extract_lua,
         ".zig": extract_zig,
         ".ps1": extract_powershell,
+        ".ex": extract_elixir,
+        ".exs": extract_elixir,
     }
 
     for path in paths:
@@ -2022,7 +2232,7 @@ def collect_files(target: Path) -> list[Path]:
         "*.py", "*.js", "*.ts", "*.tsx", "*.go", "*.rs",
         "*.java", "*.c", "*.h", "*.cpp", "*.cc", "*.cxx", "*.hpp",
         "*.rb", "*.cs", "*.kt", "*.kts", "*.scala", "*.php", "*.swift",
-        "*.lua", "*.toc", "*.zig", "*.ps1",
+        "*.lua", "*.toc", "*.zig", "*.ps1", "*.ex", "*.exs",
     )
     results: list[Path] = []
     for pattern in _EXTENSIONS:
