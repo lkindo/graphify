@@ -116,6 +116,8 @@ When the user types `/graphify`, invoke the Skill tool with `skill: "graphify"` 
 /graphify add https://x.com/karpathy/status/...       # fetch a tweet
 /graphify add https://... --author "Name"             # tag the original author
 /graphify add https://... --contributor "Name"        # tag who added it to the corpus
+/graphify ingest-topic "transformer architectures"    # search web, save results, update graph
+/graphify ingest-topic "attention mechanisms" --max-results 5  # limit results (default 10)
 
 /graphify query "what connects attention to the optimizer?"
 /graphify query "what connects attention to the optimizer?" --dfs   # trace a specific path
@@ -152,6 +154,24 @@ Works with any mix of file types:
 | Docs | `.md .txt .rst` | Concepts + relationships + design rationale via Claude |
 | Papers | `.pdf` | Citation mining + concept extraction |
 | Images | `.png .jpg .webp .gif` | Claude vision - screenshots, diagrams, any language |
+
+## Web ingestion (optional)
+
+Install with the `nimble` extra to power web extraction and topic-based ingestion with [Nimble](https://nimbleway.com) — real-time web intelligence that turns any public webpage into clean, structured data:
+
+```bash
+pip install graphifyy[nimble]
+```
+
+**Nimble Extract** — `/graphify add <url>` gets clean, real-time HTML and markdown from any URL with stealth unblocking and JS rendering. No scraping hassle.
+
+**Nimble Search** — `/graphify ingest-topic "transformer architectures"` searches the live web to retrieve precise information, saves the results as markdown files in your corpus, and updates the graph. Uses deep extraction for full page content, not just snippets.
+
+```
+/graphify ingest-topic "attention mechanisms" --max-results 5
+```
+
+Without the `nimble` extra, `/graphify add` uses the built-in urllib path. `/graphify ingest-topic` requires Nimble.
 
 ## What you get
 

@@ -27,6 +27,8 @@ Turn any folder of files into a navigable knowledge graph with community detecti
 /graphify add <url>                                   # fetch URL, save to ./raw, update graph
 /graphify add <url> --author "Name"                   # tag who wrote it
 /graphify add <url> --contributor "Name"              # tag who added it to the corpus
+/graphify ingest-topic "<topic>"                      # search web, save results to ./raw, update graph
+/graphify ingest-topic "<topic>" --max-results 5      # limit number of results (default 10)
 /graphify query "<question>"                          # BFS traversal - broad context
 /graphify query "<question>" --dfs                    # DFS - trace a specific path
 /graphify query "<question>" --budget 1500            # cap answer at N tokens
@@ -1143,12 +1145,44 @@ except RuntimeError as e:
 
 Replace `URL` with the actual URL, `AUTHOR` with the user's name if provided, `CONTRIBUTOR` likewise. If the command exits with an error, tell the user what went wrong - do not silently continue. After a successful save, automatically run the `--update` pipeline on `./raw` to merge the new file into the existing graph.
 
+When `nimble_python` is installed (`pip install graphifyy[nimble]`), URL extraction is powered by [Nimble](https://nimbleway.com) — get clean, real-time HTML and markdown from any URL with stealth unblocking and JS rendering. Otherwise uses the built-in urllib path.
+
 Supported URL types (auto-detected):
-- Twitter/X → fetched via oEmbed, saved as `.md` with tweet text and author
+- Twitter/X → saved as `.md` with tweet text and author
 - arXiv → abstract + metadata saved as `.md`  
 - PDF → downloaded as `.pdf`
 - Images (.png/.jpg/.webp) → downloaded, Claude vision extracts on next run
-- Any webpage → converted to markdown via html2text
+- Any webpage → converted to markdown
+
+---
+
+## For /graphify ingest-topic
+
+Search the web for a topic and ingest the results into the corpus, then update the graph. Requires `nimble_python` (`pip install graphifyy[nimble]`).
+
+```bash
+$(cat .graphify_python) -c "
+import sys
+from graphify.ingest import search_ingest
+from pathlib import Path
+
+try:
+    paths = search_ingest('QUERY', Path('./raw'), max_results=MAX_RESULTS, author='AUTHOR', contributor='CONTRIBUTOR')
+    print(f'Saved {len(paths)} results to ./raw')
+    for p in paths:
+        print(f'  {p.name}')
+except ImportError as e:
+    print(f'error: {e}', file=sys.stderr)
+    sys.exit(1)
+except Exception as e:
+    print(f'error: {e}', file=sys.stderr)
+    sys.exit(1)
+"
+```
+
+Replace `QUERY` with the user's search topic, `MAX_RESULTS` with the requested count (default 10), `AUTHOR` and `CONTRIBUTOR` if provided. After a successful save, automatically run the `--update` pipeline on `./raw` to merge the new files into the existing graph.
+
+Each result is saved as a `.md` file with YAML frontmatter (`type: search_result`, query, title, URL) and full page content. Nimble Search agents search the live web to retrieve precise information — deep mode extracts the full page text, not just snippets.
 
 ---
 

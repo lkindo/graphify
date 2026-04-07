@@ -38,10 +38,11 @@ Issues = "https://github.com/safishamsi/graphify/issues"
 [project.optional-dependencies]
 mcp = ["mcp"]
 neo4j = ["neo4j"]
+nimble = ["nimble_python"]
 pdf = ["pypdf", "html2text"]
 watch = ["watchdog"]
 leiden = ["graspologic"]
-all = ["mcp", "neo4j", "pypdf", "html2text", "watchdog", "graspologic"]
+all = ["mcp", "neo4j", "nimble_python", "pypdf", "html2text", "watchdog", "graspologic"]
 
 [project.scripts]
 graphify = "graphify.__main__:main"
