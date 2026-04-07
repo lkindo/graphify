@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 import pytest
-from graphify.extract import extract_js, extract_go, extract_rust, extract
+from graphify.extract import extract_js, extract_go, extract_rust, extract, extract_bash
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -171,3 +171,49 @@ def test_cache_miss_after_file_change(tmp_path):
     # bar() should appear in the second result
     labels2 = [n["label"] for n in r2["nodes"]]
     assert any("bar" in l for l in labels2)
+
+
+# ── Bash / Shell ──────────────────────────────────────────────────────────────
+
+def test_bash_finds_functions():
+    r = extract_bash(FIXTURES / "sample.sh")
+    assert "error" not in r
+    labels = _labels(r)
+    assert any("log_message" in l for l in labels)
+    assert any("validate_input" in l for l in labels)
+    assert any("process_file" in l for l in labels)
+    assert any("transform_data" in l for l in labels)
+
+def test_bash_finds_source_imports():
+    r = extract_bash(FIXTURES / "sample.sh")
+    import_edges = [e for e in r["edges"] if e["relation"] == "imports_from"]
+    targets = {e["target"] for e in import_edges}
+    # source lib/utils.sh  →  utils
+    # . ./helpers.sh       →  helpers
+    assert any("utils" in t for t in targets)
+    assert any("helpers" in t for t in targets)
+
+def test_bash_emits_calls():
+    r = extract_bash(FIXTURES / "sample.sh")
+    calls = _call_pairs(r)
+    # process_file() calls validate_input(), log_message(), transform_data()
+    assert any("process_file" in src and "validate_input" in tgt for src, tgt in calls)
+    assert any("process_file" in src and "log_message" in tgt for src, tgt in calls)
+
+def test_bash_calls_are_inferred():
+    r = extract_bash(FIXTURES / "sample.sh")
+    for e in r["edges"]:
+        if e["relation"] == "calls":
+            assert e["confidence"] == "INFERRED"
+
+def test_bash_no_dangling_edges():
+    r = extract_bash(FIXTURES / "sample.sh")
+    node_ids = {n["id"] for n in r["nodes"]}
+    for e in r["edges"]:
+        if e["relation"] in ("contains", "calls"):
+            assert e["source"] in node_ids
+
+def test_bash_file_node_exists():
+    r = extract_bash(FIXTURES / "sample.sh")
+    labels = _labels(r)
+    assert "sample.sh" in labels

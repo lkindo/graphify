@@ -31,6 +31,7 @@ dependencies = [
     "tree-sitter-zig",
     "tree-sitter-powershell",
     "tree-sitter-elixir",
+    "tree-sitter-bash",
 ]
 
 [project.urls]
@@ -45,7 +46,8 @@ pdf = ["pypdf", "html2text"]
 watch = ["watchdog"]
 leiden = ["graspologic"]
 office = ["python-docx", "openpyxl"]
-all = ["mcp", "neo4j", "pypdf", "html2text", "watchdog", "graspologic", "python-docx", "openpyxl"]
+embeddings = ["llama-cpp-python", "ollama"]
+all = ["mcp", "neo4j", "pypdf", "html2text", "watchdog", "graspologic", "python-docx", "openpyxl", "llama-cpp-python", "ollama"]
 
 [project.scripts]
 graphify = "graphify.__main__:main"
