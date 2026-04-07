@@ -53,4 +53,16 @@ Ask questions from your AI coding assistant:
 - "which module has the most connections?"
 - "what does the architecture doc say about the storage design?"
 
+## Pre-built output
+
+This example includes pre-built output so you can see results without running the pipeline:
+
+```
+├── graph.html          — interactive graph visualization (open in browser)
+├── graph.json          — queryable graph data (NetworkX node-link format)
+└── GRAPH_REPORT.md     — human-readable audit: god nodes, communities, surprises
+```
+
+Open `graph.html` in your browser to explore the graph interactively — click nodes, search, and filter by community.
+
 The graph lives in `graphify-out/` and persists across sessions.

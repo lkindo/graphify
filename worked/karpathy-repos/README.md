@@ -70,4 +70,13 @@ Then open your AI coding assistant in this directory and type:
 - Surprising connections: nanoGPT Block and minGPT Block linked across repos, FlashAttention paper bridging into CausalSelfAttention in both repos
 - Token reduction: 71.5x vs reading all 52 files directly
 
-Actual output is in this folder: `GRAPH_REPORT.md` and `graph.json`. Full eval with scores: `review.md`.
+## Pre-built output
+
+```
+├── graph.html          — interactive graph visualization (open in browser)
+├── graph.json          — queryable graph data
+├── GRAPH_REPORT.md     — god nodes, communities, surprises
+└── review.md           — full evaluation with scores
+```
+
+Open `graph.html` in your browser to explore the graph interactively.

@@ -40,4 +40,13 @@ Then open your AI coding assistant in this directory and type:
 - If you include the image: 1 extra node describing the figure content via vision
 - Token reduction: 5.4x
 
-Actual output is in this folder: `GRAPH_REPORT.md` and `graph.json`. Full eval: `review.md`.
+## Pre-built output
+
+```
+├── graph.html          — interactive graph visualization (open in browser)
+├── graph.json          — queryable graph data
+├── GRAPH_REPORT.md     — god nodes, communities, surprises
+└── review.md           — full evaluation
+```
+
+Open `graph.html` in your browser to explore the graph interactively.
