@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/graphifyy)](https://pypi.org/project/graphifyy/)
 [![Sponsor](https://img.shields.io/badge/sponsor-safishamsi-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/safishamsi)
 
-**AIコーディングアシスタント向けのスキル。** Claude Code、Codex、OpenCode、OpenClaw、Factory Droid で `/graphify` と入力するだけで、ファイルを読み込んでナレッジグラフを構築し、あなたが気づいていなかった構造を返します。コードベースをより速く理解し、アーキテクチャ上の意思決定の「なぜ」を見つけ出します。
+**AIコーディングアシスタント向けのスキル。** Claude Code、Codex、OpenCode、OpenClaw、Factory Droid、または Cursor で `/graphify` と入力するだけで、ファイルを読み込んでナレッジグラフを構築し、あなたが気づいていなかった構造を返します。コードベースをより速く理解し、アーキテクチャ上の意思決定の「なぜ」を見つけ出します。
 
 完全にマルチモーダル対応。コード、PDF、Markdown、スクリーンショット、図、ホワイトボード写真、他言語の画像まで――graphify は Claude Vision を使ってそれらすべてから概念と関係性を抽出し、1 つのグラフに接続します。tree-sitter AST により 19 言語をサポート（Python、JS、TS、Go、Rust、Java、C、C++、Ruby、C#、Kotlin、Scala、PHP、Swift、Lua、Zig、PowerShell、Elixir、Objective-C）。
 
@@ -46,7 +46,7 @@ graphify は 2 パスで動作します。まず、決定論的な AST パスが
 
 ## インストール
 
-**必要なもの:** Python 3.10+ および以下のいずれか： [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [OpenClaw](https://openclaw.ai), または [Factory Droid](https://factory.ai)
+**必要なもの:** Python 3.10+ および以下のいずれか： [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [OpenClaw](https://openclaw.ai), [Factory Droid](https://factory.ai), または [Cursor](https://cursor.com)
 
 ```bash
 pip install graphifyy && graphify install
@@ -64,6 +64,7 @@ pip install graphifyy && graphify install
 | OpenCode | `graphify install --platform opencode` |
 | OpenClaw | `graphify install --platform claw` |
 | Factory Droid | `graphify install --platform droid` |
+| Cursor | `graphify install --platform cursor` |
 
 Codex ユーザーは並列抽出のために `~/.codex/config.toml` の `[features]` の下に `multi_agent = true` も必要です。Factory Droid は並列サブエージェントディスパッチに `Task` ツールを使用します。OpenClaw は逐次抽出を使用します（並列エージェントサポートはこのプラットフォームではまだ初期段階です）。
 
@@ -86,10 +87,17 @@ Codex ユーザーは並列抽出のために `~/.codex/config.toml` の `[featu
 | OpenCode | `graphify opencode install` |
 | OpenClaw | `graphify claw install` |
 | Factory Droid | `graphify droid install` |
+| Cursor | `graphify cursor install` |
 
 **Claude Code** は 2 つのことを行います：Claude にアーキテクチャの質問に答える前に `graphify-out/GRAPH_REPORT.md` を読むように指示する `CLAUDE.md` セクションを書き込み、すべての Glob と Grep 呼び出しの前に発火する **PreToolUse フック**（`settings.json`）をインストールします。ナレッジグラフが存在する場合、Claude は次のメッセージを見ます：_"graphify: Knowledge graph exists. Read GRAPH_REPORT.md for god nodes and community structure before searching raw files."_ ――これにより Claude はすべてのファイルを grep するのではなく、グラフを介してナビゲートします。
 
-**Codex、OpenCode、OpenClaw、Factory Droid** は同じルールをプロジェクトルートの `AGENTS.md` に書き込みます。これらのプラットフォームは PreToolUse フックをサポートしていないため、AGENTS.md が常時有効のメカニズムとなります。
+**Codex** は `AGENTS.md` に書き込み、すべての Bash ツール呼び出しの前に発火する **PreToolUse フック**（`.codex/hooks.json`）もインストールします――Claude Code と同様の常時有効メカニズムです。
+
+**OpenCode** は `AGENTS.md` に書き込み、bash ツール呼び出しの前に発火する **`tool.execute.before` プラグイン**（`.opencode/plugins/graphify.js` と `opencode.json` の登録）をインストールし、グラフが存在するときツール出力にグラフのリマインダーを注入します。
+
+**OpenClaw、Factory Droid** はプロジェクトルートの `AGENTS.md` に同じルールを書き込みます。これらのプラットフォームはツールフックをサポートしていないため、AGENTS.md が常時有効のメカニズムです。
+
+**Cursor** は 2 つのことを行います：アーキテクチャの質問に答える前に `graphify-out/GRAPH_REPORT.md` を読むように指示する `.cursor/rules/graphify.mdc` ルールファイル（`alwaysApply: true`）を書き込み、新しいエージェントセッション開始時に発火する **sessionStart フック**をインストールします。ナレッジグラフが存在する場合、Cursor は同じプロンプトを見ます――すべてのファイルを grep するのではなくグラフを介してナビゲートします。
 
 アンインストールは対応するアンインストールコマンドで行います（例：`graphify claude uninstall`）。
 
@@ -162,6 +170,8 @@ graphify codex install             # AGENTS.md（Codex）
 graphify opencode install          # AGENTS.md（OpenCode）
 graphify claw install              # AGENTS.md（OpenClaw）
 graphify droid install             # AGENTS.md（Factory Droid）
+graphify cursor install            # .cursor/rules/ + sessionStart フック（Cursor）
+graphify cursor uninstall
 
 # ターミナルから直接グラフをクエリ（AI アシスタント不要）
 graphify query "アテンションとオプティマイザを結ぶものは？"

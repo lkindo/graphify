@@ -62,6 +62,16 @@ def test_install_windows(tmp_path):
     assert (tmp_path / ".claude" / "skills" / "graphify" / "SKILL.md").exists()
 
 
+def test_install_cursor(tmp_path):
+    _install(tmp_path, "cursor")
+    assert (tmp_path / ".cursor" / "skills" / "graphify" / "SKILL.md").exists()
+
+
+def test_cursor_skill_file_exists_in_package():
+    """skill-cursor.md must be present in the installed package."""
+    import graphify
+    skill = (Path(graphify.__file__).parent / "skill-cursor.md").read_text()
+    assert "name: graphify" in skill
 def test_install_unknown_platform_exits(tmp_path):
     with pytest.raises(SystemExit):
         _install(tmp_path, "unknown")
@@ -94,7 +104,7 @@ def test_all_skill_files_exist_in_package():
     """All installable platform skill files must be present in the installed package."""
     import graphify
     pkg = Path(graphify.__file__).parent
-    for name in ("skill.md", "skill-codex.md", "skill-opencode.md", "skill-claw.md", "skill-windows.md", "skill-droid.md", "skill-trae.md"):
+    for name in ("skill.md", "skill-codex.md", "skill-opencode.md", "skill-claw.md", "skill-windows.md", "skill-droid.md", "skill-trae.md", "skill-cursor.md"):
         assert (pkg / name).exists(), f"Missing: {name}"
 
 

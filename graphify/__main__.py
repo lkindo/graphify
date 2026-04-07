@@ -4,6 +4,7 @@ import json
 import platform
 import re
 import shutil
+import stat as _stat
 import sys
 from pathlib import Path
 
@@ -80,6 +81,11 @@ _PLATFORM_CONFIG: dict[str, dict] = {
     "trae-cn": {
         "skill_file": "skill-trae.md",
         "skill_dst": Path(".trae-cn") / "skills" / "graphify" / "SKILL.md",
+        "claude_md": False,
+    },
+    "cursor": {
+        "skill_file": "skill-cursor.md",
+        "skill_dst": Path(".cursor") / "skills" / "graphify" / "SKILL.md",
         "claude_md": False,
     },
     "windows": {
@@ -159,6 +165,10 @@ Rules:
 """
 
 _AGENTS_MD_MARKER = "## graphify"
+
+# ---------------------------------------------------------------------------
+# OpenCode and Codex integration constants and functions
+# ---------------------------------------------------------------------------
 
 # OpenCode tool.execute.before plugin — fires before every tool call.
 # Injects a graph reminder into bash command output when graph.json exists.
@@ -300,6 +310,42 @@ def _uninstall_codex_hook(project_dir: Path) -> None:
     hooks_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
     print(f"  .codex/hooks.json  ->  PreToolUse hook removed")
 
+# ---------------------------------------------------------------------------
+# Cursor IDE integration constants
+# ---------------------------------------------------------------------------
+
+_CURSOR_RULE_FILE = ".cursor/rules/graphify.mdc"
+_CURSOR_RULE_MARKER = "## graphify"
+
+_CURSOR_RULE_CONTENT = """\
+---
+description: graphify knowledge graph - consult before answering codebase questions
+alwaysApply: true
+---
+
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+"""
+
+_CURSOR_HOOK_SCRIPT = """\
+#!/bin/bash
+# graphify sessionStart hook - inject graph context when knowledge graph exists
+cat > /dev/null  # consume stdin JSON
+if [ -f "graphify-out/graph.json" ]; then
+  printf '{"additional_context":"graphify: Knowledge graph exists. Read graphify-out/GRAPH_REPORT.md for god nodes and community structure before searching raw files."}\\n'
+else
+  printf '{}\\n'
+fi
+"""
+
+_CURSOR_HOOK_SCRIPT_PATH = ".cursor/hooks/graphify-check.sh"
+_CURSOR_HOOK_COMMAND = ".cursor/hooks/graphify-check.sh"
 
 def _agents_install(project_dir: Path, platform: str) -> None:
     """Write the graphify section to the local AGENTS.md (Codex/OpenCode/OpenClaw)."""
@@ -358,6 +404,113 @@ def _agents_uninstall(project_dir: Path) -> None:
         print(f"AGENTS.md was empty after removal - deleted {target.resolve()}")
 
     _uninstall_opencode_plugin(project_dir or Path("."))
+
+
+# ---------------------------------------------------------------------------
+# Cursor IDE install / uninstall
+# ---------------------------------------------------------------------------
+
+
+def _install_cursor_rule(project_dir: Path) -> None:
+    """Write graphify.mdc rule file to .cursor/rules/."""
+    rule_path = project_dir / _CURSOR_RULE_FILE
+    if rule_path.exists():
+        print("graphify already configured in .cursor/rules/graphify.mdc")
+        return
+    rule_path.parent.mkdir(parents=True, exist_ok=True)
+    rule_path.write_text(_CURSOR_RULE_CONTENT, encoding="utf-8")
+    print(f"  .cursor/rules/graphify.mdc  \u2192  rule written")
+
+
+def _uninstall_cursor_rule(project_dir: Path) -> None:
+    """Remove graphify.mdc from .cursor/rules/."""
+    rule_path = project_dir / _CURSOR_RULE_FILE
+    if rule_path.exists():
+        rule_path.unlink()
+        print(f"  .cursor/rules/graphify.mdc  \u2192  removed")
+
+
+def _install_cursor_hook(project_dir: Path) -> None:
+    """Write sessionStart hook entry to .cursor/hooks.json and write the shell script."""
+    # 1. Write / update hooks.json
+    hooks_path = project_dir / ".cursor" / "hooks.json"
+    hooks_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if hooks_path.exists():
+        try:
+            config = json.loads(hooks_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            config = {}
+    else:
+        config = {}
+
+    config.setdefault("version", 1)
+    hooks = config.setdefault("hooks", {})
+    session_start = hooks.setdefault("sessionStart", [])
+
+    if any(_CURSOR_HOOK_COMMAND in h.get("command", "") for h in session_start):
+        print(
+            f"  .cursor/hooks.json  \u2192  sessionStart hook already registered (no change)"
+        )
+    else:
+        session_start.append({"command": _CURSOR_HOOK_COMMAND})
+        hooks_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+        print(f"  .cursor/hooks.json  \u2192  sessionStart hook registered")
+
+    # 2. Write the shell script
+    script_path = project_dir / _CURSOR_HOOK_SCRIPT_PATH
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    script_path.write_text(_CURSOR_HOOK_SCRIPT, encoding="utf-8")
+    current_mode = script_path.stat().st_mode
+    script_path.chmod(current_mode | _stat.S_IXUSR | _stat.S_IXGRP | _stat.S_IXOTH)
+    print(f"  .cursor/hooks/graphify-check.sh  \u2192  written")
+
+
+def _uninstall_cursor_hook(project_dir: Path) -> None:
+    """Remove sessionStart hook entry from .cursor/hooks.json and delete the shell script."""
+    hooks_path = project_dir / ".cursor" / "hooks.json"
+    if hooks_path.exists():
+        try:
+            config = json.loads(hooks_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            config = {}
+        session_start = config.get("hooks", {}).get("sessionStart", [])
+        filtered = [
+            h for h in session_start if _CURSOR_HOOK_COMMAND not in h.get("command", "")
+        ]
+        if len(filtered) != len(session_start):
+            config["hooks"]["sessionStart"] = filtered
+            hooks_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+            print(f"  .cursor/hooks.json  \u2192  sessionStart hook removed")
+
+    script_path = project_dir / _CURSOR_HOOK_SCRIPT_PATH
+    if script_path.exists():
+        script_path.unlink()
+        print(f"  .cursor/hooks/graphify-check.sh  \u2192  removed")
+
+
+def cursor_install(project_dir: Path | None = None) -> None:
+    """Write Cursor-native graphify integration (rule file + sessionStart hook)."""
+    d = project_dir or Path(".")
+    _install_cursor_rule(d)
+    _install_cursor_hook(d)
+    print()
+    print("Cursor will now check the knowledge graph before answering")
+    print("codebase questions and rebuild it after code changes.")
+
+
+def cursor_uninstall(project_dir: Path | None = None) -> None:
+    """Remove Cursor-native graphify integration."""
+    d = project_dir or Path(".")
+    rule_path = d / _CURSOR_RULE_FILE
+    if not rule_path.exists():
+        print("No .cursor/rules/graphify.mdc found - nothing to do")
+        _uninstall_cursor_hook(d)  # still try hook cleanup
+        return
+    _uninstall_cursor_rule(d)
+    _uninstall_cursor_hook(d)
+    print()
+    print("Cursor graphify integration removed.")
 
 
 def claude_install(project_dir: Path | None = None) -> None:
@@ -468,7 +621,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid|trae|trae-cn)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid|cursor|trae|trae-cn)")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -492,7 +645,9 @@ def main() -> None:
         print("  claw install            write graphify section to AGENTS.md (OpenClaw)")
         print("  claw uninstall          remove graphify section from AGENTS.md")
         print("  droid install           write graphify section to AGENTS.md (Factory Droid)")
-        print("  droid uninstall        remove graphify section from AGENTS.md")
+        print("  droid uninstall         remove graphify section from AGENTS.md")
+        print("  cursor install          write .cursor/rules/graphify.mdc + sessionStart hook (Cursor IDE)")
+        print("  cursor uninstall        remove .cursor/rules/graphify.mdc + sessionStart hook")
         print("  trae install            write graphify section to AGENTS.md (Trae)")
         print("  trae uninstall         remove graphify section from AGENTS.md")
         print("  trae-cn install         write graphify section to AGENTS.md (Trae CN)")
@@ -525,6 +680,15 @@ def main() -> None:
             claude_uninstall()
         else:
             print("Usage: graphify claude [install|uninstall]", file=sys.stderr)
+            sys.exit(1)
+    elif cmd == "cursor":
+        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
+        if subcmd == "install":
+            cursor_install()
+        elif subcmd == "uninstall":
+            cursor_uninstall()
+        else:
+            print("Usage: graphify cursor [install|uninstall]", file=sys.stderr)
             sys.exit(1)
     elif cmd in ("codex", "opencode", "claw", "droid", "trae", "trae-cn"):
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
