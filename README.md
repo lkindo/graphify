@@ -91,7 +91,6 @@ After building a graph, run this once in your project:
 
 **Codex, OpenCode, OpenClaw, Factory Droid** write the same rules to `AGENTS.md` in your project root. These platforms don't support PreToolUse hooks, so AGENTS.md is the always-on mechanism.
 
-
 Uninstall with the matching uninstall command (e.g. `graphify claude uninstall`).
 
 **Always-on vs explicit trigger — what's the difference?**
