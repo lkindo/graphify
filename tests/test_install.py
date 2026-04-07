@@ -9,6 +9,7 @@ PLATFORMS = {
     "codex": (".agents/skills/graphify/SKILL.md",),
     "opencode": (".config/opencode/skills/graphify/SKILL.md",),
     "claw": (".claw/skills/graphify/SKILL.md",),
+    "droid": (".factory/skills/graphify/SKILL.md",),
 }
 
 
@@ -38,6 +39,12 @@ def test_install_claw(tmp_path):
     assert (tmp_path / ".claw" / "skills" / "graphify" / "SKILL.md").exists()
 
 
+
+
+def test_install_droid(tmp_path):
+    _install(tmp_path, "droid")
+    assert (tmp_path / ".factory" / "skills" / "graphify" / "SKILL.md").exists()
+
 def test_install_unknown_platform_exits(tmp_path):
     with pytest.raises(SystemExit):
         _install(tmp_path, "unknown")
@@ -48,6 +55,13 @@ def test_codex_skill_contains_spawn_agent():
     import graphify
     skill = (Path(graphify.__file__).parent / "skill-codex.md").read_text()
     assert "spawn_agent" in skill
+
+
+def test_droid_skill_contains_task_tool():
+    """Droid skill file must reference Task tool."""
+    import graphify
+    skill = (Path(graphify.__file__).parent / "skill-droid.md").read_text()
+    assert "Task" in skill
 
 
 def test_opencode_skill_contains_mention():
@@ -67,10 +81,10 @@ def test_claw_skill_is_sequential():
 
 
 def test_all_skill_files_exist_in_package():
-    """All four platform skill files must be present in the installed package."""
+    """All five platform skill files must be present in the installed package."""
     import graphify
     pkg = Path(graphify.__file__).parent
-    for name in ("skill.md", "skill-codex.md", "skill-opencode.md", "skill-claw.md"):
+    for name in ("skill.md", "skill-codex.md", "skill-opencode.md", "skill-claw.md", "skill-droid.md"):
         assert (pkg / name).exists(), f"Missing: {name}"
 
 
@@ -115,10 +129,31 @@ def test_claw_agents_install_writes_agents_md(tmp_path):
     assert (tmp_path / "AGENTS.md").exists()
 
 
+
+
+def test_droid_agents_install_writes_agents_md(tmp_path):
+    _agents_install(tmp_path, "droid")
+    agents_md = tmp_path / "AGENTS.md"
+    assert agents_md.exists()
+    assert "graphify" in agents_md.read_text()
+    assert "GRAPH_REPORT.md" in agents_md.read_text()
+
+
+def test_droid_install_does_not_write_claude_md(tmp_path):
+    _install(tmp_path, "droid")
+    assert not (tmp_path / ".claude" / "CLAUDE.md").exists()
+
 def test_agents_install_idempotent(tmp_path):
     """Installing twice does not duplicate the section."""
     _agents_install(tmp_path, "codex")
     _agents_install(tmp_path, "codex")
+    content = (tmp_path / "AGENTS.md").read_text()
+    assert content.count("## graphify") == 1
+
+
+def test_droid_agents_install_idempotent(tmp_path):
+    _agents_install(tmp_path, "droid")
+    _agents_install(tmp_path, "droid")
     content = (tmp_path / "AGENTS.md").read_text()
     assert content.count("## graphify") == 1
 
