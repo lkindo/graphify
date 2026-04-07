@@ -31,6 +31,7 @@ dependencies = [
     "tree-sitter-zig",
     "tree-sitter-powershell",
     "tree-sitter-elixir",
+    "tree-sitter-bash",
 ]
 
 [project.urls]

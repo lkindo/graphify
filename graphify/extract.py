@@ -2105,6 +2105,156 @@ def extract_elixir(path: Path) -> dict:
     return {"nodes": nodes, "edges": clean_edges, "input_tokens": 0, "output_tokens": 0}
 
 
+# ── Bash / Shell ──────────────────────────────────────────────────────────────
+
+def extract_bash(path: Path) -> dict:
+    """Extract functions, source imports, and calls from a .sh/.bash file."""
+    try:
+        import tree_sitter_bash as tsbash
+        from tree_sitter import Language, Parser
+    except ImportError:
+        return {"nodes": [], "edges": [], "error": "tree_sitter_bash not installed"}
+
+    try:
+        language = Language(tsbash.language())
+        parser = Parser(language)
+        source = path.read_bytes()
+        tree = parser.parse(source)
+        root = tree.root_node
+    except Exception as e:
+        return {"nodes": [], "edges": [], "error": str(e)}
+
+    stem = path.stem
+    str_path = str(path)
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    seen_ids: set[str] = set()
+    function_bodies: list[tuple[str, Any]] = []
+
+    def add_node(nid: str, label: str, line: int) -> None:
+        if nid not in seen_ids:
+            seen_ids.add(nid)
+            nodes.append({"id": nid, "label": label, "file_type": "code",
+                          "source_file": str_path, "source_location": f"L{line}"})
+
+    def add_edge(src: str, tgt: str, relation: str, line: int,
+                 confidence: str = "EXTRACTED", weight: float = 1.0) -> None:
+        edges.append({"source": src, "target": tgt, "relation": relation,
+                      "confidence": confidence, "source_file": str_path,
+                      "source_location": f"L{line}", "weight": weight})
+
+    file_nid = _make_id(stem)
+    add_node(file_nid, path.name, 1)
+
+    # ── Pass 1: structure ─────────────────────────────────────────────────
+
+    def _extract_source_import(node) -> None:
+        """Handle `source foo.sh` and `. ./foo.sh` patterns."""
+        children = [c for c in node.children if c.type not in ("comment",)]
+        if len(children) < 2:
+            return
+        cmd_name_node = None
+        for c in children:
+            if c.type == "command_name":
+                cmd_name_node = c
+                break
+        if cmd_name_node is None:
+            return
+        cmd_text = _read_text(cmd_name_node, source)
+        if cmd_text not in ("source", "."):
+            return
+
+        # The argument after source/. is the file path
+        for c in children:
+            if c.type == "word":
+                raw = _read_text(c, source)
+                # Strip path components and extension to get module name
+                module_name = raw.split("/")[-1].split(".")[0]
+                if module_name:
+                    tgt_nid = _make_id(module_name)
+                    add_edge(file_nid, tgt_nid, "imports_from",
+                             node.start_point[0] + 1)
+                return
+
+    def walk(node) -> None:
+        t = node.type
+
+        # Function definitions: both `name() { ... }` and `function name { ... }`
+        if t == "function_definition":
+            func_name = None
+            body_node = None
+            for child in node.children:
+                if child.type == "word":
+                    func_name = _read_text(child, source)
+                elif child.type == "compound_statement":
+                    body_node = child
+
+            if func_name:
+                line = node.start_point[0] + 1
+                func_nid = _make_id(stem, func_name)
+                add_node(func_nid, f"{func_name}()", line)
+                add_edge(file_nid, func_nid, "contains", line)
+                if body_node:
+                    function_bodies.append((func_nid, body_node))
+            return
+
+        # Top-level commands: detect source/. imports
+        if t == "command":
+            _extract_source_import(node)
+            # Don't recurse into commands for structure pass
+            return
+
+        for child in node.children:
+            walk(child)
+
+    walk(root)
+
+    # ── Pass 2: call-graph ────────────────────────────────────────────────
+
+    seen_call_pairs: set[tuple[str, str]] = set()
+
+    def walk_calls(node, caller_nid: str) -> None:
+        # Don't cross into nested function definitions
+        if node.type == "function_definition":
+            return
+        if node.type == "command":
+            cmd_name_node = None
+            for c in node.children:
+                if c.type == "command_name":
+                    cmd_name_node = c
+                    break
+            if cmd_name_node:
+                callee = _read_text(cmd_name_node, source)
+                # Skip shell builtins
+                if callee not in ("echo", "printf", "cd", "exit", "return",
+                                  "export", "local", "readonly", "declare",
+                                  "unset", "set", "source", ".", "eval",
+                                  "exec", "test", "[", "[[", "true", "false",
+                                  "shift", "read", "wait", "trap", "type",
+                                  "which", "if", "then", "else", "fi",
+                                  "for", "while", "do", "done", "case", "esac"):
+                    tgt_nid = next(
+                        (n["id"] for n in nodes if n["label"] == f"{callee}()"),
+                        None,
+                    )
+                    if tgt_nid and tgt_nid != caller_nid:
+                        pair = (caller_nid, tgt_nid)
+                        if pair not in seen_call_pairs:
+                            seen_call_pairs.add(pair)
+                            add_edge(caller_nid, tgt_nid, "calls",
+                                     node.start_point[0] + 1,
+                                     confidence="INFERRED", weight=0.8)
+        for child in node.children:
+            walk_calls(child, caller_nid)
+
+    for caller_nid, body_node in function_bodies:
+        walk_calls(body_node, caller_nid)
+
+    clean_edges = [e for e in edges if e["source"] in seen_ids and
+                   (e["target"] in seen_ids or e["relation"] == "imports_from")]
+    return {"nodes": nodes, "edges": clean_edges}
+
+
 # ── Main extract and collect_files ────────────────────────────────────────────
 
 def extract(paths: list[Path]) -> dict:
@@ -2159,6 +2309,8 @@ def extract(paths: list[Path]) -> dict:
         ".ps1": extract_powershell,
         ".ex": extract_elixir,
         ".exs": extract_elixir,
+        ".sh": extract_bash,
+        ".bash": extract_bash,
     }
 
     for path in paths:
@@ -2202,6 +2354,7 @@ def collect_files(target: Path) -> list[Path]:
         "*.java", "*.c", "*.h", "*.cpp", "*.cc", "*.cxx", "*.hpp",
         "*.rb", "*.cs", "*.kt", "*.kts", "*.scala", "*.php", "*.swift",
         "*.lua", "*.toc", "*.zig", "*.ps1",
+        "*.sh", "*.bash",
     )
     results: list[Path] = []
     for pattern in _EXTENSIONS:
