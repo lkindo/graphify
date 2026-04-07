@@ -142,7 +142,7 @@ else:
 
 **Fast path:** If detection found zero docs, papers, and images (code-only corpus), skip Part B entirely and go straight to Part C. AST handles code - there is nothing for semantic subagents to do.
 
-**MANDATORY: You MUST use the Agent tool here. Reading files yourself one-by-one is forbidden - it is 5-10x slower. If you do not use the Agent tool you are doing this wrong.**
+**MANDATORY: You MUST use the Task tool here. Reading files yourself one-by-one is forbidden - it is 5-10x slower. If you do not use the Task tool you are doing this wrong.**
 
 Before dispatching subagents, print a timing estimate:
 - Load `total_words` and file counts from `.graphify_detect.json`
@@ -178,18 +178,24 @@ Only dispatch subagents for files listed in `.graphify_uncached.txt`. If all fil
 
 Load files from `.graphify_uncached.txt`. Split into chunks of 20-25 files each. Each image gets its own chunk (vision needs separate context).
 
-**Step B2 - Dispatch ALL subagents in a single message (Factory Droid)**
+**Step B2 - Dispatch ALL subagents in a single message (Factory Droid Task tool)**
 
-> **Factory Droid platform:** Uses the `Task` tool for parallel subagent dispatch.
-> Call `Task` once per chunk — ALL in the same response so they run in parallel.
+> **Factory Droid platform:** Use the `Task` tool with `subagent_type="worker"` for parallel extraction.
+> Create one Task call per chunk and dispatch all chunk tasks in the same response so they run concurrently.
+> Each task message must include the extraction prompt below (with `FILE_LIST`, `CHUNK_NUM`, `TOTAL_CHUNKS`, and `DEEP_MODE` substituted) and must return **only** structured JSON.
+> After dispatch, collect every task result, parse JSON, and merge valid outputs into `.graphify_semantic_new.json`.
 
-Call `Task` once per chunk — ALL in the same response so they run in parallel. Pass the extraction prompt as the task description:
+Task message template per chunk:
 
 ```
-Task(description="Your task is to perform the following. Follow the instructions below exactly.\n\n<agent-instructions>\n[extraction prompt below, with FILE_LIST, CHUNK_NUM, TOTAL_CHUNKS, DEEP_MODE substituted]\n</agent-instructions>\n\nExecute this now. Output ONLY the structured JSON response.")
+Task(subagent_type="worker", description="Graphify semantic extraction chunk CHUNK_NUM/TOTAL_CHUNKS", prompt="[extraction prompt below with substitutions]. Output ONLY the structured JSON response.")
 ```
 
-Collect results as each Task completes. Parse each result as JSON.
+Then collect all task outputs:
+- Parse each result as JSON.
+- Accumulate `nodes`, `edges`, and `hyperedges` across all successful chunks.
+- Write merged new semantic output to `.graphify_semantic_new.json`.
+- If a task fails or returns invalid JSON, warn and skip that chunk (do not abort the whole run).
 
 Parse each result as JSON. Accumulate nodes/edges/hyperedges across all results and write to `.graphify_semantic_new.json`.
 

@@ -53,4 +53,4 @@ where = ["."]
 include = ["graphify*"]
 
 [tool.setuptools.package-data]
-graphify = ["skill.md", "skill-codex.md", "skill-opencode.md", "skill-claw.md"]
+graphify = ["skill.md", "skill-codex.md", "skill-opencode.md", "skill-claw.md", "skill-droid.md"]
