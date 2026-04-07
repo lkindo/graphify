@@ -146,6 +146,11 @@ graphify claude uninstall
 graphify codex install             # AGENTS.md（Codex）
 graphify opencode install          # AGENTS.md（OpenCode）
 graphify claw install              # AGENTS.md（OpenClaw）
+
+# 本地 CLI 直接构图（仅 AST，无需 skill 触发）
+graphify build .                   # 输出 graphify-out/graph.json + GRAPH_REPORT.md + graph.html
+graphify build . --no-viz          # 跳过 graph.html
+graphify --version
 ```
 
 支持混合文件类型：

@@ -1,17 +1,13 @@
 """graphify CLI - `graphify install` sets up the Claude Code skill."""
 from __future__ import annotations
+import argparse
 import json
 import platform
 import re
 import shutil
 import sys
 from pathlib import Path
-
-try:
-    from importlib.metadata import version as _pkg_version
-    __version__ = _pkg_version("graphifyy")
-except Exception:
-    __version__ = "unknown"
+from graphify import __version__
 
 
 def _check_skill_version(skill_dst: Path) -> None:
@@ -299,145 +295,156 @@ def claude_uninstall(project_dir: Path | None = None) -> None:
     _uninstall_claude_hook(project_dir or Path("."))
 
 
-def main() -> None:
-    # Check all known skill install locations for a stale version stamp
-    for cfg in _PLATFORM_CONFIG.values():
-        skill_dst = Path.home() / cfg["skill_dst"]
-        _check_skill_version(skill_dst)
+def _default_platform() -> str:
+    return "windows" if platform.system() == "Windows" else "claude"
 
-    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
-        print("Usage: graphify <command>")
-        print()
-        print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid)")
-        print("  query \"<question>\"       BFS traversal of graph.json for a question")
-        print("    --dfs                   use depth-first instead of breadth-first")
-        print("    --budget N              cap output at N tokens (default 2000)")
-        print("    --graph <path>          path to graph.json (default graphify-out/graph.json)")
-        print("  benchmark [graph.json]  measure token reduction vs naive full-corpus approach")
-        print("  hook install            install post-commit/post-checkout git hooks (all platforms)")
-        print("  hook uninstall          remove git hooks")
-        print("  hook status             check if git hooks are installed")
-        print("  claude install          write graphify section to CLAUDE.md + PreToolUse hook (Claude Code)")
-        print("  claude uninstall        remove graphify section from CLAUDE.md + PreToolUse hook")
-        print("  codex install           write graphify section to AGENTS.md (Codex)")
-        print("  codex uninstall         remove graphify section from AGENTS.md")
-        print("  opencode install        write graphify section to AGENTS.md (OpenCode)")
-        print("  opencode uninstall      remove graphify section from AGENTS.md")
-        print("  claw install            write graphify section to AGENTS.md (OpenClaw)")
-        print("  claw uninstall          remove graphify section from AGENTS.md")
-        print("  droid install           write graphify section to AGENTS.md (Factory Droid)")
-        print("  droid uninstall         remove graphify section from AGENTS.md")
-        print()
+
+def _build_graph(path: Path, out_dir: Path, no_viz: bool = False) -> None:
+    from graphify.analyze import god_nodes, surprising_connections, suggest_questions
+    from graphify.build import build_from_json
+    from graphify.cluster import cluster, score_all
+    from graphify.detect import detect, save_manifest
+    from graphify.export import to_html, to_json
+    from graphify.extract import extract
+    from graphify.report import generate
+
+    detection = detect(path)
+    code_files = [Path(p) for p in detection["files"].get("code", [])]
+    if not code_files:
+        print(f"error: no supported code files found in {path}", file=sys.stderr)
+        sys.exit(1)
+
+    extraction = extract(code_files)
+    G = build_from_json(extraction)
+    communities = cluster(G)
+    cohesion = score_all(G, communities)
+    labels = {cid: f"Community {cid}" for cid in communities}
+    gods = god_nodes(G)
+    surprises = surprising_connections(G, communities)
+    questions = suggest_questions(G, communities, labels)
+    token_cost = {
+        "input": extraction.get("input_tokens", 0),
+        "output": extraction.get("output_tokens", 0),
+    }
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    to_json(G, communities, str(out_dir / "graph.json"))
+    if not no_viz:
+        to_html(G, communities, str(out_dir / "graph.html"), community_labels=labels)
+
+    report = generate(
+        G,
+        communities,
+        cohesion,
+        labels,
+        gods,
+        surprises,
+        detection,
+        token_cost,
+        str(path),
+        suggested_questions=questions,
+    )
+    (out_dir / "GRAPH_REPORT.md").write_text(report, encoding="utf-8")
+    save_manifest(detection["files"], manifest_path=str(out_dir / "manifest.json"))
+
+    print(f"Graph built for {path.resolve()}")
+    print(f"- Nodes: {G.number_of_nodes()} · Edges: {G.number_of_edges()} · Communities: {len(communities)}")
+    print(f"- Wrote {out_dir / 'graph.json'}")
+    print(f"- Wrote {out_dir / 'GRAPH_REPORT.md'}")
+    if no_viz:
+        print("- Skipped HTML visualization (--no-viz)")
+    else:
+        print(f"- Wrote {out_dir / 'graph.html'}")
+
+
+def _query_graph(question: str, use_dfs: bool, budget: int, graph_path: str) -> None:
+    from graphify.serve import _bfs, _dfs, _load_graph, _score_nodes, _subgraph_to_text
+
+    G = _load_graph(graph_path)
+    terms = [term.lower() for term in question.split() if len(term) > 2]
+    scored = _score_nodes(G, terms)
+    if not scored:
+        print("No matching nodes found.")
+        return
+    start = [node_id for _, node_id in scored[:5]]
+    nodes, edges = (_dfs if use_dfs else _bfs)(G, start, depth=2)
+    print(_subgraph_to_text(G, nodes, edges, token_budget=budget))
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="graphify", description="Graphify command line interface")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    subparsers = parser.add_subparsers(dest="command")
+
+    install_parser = subparsers.add_parser("install", help="install graphify skill files")
+    install_parser.add_argument("--platform", choices=sorted(_PLATFORM_CONFIG.keys()), default=_default_platform())
+
+    build_parser = subparsers.add_parser("build", help="build graph outputs directly from CLI (AST-only)")
+    build_parser.add_argument("path", nargs="?", default=".", help="path to analyze")
+    build_parser.add_argument("--out", default="graphify-out", help="output directory")
+    build_parser.add_argument("--no-viz", action="store_true", help="skip HTML visualization")
+
+    query_parser = subparsers.add_parser("query", help="query graph.json from the terminal")
+    query_parser.add_argument("question", help="natural-language query")
+    query_parser.add_argument("--dfs", action="store_true", help="use depth-first traversal")
+    query_parser.add_argument("--budget", type=int, default=2000, help="token budget for response text")
+    query_parser.add_argument("--graph", default="graphify-out/graph.json", help="path to graph.json")
+
+    benchmark_parser = subparsers.add_parser("benchmark", help="measure token reduction vs naive full-corpus approach")
+    benchmark_parser.add_argument("graph_path", nargs="?", default="graphify-out/graph.json")
+
+    hook_parser = subparsers.add_parser("hook", help="manage git hooks")
+    hook_parser.add_argument("action", choices=["install", "uninstall", "status"])
+
+    claude_parser = subparsers.add_parser("claude", help="manage CLAUDE.md integration")
+    claude_parser.add_argument("action", choices=["install", "uninstall"])
+
+    for platform_name in ("codex", "opencode", "claw", "droid"):
+        platform_parser = subparsers.add_parser(platform_name, help=f"manage {platform_name} AGENTS.md integration")
+        platform_parser.add_argument("action", choices=["install", "uninstall"])
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    # Check all known skill install locations for stale version stamps.
+    for cfg in _PLATFORM_CONFIG.values():
+        _check_skill_version(Path.home() / cfg["skill_dst"])
+
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
+    if not args.command:
+        parser.print_help()
         return
 
-    cmd = sys.argv[1]
-    if cmd == "install":
-        # Default to windows platform on Windows, claude elsewhere
-        default_platform = "windows" if platform.system() == "Windows" else "claude"
-        chosen_platform = default_platform
-        args = sys.argv[2:]
-        i = 0
-        while i < len(args):
-            if args[i].startswith("--platform="):
-                chosen_platform = args[i].split("=", 1)[1]
-                i += 1
-            elif args[i] == "--platform" and i + 1 < len(args):
-                chosen_platform = args[i + 1]
-                i += 2
-            else:
-                i += 1
-        install(platform=chosen_platform)
-    elif cmd == "claude":
-        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
-        if subcmd == "install":
+    if args.command == "install":
+        install(platform=args.platform)
+    elif args.command == "build":
+        _build_graph(Path(args.path), Path(args.out), no_viz=args.no_viz)
+    elif args.command == "query":
+        _query_graph(args.question, use_dfs=args.dfs, budget=args.budget, graph_path=args.graph)
+    elif args.command == "claude":
+        if args.action == "install":
             claude_install()
-        elif subcmd == "uninstall":
+        else:
             claude_uninstall()
+    elif args.command in ("codex", "opencode", "claw", "droid"):
+        if args.action == "install":
+            _agents_install(Path("."), args.command)
         else:
-            print("Usage: graphify claude [install|uninstall]", file=sys.stderr)
-            sys.exit(1)
-    elif cmd in ("codex", "opencode", "claw", "droid"):
-        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
-        if subcmd == "install":
-            _agents_install(Path("."), cmd)
-        elif subcmd == "uninstall":
             _agents_uninstall(Path("."))
-        else:
-            print(f"Usage: graphify {cmd} [install|uninstall]", file=sys.stderr)
-            sys.exit(1)
-    elif cmd == "hook":
+    elif args.command == "hook":
         from graphify.hooks import install as hook_install, uninstall as hook_uninstall, status as hook_status
-        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
-        if subcmd == "install":
+        if args.action == "install":
             print(hook_install(Path(".")))
-        elif subcmd == "uninstall":
+        elif args.action == "uninstall":
             print(hook_uninstall(Path(".")))
-        elif subcmd == "status":
-            print(hook_status(Path(".")))
         else:
-            print("Usage: graphify hook [install|uninstall|status]", file=sys.stderr)
-            sys.exit(1)
-    elif cmd == "query":
-        if len(sys.argv) < 3:
-            print("Usage: graphify query \"<question>\" [--dfs] [--budget N] [--graph path]", file=sys.stderr)
-            sys.exit(1)
-        from graphify.serve import _score_nodes, _bfs, _dfs, _subgraph_to_text
-        from graphify.security import sanitize_label
-        from networkx.readwrite import json_graph
-        question = sys.argv[2]
-        use_dfs = "--dfs" in sys.argv
-        budget = 2000
-        graph_path = "graphify-out/graph.json"
-        args = sys.argv[3:]
-        i = 0
-        while i < len(args):
-            if args[i] == "--budget" and i + 1 < len(args):
-                try:
-                    budget = int(args[i + 1])
-                except ValueError:
-                    print(f"error: --budget must be an integer", file=sys.stderr)
-                    sys.exit(1)
-                i += 2
-            elif args[i].startswith("--budget="):
-                try:
-                    budget = int(args[i].split("=", 1)[1])
-                except ValueError:
-                    print(f"error: --budget must be an integer", file=sys.stderr)
-                    sys.exit(1)
-                i += 1
-            elif args[i] == "--graph" and i + 1 < len(args):
-                graph_path = args[i + 1]; i += 2
-            else:
-                i += 1
-        # Load graph directly — validate_graph_path restricts to graphify-out/
-        # so for custom --graph paths we resolve and load directly after existence check
-        gp = Path(graph_path).resolve()
-        if not gp.exists():
-            print(f"error: graph file not found: {gp}", file=sys.stderr)
-            sys.exit(1)
-        if not gp.suffix == ".json":
-            print(f"error: graph file must be a .json file", file=sys.stderr)
-            sys.exit(1)
-        try:
-            import json as _json
-            import networkx as _nx
-            G = json_graph.node_link_graph(_json.loads(gp.read_text(encoding="utf-8")), edges="links")
-        except Exception as exc:
-            print(f"error: could not load graph: {exc}", file=sys.stderr)
-            sys.exit(1)
-        terms = [t.lower() for t in question.split() if len(t) > 2]
-        scored = _score_nodes(G, terms)
-        if not scored:
-            print("No matching nodes found.")
-            sys.exit(0)
-        start = [nid for _, nid in scored[:5]]
-        nodes, edges = (_dfs if use_dfs else _bfs)(G, start, depth=2)
-        print(_subgraph_to_text(G, nodes, edges, token_budget=budget))
-    elif cmd == "benchmark":
+            print(hook_status(Path(".")))
+    elif args.command == "benchmark":
         from graphify.benchmark import run_benchmark, print_benchmark
-        graph_path = sys.argv[2] if len(sys.argv) > 2 else "graphify-out/graph.json"
-        # Try to load corpus_words from detect output
+
         corpus_words = None
         detect_path = Path(".graphify_detect.json")
         if detect_path.exists():
@@ -446,12 +453,8 @@ def main() -> None:
                 corpus_words = detect_data.get("total_words")
             except Exception:
                 pass
-        result = run_benchmark(graph_path, corpus_words=corpus_words)
+        result = run_benchmark(args.graph_path, corpus_words=corpus_words)
         print_benchmark(result)
-    else:
-        print(f"error: unknown command '{cmd}'", file=sys.stderr)
-        print("Run 'graphify --help' for usage.", file=sys.stderr)
-        sys.exit(1)
 
 
 if __name__ == "__main__":

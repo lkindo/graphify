@@ -168,6 +168,11 @@ graphify query "what connects attention to the optimizer?"
 graphify query "show the auth flow" --dfs
 graphify query "what is CfgNode?" --budget 500
 graphify query "..." --graph path/to/graph.json
+
+# local CLI graph build (AST-only, no skill trigger required)
+graphify build .                   # writes graphify-out/graph.json + GRAPH_REPORT.md + graph.html
+graphify build . --no-viz          # skip graph.html
+graphify --version
 ```
 
 Works with any mix of file types:
