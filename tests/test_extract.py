@@ -72,6 +72,39 @@ def test_collect_files_skips_hidden():
         assert not any(part.startswith(".") for part in f.parts)
 
 
+def test_collect_files_follows_symlinked_directory(tmp_path):
+    """With follow_symlinks=True, files inside symlinked directories are discovered."""
+    real_dir = tmp_path / "real_src"
+    real_dir.mkdir()
+    (real_dir / "lib.py").write_text("x = 1")
+
+    link = tmp_path / "linked_src"
+    link.symlink_to(real_dir)
+
+    files_no = collect_files(tmp_path, follow_symlinks=False)
+    files_yes = collect_files(tmp_path, follow_symlinks=True)
+
+    names_no = [f.name for f in files_no]
+    names_yes = [f.name for f in files_yes]
+
+    # Without symlinks: only via real path
+    assert names_no.count("lib.py") == 1
+
+    # With symlinks: found via both real and symlinked paths
+    assert names_yes.count("lib.py") == 2
+
+
+def test_collect_files_handles_circular_symlinks(tmp_path):
+    """Circular symlinks must not cause infinite recursion in collect_files."""
+    sub = tmp_path / "pkg"
+    sub.mkdir()
+    (sub / "mod.py").write_text("x = 1")
+    (sub / "cycle").symlink_to(tmp_path)
+
+    files = collect_files(tmp_path, follow_symlinks=True)
+    assert any(f.name == "mod.py" for f in files)
+
+
 def test_no_dangling_edges_on_extract():
     """After merging multiple files, no internal edges should be dangling."""
     files = list(FIXTURES.glob("*.py"))

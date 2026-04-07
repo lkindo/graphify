@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from graphify.detect import classify_file, count_words, detect, FileType, _looks_like_paper, _is_ignored, _load_graphifyignore
 
@@ -103,3 +104,51 @@ def test_graphifyignore_comments_ignored(tmp_path):
     result = detect(tmp_path)
     assert not any("main.py" in f for f in result["files"]["code"])
     assert any("other.py" in f for f in result["files"]["code"])
+
+
+def test_detect_follows_symlinked_directory(tmp_path):
+    """With follow_symlinks=True, files inside symlinked directories are discovered."""
+    real_dir = tmp_path / "real_lib"
+    real_dir.mkdir()
+    (real_dir / "util.py").write_text("x = 1")
+
+    link = tmp_path / "linked_lib"
+    link.symlink_to(real_dir)
+
+    result_no = detect(tmp_path, follow_symlinks=False)
+    result_yes = detect(tmp_path, follow_symlinks=True)
+
+    code_no = result_no["files"]["code"]
+    code_yes = result_yes["files"]["code"]
+
+    # Without follow_symlinks only the real dir is found
+    assert any("real_lib" in f for f in code_no)
+    assert not any("linked_lib" in f for f in code_no)
+
+    # With follow_symlinks both are found
+    assert any("real_lib" in f for f in code_yes)
+    assert any("linked_lib" in f for f in code_yes)
+
+
+def test_detect_follows_symlinked_file(tmp_path):
+    """With follow_symlinks=True, symlinked files are discovered."""
+    (tmp_path / "real.py").write_text("x = 1")
+    (tmp_path / "link.py").symlink_to(tmp_path / "real.py")
+
+    result = detect(tmp_path, follow_symlinks=True)
+    code = result["files"]["code"]
+    assert any("real.py" in f for f in code)
+    assert any("link.py" in f for f in code)
+
+
+def test_detect_handles_circular_symlinks(tmp_path):
+    """Circular symlinks must not cause infinite recursion."""
+    sub = tmp_path / "a"
+    sub.mkdir()
+    (sub / "main.py").write_text("x = 1")
+    # Create a circular symlink: a/loop -> ../ (points back to tmp_path)
+    (sub / "loop").symlink_to(tmp_path)
+
+    result = detect(tmp_path, follow_symlinks=True)
+    # Should complete without hanging and find the file
+    assert any("main.py" in f for f in result["files"]["code"])

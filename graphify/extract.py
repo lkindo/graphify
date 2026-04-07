@@ -2194,21 +2194,42 @@ def extract(paths: list[Path]) -> dict:
     }
 
 
-def collect_files(target: Path) -> list[Path]:
+def collect_files(target: Path, *, follow_symlinks: bool = False) -> list[Path]:
     if target.is_file():
         return [target]
-    _EXTENSIONS = (
-        "*.py", "*.js", "*.ts", "*.tsx", "*.go", "*.rs",
-        "*.java", "*.c", "*.h", "*.cpp", "*.cc", "*.cxx", "*.hpp",
-        "*.rb", "*.cs", "*.kt", "*.kts", "*.scala", "*.php", "*.swift",
-        "*.lua", "*.toc", "*.zig", "*.ps1",
-    )
-    results: list[Path] = []
-    for pattern in _EXTENSIONS:
-        results.extend(
-            p for p in target.rglob(pattern)
-            if not any(part.startswith(".") for part in p.parts)
-        )
+    _EXTENSIONS = {
+        ".py", ".js", ".ts", ".tsx", ".go", ".rs",
+        ".java", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp",
+        ".rb", ".cs", ".kt", ".kts", ".scala", ".php", ".swift",
+        ".lua", ".toc", ".zig", ".ps1",
+    }
+    if not follow_symlinks:
+        results: list[Path] = []
+        for ext in sorted(_EXTENSIONS):
+            results.extend(
+                p for p in target.rglob(f"*{ext}")
+                if not any(part.startswith(".") for part in p.parts)
+            )
+        return sorted(results)
+    # Walk with symlink following + cycle detection
+    import os
+    results = []
+    for dirpath, dirnames, filenames in os.walk(target, followlinks=True):
+        # Prevent infinite loops from circular symlinks
+        if os.path.islink(dirpath):
+            real = os.path.realpath(dirpath)
+            parent_real = os.path.realpath(os.path.dirname(dirpath))
+            if parent_real == real or parent_real.startswith(real + os.sep):
+                dirnames.clear()
+                continue
+        dp = Path(dirpath)
+        if any(part.startswith(".") for part in dp.parts):
+            dirnames.clear()
+            continue
+        for fname in filenames:
+            p = dp / fname
+            if p.suffix in _EXTENSIONS and not fname.startswith("."):
+                results.append(p)
     return sorted(results)
 
 
