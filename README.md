@@ -161,7 +161,10 @@ Install with the `nimble` extra to power web extraction and topic-based ingestio
 
 ```bash
 pip install graphifyy[nimble]
+export NIMBLE_API_KEY=YOUR_API_KEY_HERE
 ```
+
+Get your API credentials from [Nimble's dashboard](https://online.nimbleway.com/account-settings/api-keys) (free trial available) and set as an environment variable.
 
 **Nimble Extract** — `/graphify add <url>` gets clean, real-time HTML and markdown from any URL with stealth unblocking and JS rendering. No scraping hassle.
 
