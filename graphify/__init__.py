@@ -19,9 +19,18 @@ def __getattr__(name):
         "to_svg": ("graphify.export", "to_svg"),
         "to_canvas": ("graphify.export", "to_canvas"),
         "to_wiki": ("graphify.wiki", "to_wiki"),
+        "embed": ("graphify.embed", "generate_embeddings"),
+        "add_similarity_edges": ("graphify.embed", "add_similarity_edges"),
+        "generate_embeddings_with_cache": (
+            "graphify.embed",
+            "generate_embeddings_with_cache",
+        ),
+        "run_embedding_pass": ("graphify.pipeline", "run_embedding_pass"),
+        "run_full_pipeline": ("graphify.pipeline", "run_full_pipeline"),
     }
     if name in _map:
         import importlib
+
         mod_name, attr = _map[name]
         mod = importlib.import_module(mod_name)
         return getattr(mod, attr)

@@ -11,8 +11,16 @@ from graphify.security import sanitize_label
 from graphify.analyze import _node_community_map
 
 COMMUNITY_COLORS = [
-    "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
-    "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC",
+    "#4E79A7",
+    "#F28E2B",
+    "#E15759",
+    "#76B7B2",
+    "#59A14F",
+    "#EDC948",
+    "#B07AA1",
+    "#FF9DA7",
+    "#9C755F",
+    "#BAB0AC",
 ]
 
 MAX_NODES_FOR_VIZ = 5_000
@@ -259,7 +267,7 @@ def attach_hyperedges(G: nx.Graph, hyperedges: list) -> None:
 
 def to_json(G: nx.Graph, communities: dict[int, list[str]], output_path: str) -> None:
     node_community = _node_community_map(communities)
-    data = json_graph.node_link_data(G, edges="links")
+    data = json_graph.node_link_data(G)
     for node in data["nodes"]:
         node["community"] = node_community.get(node["id"])
     for link in data["links"]:
@@ -281,7 +289,10 @@ def to_cypher(G: nx.Graph, output_path: str) -> None:
     for node_id, data in G.nodes(data=True):
         label = _cypher_escape(data.get("label", node_id))
         node_id_esc = _cypher_escape(node_id)
-        ftype = re.sub(r"[^A-Za-z0-9_]", "", data.get("file_type", "unknown").capitalize()) or "Entity"
+        ftype = (
+            re.sub(r"[^A-Za-z0-9_]", "", data.get("file_type", "unknown").capitalize())
+            or "Entity"
+        )
         lines.append(f"MERGE (n:{ftype} {{id: '{node_id_esc}', label: '{label}'}});")
     lines.append("")
     for u, v, data in G.edges(data=True):
@@ -329,35 +340,45 @@ def to_html(
         size = 10 + 30 * (deg / max_deg)
         # Only show label for high-degree nodes by default; others show on hover
         font_size = 12 if deg >= max_deg * 0.15 else 0
-        vis_nodes.append({
-            "id": node_id,
-            "label": label,
-            "color": {"background": color, "border": color, "highlight": {"background": "#ffffff", "border": color}},
-            "size": round(size, 1),
-            "font": {"size": font_size, "color": "#ffffff"},
-            "title": f"{label}",
-            "community": cid,
-            "community_name": sanitize_label((community_labels or {}).get(cid, f"Community {cid}")),
-            "source_file": sanitize_label(data.get("source_file", "")),
-            "file_type": data.get("file_type", ""),
-            "degree": deg,
-        })
+        vis_nodes.append(
+            {
+                "id": node_id,
+                "label": label,
+                "color": {
+                    "background": color,
+                    "border": color,
+                    "highlight": {"background": "#ffffff", "border": color},
+                },
+                "size": round(size, 1),
+                "font": {"size": font_size, "color": "#ffffff"},
+                "title": f"{label}",
+                "community": cid,
+                "community_name": sanitize_label(
+                    (community_labels or {}).get(cid, f"Community {cid}")
+                ),
+                "source_file": sanitize_label(data.get("source_file", "")),
+                "file_type": data.get("file_type", ""),
+                "degree": deg,
+            }
+        )
 
     # Build edges list
     vis_edges = []
     for u, v, data in G.edges(data=True):
         confidence = data.get("confidence", "EXTRACTED")
         relation = data.get("relation", "")
-        vis_edges.append({
-            "from": u,
-            "to": v,
-            "label": relation,
-            "title": f"{relation} [{confidence}]",
-            "dashes": confidence != "EXTRACTED",
-            "width": 2 if confidence == "EXTRACTED" else 1,
-            "color": {"opacity": 0.7 if confidence == "EXTRACTED" else 0.35},
-            "confidence": confidence,
-        })
+        vis_edges.append(
+            {
+                "from": u,
+                "to": v,
+                "label": relation,
+                "title": f"{relation} [{confidence}]",
+                "dashes": confidence != "EXTRACTED",
+                "width": 2 if confidence == "EXTRACTED" else 1,
+                "color": {"opacity": 0.7 if confidence == "EXTRACTED" else 0.35},
+                "confidence": confidence,
+            }
+        )
 
     # Build community legend data
     legend_data = []
@@ -476,7 +497,9 @@ def to_obsidian(
 
         # Build tags for this node
         ftype = data.get("file_type", "")
-        ftype_tag = _FTYPE_TAG.get(ftype, f"graphify/{ftype}" if ftype else "graphify/document")
+        ftype_tag = _FTYPE_TAG.get(
+            ftype, f"graphify/{ftype}" if ftype else "graphify/document"
+        )
         dom_conf = _dominant_confidence(node_id)
         conf_tag = f"graphify/{dom_conf}"
         comm_tag = f"community/{community_name.replace(' ', '_')}"
@@ -537,7 +560,8 @@ def to_obsidian(
         neighbor_cids = {
             node_community[nb]
             for nb in G.neighbors(node_id)
-            if nb in node_community and node_community[nb] != node_community.get(node_id)
+            if nb in node_community
+            and node_community[nb] != node_community.get(node_id)
         }
         return len(neighbor_cids)
 
@@ -567,8 +591,10 @@ def to_obsidian(
         # Cohesion + member count summary
         if coh_value is not None:
             cohesion_desc = (
-                "tightly connected" if coh_value >= 0.7
-                else "moderately connected" if coh_value >= 0.4
+                "tightly connected"
+                if coh_value >= 0.7
+                else "moderately connected"
+                if coh_value >= 0.4
                 else "loosely connected"
             )
             lines.append(f"**Cohesion:** {coh_value:.2f} - {cohesion_desc}")
@@ -611,7 +637,9 @@ def to_obsidian(
                     else f"Community {other_cid}"
                 )
                 other_safe = safe_name(other_name)
-                lines.append(f"- {edge_count} edge{'s' if edge_count != 1 else ''} to [[_COMMUNITY_{other_safe}]]")
+                lines.append(
+                    f"- {edge_count} edge{'s' if edge_count != 1 else ''} to [[_COMMUNITY_{other_safe}]]"
+                )
             lines.append("")
 
         # Top bridge nodes - highest degree nodes that connect to other communities
@@ -643,7 +671,12 @@ def to_obsidian(
         "colorGroups": [
             {
                 "query": f"tag:#community/{label.replace(' ', '_')}",
-                "color": {"a": 1, "rgb": int(COMMUNITY_COLORS[cid % len(COMMUNITY_COLORS)].lstrip('#'), 16)}
+                "color": {
+                    "a": 1,
+                    "rgb": int(
+                        COMMUNITY_COLORS[cid % len(COMMUNITY_COLORS)].lstrip("#"), 16
+                    ),
+                },
             }
             for cid, label in sorted((community_labels or {}).items())
         ]
@@ -667,7 +700,14 @@ def to_canvas(
     Opens in Obsidian as an infinite canvas with community groupings visible.
     """
     # Obsidian canvas color codes (cycle through for communities)
-    CANVAS_COLORS = ["1", "2", "3", "4", "5", "6"]  # red, orange, yellow, green, cyan, purple
+    CANVAS_COLORS = [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+    ]  # red, orange, yellow, green, cyan, purple
 
     def safe_name(label: str) -> str:
         return re.sub(r'[\\/*?:"<>|#^[\]]', "", label).strip() or "unnamed"
@@ -758,16 +798,18 @@ def to_canvas(
         canvas_color = CANVAS_COLORS[idx % len(CANVAS_COLORS)]
 
         # Group node
-        canvas_nodes.append({
-            "id": f"g{cid}",
-            "type": "group",
-            "label": community_name,
-            "x": gx,
-            "y": gy,
-            "width": gw,
-            "height": gh,
-            "color": canvas_color,
-        })
+        canvas_nodes.append(
+            {
+                "id": f"g{cid}",
+                "type": "group",
+                "label": community_name,
+                "x": gx,
+                "y": gy,
+                "width": gw,
+                "height": gh,
+                "color": canvas_color,
+            }
+        )
 
         # Node cards inside the group - rows of 3
         sorted_members = sorted(members, key=lambda n: G.nodes[n].get("label", n))
@@ -776,16 +818,20 @@ def to_canvas(
             row = m_idx // 3
             nx_x = gx + 20 + col * (180 + 20)
             nx_y = gy + 80 + row * (60 + 20)
-            fname = node_filenames.get(node_id, safe_name(G.nodes[node_id].get("label", node_id)))
-            canvas_nodes.append({
-                "id": f"n_{node_id}",
-                "type": "file",
-                "file": f"graphify/obsidian/{fname}.md",
-                "x": nx_x,
-                "y": nx_y,
-                "width": 180,
-                "height": 60,
-            })
+            fname = node_filenames.get(
+                node_id, safe_name(G.nodes[node_id].get("label", node_id))
+            )
+            canvas_nodes.append(
+                {
+                    "id": f"n_{node_id}",
+                    "type": "file",
+                    "file": f"graphify/obsidian/{fname}.md",
+                    "x": nx_x,
+                    "y": nx_y,
+                    "width": 180,
+                    "height": 60,
+                }
+            )
 
     # Generate edges - only between nodes both in canvas, cap at 200 highest-weight
     all_edges_weighted: list[tuple[float, str, str, str]] = []
@@ -799,12 +845,14 @@ def to_canvas(
 
     all_edges_weighted.sort(key=lambda x: -x[0])
     for weight, u, v, label in all_edges_weighted[:200]:
-        canvas_edges.append({
-            "id": f"e_{u}_{v}",
-            "fromNode": f"n_{u}",
-            "toNode": f"n_{v}",
-            "label": label,
-        })
+        canvas_edges.append(
+            {
+                "id": f"e_{u}_{v}",
+                "fromNode": f"n_{u}",
+                "toNode": f"n_{v}",
+                "label": label,
+            }
+        )
 
     canvas_data = {"nodes": canvas_nodes, "edges": canvas_edges}
     Path(output_path).write_text(json.dumps(canvas_data, indent=2), encoding="utf-8")
@@ -827,14 +875,17 @@ def push_to_neo4j(
     try:
         from neo4j import GraphDatabase
     except ImportError as e:
-        raise ImportError(
-            "neo4j driver not installed. Run: pip install neo4j"
-        ) from e
+        raise ImportError("neo4j driver not installed. Run: pip install neo4j") from e
 
     node_community = _node_community_map(communities) if communities else {}
 
     def _safe_rel(relation: str) -> str:
-        return re.sub(r"[^A-Z0-9_]", "_", relation.upper().replace(" ", "_").replace("-", "_")) or "RELATED_TO"
+        return (
+            re.sub(
+                r"[^A-Z0-9_]", "_", relation.upper().replace(" ", "_").replace("-", "_")
+            )
+            or "RELATED_TO"
+        )
 
     def _safe_label(label: str) -> str:
         """Sanitize a Neo4j node label to prevent Cypher injection."""
@@ -847,7 +898,9 @@ def push_to_neo4j(
 
     with driver.session() as session:
         for node_id, data in G.nodes(data=True):
-            props = {k: v for k, v in data.items() if isinstance(v, (str, int, float, bool))}
+            props = {
+                k: v for k, v in data.items() if isinstance(v, (str, int, float, bool))
+            }
             props["id"] = node_id
             cid = node_community.get(node_id)
             if cid is not None:
@@ -862,7 +915,9 @@ def push_to_neo4j(
 
         for u, v, data in G.edges(data=True):
             rel = _safe_rel(data.get("relation", "RELATED_TO"))
-            props = {k: v for k, v in data.items() if isinstance(v, (str, int, float, bool))}
+            props = {
+                k: v for k, v in data.items() if isinstance(v, (str, int, float, bool))
+            }
             session.run(
                 f"MATCH (a {{id: $src}}), (b {{id: $tgt}}) "
                 f"MERGE (a)-[r:{rel}]->(b) SET r += $props",
@@ -909,11 +964,14 @@ def to_svg(
     """
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import matplotlib.patches as mpatches
     except ImportError as e:
-        raise ImportError("matplotlib not installed. Run: pip install matplotlib") from e
+        raise ImportError(
+            "matplotlib not installed. Run: pip install matplotlib"
+        ) from e
 
     node_community = _node_community_map(communities)
 
@@ -926,7 +984,10 @@ def to_svg(
     degree = dict(G.degree())
     max_deg = max(degree.values()) if degree else 1
 
-    node_colors = [COMMUNITY_COLORS[node_community.get(n, 0) % len(COMMUNITY_COLORS)] for n in G.nodes()]
+    node_colors = [
+        COMMUNITY_COLORS[node_community.get(n, 0) % len(COMMUNITY_COLORS)]
+        for n in G.nodes()
+    ]
     node_sizes = [300 + 1200 * (degree.get(n, 1) / max_deg) for n in G.nodes()]
 
     # Draw edges - dashed for non-EXTRACTED
@@ -936,14 +997,27 @@ def to_svg(
         alpha = 0.6 if conf == "EXTRACTED" else 0.3
         x0, y0 = pos[u]
         x1, y1 = pos[v]
-        ax.plot([x0, x1], [y0, y1], color="#aaaaaa", linewidth=0.8,
-                linestyle=style, alpha=alpha, zorder=1)
+        ax.plot(
+            [x0, x1],
+            [y0, y1],
+            color="#aaaaaa",
+            linewidth=0.8,
+            linestyle=style,
+            alpha=alpha,
+            zorder=1,
+        )
 
-    nx.draw_networkx_nodes(G, pos, ax=ax, node_color=node_colors,
-                           node_size=node_sizes, alpha=0.9)
-    nx.draw_networkx_labels(G, pos, ax=ax,
-                            labels={n: G.nodes[n].get("label", n) for n in G.nodes()},
-                            font_size=7, font_color="white")
+    nx.draw_networkx_nodes(
+        G, pos, ax=ax, node_color=node_colors, node_size=node_sizes, alpha=0.9
+    )
+    nx.draw_networkx_labels(
+        G,
+        pos,
+        ax=ax,
+        labels={n: G.nodes[n].get("label", n) for n in G.nodes()},
+        font_size=7,
+        font_color="white",
+    )
 
     # Legend
     if community_labels:
@@ -954,10 +1028,17 @@ def to_svg(
             )
             for cid, label in sorted(community_labels.items())
         ]
-        ax.legend(handles=patches, loc="upper left", framealpha=0.7,
-                  facecolor="#2a2a4e", labelcolor="white", fontsize=8)
+        ax.legend(
+            handles=patches,
+            loc="upper left",
+            framealpha=0.7,
+            facecolor="#2a2a4e",
+            labelcolor="white",
+            fontsize=8,
+        )
 
     plt.tight_layout()
-    plt.savefig(output_path, format="svg", bbox_inches="tight",
-                facecolor=fig.get_facecolor())
+    plt.savefig(
+        output_path, format="svg", bbox_inches="tight", facecolor=fig.get_facecolor()
+    )
     plt.close(fig)
