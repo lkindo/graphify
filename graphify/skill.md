@@ -28,6 +28,11 @@ Turn any folder of files into a navigable knowledge graph with community detecti
 /graphify add <url>                                   # fetch URL, save to ./raw, update graph
 /graphify add <url> --author "Name"                   # tag who wrote it
 /graphify add <url> --contributor "Name"              # tag who added it to the corpus
+/graphify source add <path>                           # register a local directory as a source
+/graphify source delete <path>                        # remove a source from the registry
+/graphify source list                                 # show all registered sources with status
+/graphify source reload                               # incremental rebuild of all registered sources
+/graphify source reload <path>                        # incremental rebuild of one specific source
 /graphify query "<question>"                          # BFS traversal - broad context
 /graphify query "<question>" --dfs                    # DFS - trace a specific path
 /graphify query "<question>" --budget 1500            # cap answer at N tokens
@@ -1207,6 +1212,263 @@ This writes a `## graphify` section to the local `CLAUDE.md` that instructs Clau
 ```bash
 graphify claude uninstall  # remove the section
 ```
+
+---
+
+## For /graphify source
+
+Manage a registry of source paths stored at `graphify-out/sources.json`. Sources are tracked by absolute path + inode so renames within the same parent directory are handled automatically.
+
+### /graphify source add
+
+First ensure graphify is installed (Step 1 of the main pipeline). Then:
+
+```bash
+$(cat .graphify_python) -c "
+from graphify.sources import add_source
+from pathlib import Path
+try:
+    entry = add_source('SOURCE_PATH', Path('graphify-out/sources.json'))
+    print(f\"Added: {entry['path']}  (inode {entry['inode']})\")
+except ValueError as e:
+    print(f'error: {e}')
+"
+```
+
+Replace `SOURCE_PATH` with the path the user provided. Expand `~` and resolve relative paths if needed — pass the resolved absolute path.
+
+### /graphify source delete
+
+```bash
+$(cat .graphify_python) -c "
+from graphify.sources import delete_source
+from pathlib import Path
+ok = delete_source('SOURCE_PATH', Path('graphify-out/sources.json'))
+print('Removed.' if ok else 'Not found in registry.')
+"
+```
+
+### /graphify source list
+
+```bash
+$(cat .graphify_python) -c "
+from graphify.sources import list_sources
+from pathlib import Path
+sources = list_sources(Path('graphify-out/sources.json'))
+if not sources:
+    print('No sources registered. Run: /graphify source add <path>')
+else:
+    for s in sources:
+        status = {'ok': 'OK', 'renamed': 'RENAMED', 'missing': 'MISSING'}.get(s['status'], '?')
+        current = s.get('current_path', s['path'])
+        renamed = f\"  (was: {s['path']})\" if s['status'] == 'renamed' else ''
+        print(f\"  [{status}]  {current}{renamed}  (added {s['added'][:10]})\")
+"
+```
+
+### /graphify source reload [path]
+
+Runs the incremental (`--update`) pipeline on each registered source (or just the specified one). Each source gets its own `graphify-out/` inside its directory.
+
+**Step 1 - Ensure graphify is installed** (same as main pipeline Step 1).
+
+**Step 2 - Load sources and resolve paths**
+
+```bash
+$(cat .graphify_python) -c "
+import json
+from graphify.sources import list_sources
+from pathlib import Path
+
+filter_path = 'FILTER_PATH_OR_NONE'
+sources = list_sources(Path('graphify-out/sources.json'))
+
+if not sources:
+    print('No sources registered. Run: /graphify source add <path>')
+    raise SystemExit(0)
+
+to_reload = []
+for s in sources:
+    current = s.get('current_path', s['path'])
+    if s['status'] == 'missing':
+        print(f\"SKIP (missing): {s['path']}\")
+        continue
+    if filter_path and filter_path != 'None' and current != str(Path(filter_path).resolve()):
+        continue
+    to_reload.append(current)
+
+if not to_reload:
+    print('No matching sources to reload.')
+    raise SystemExit(0)
+
+Path('.graphify_reload_sources.txt').write_text('\n'.join(to_reload))
+print(f'Sources to reload: {len(to_reload)}')
+for p in to_reload:
+    print(f'  {p}')
+"
+```
+
+Replace `FILTER_PATH_OR_NONE` with the user-provided path argument, or the literal string `None` if no path was given.
+
+**Step 3 - For each source, run the incremental pipeline sequentially**
+
+Load `.graphify_reload_sources.txt`. For **each source path** in the file, run the following steps. Process one at a time — parallel processing causes temp file conflicts.
+
+Print `\nReloading SRCPATH_VALUE ...` before each source.
+
+**Detect changes:**
+```bash
+$(cat .graphify_python) -c "
+import json
+from graphify.detect import detect_incremental
+from pathlib import Path
+
+SRCPATH = Path('SRCPATH_VALUE')
+result = detect_incremental(SRCPATH, manifest_path=str(SRCPATH / 'graphify-out' / 'manifest.json'))
+new_total = result.get('new_total', 0)
+(SRCPATH / '.graphify_incremental.json').write_text(json.dumps(result))
+if new_total == 0:
+    print('No changes since last run - nothing to update.')
+    raise SystemExit(0)
+print(f'{new_total} new/changed file(s) to re-extract.')
+"
+```
+
+If this prints "No changes", skip to the next source.
+
+**Check if code-only:**
+```bash
+$(cat .graphify_python) -c "
+import json
+from pathlib import Path
+
+SRCPATH = Path('SRCPATH_VALUE')
+result = json.loads((SRCPATH / '.graphify_incremental.json').read_text())
+code_exts = {'.py','.ts','.js','.go','.rs','.java','.cpp','.c','.rb','.swift','.kt','.cs','.scala','.php','.cc','.cxx','.hpp','.h','.kts','.lua','.toc'}
+new_files = result.get('new_files', {})
+all_changed = [f for files in new_files.values() for f in files]
+code_only = all(Path(f).suffix.lower() in code_exts for f in all_changed)
+print('code_only:', code_only)
+"
+```
+
+**AST extraction (always run):**
+```bash
+$(cat .graphify_python) -c "
+import json
+from graphify.extract import collect_files, extract
+from pathlib import Path
+
+SRCPATH = Path('SRCPATH_VALUE')
+result = json.loads((SRCPATH / '.graphify_incremental.json').read_text())
+code_files = []
+for f in result.get('new_files', {}).get('code', []):
+    code_files.extend(collect_files(Path(f)) if Path(f).is_dir() else [Path(f)])
+if code_files:
+    ast_result = extract(code_files)
+    (SRCPATH / '.graphify_ast.json').write_text(json.dumps(ast_result, indent=2))
+    print(f'AST: {len(ast_result[\"nodes\"])} nodes, {len(ast_result[\"edges\"])} edges')
+else:
+    (SRCPATH / '.graphify_ast.json').write_text(json.dumps({'nodes':[],'edges':[],'input_tokens':0,'output_tokens':0}))
+    print('No changed code files.')
+"
+```
+
+**If NOT code-only**: run semantic extraction on the changed non-code files. Use the same subagent dispatch pattern as Step 3B in the main pipeline. Pass each changed doc/paper/image file from `result.get('new_files', {})` (excluding code extensions). Write the merged semantic result to `SRCPATH / '.graphify_semantic.json'`. Use `check_semantic_cache` and `save_semantic_cache` as usual.
+
+If `code_only` is True: create an empty semantic result file:
+```bash
+$(cat .graphify_python) -c "
+import json
+from pathlib import Path
+SRCPATH = Path('SRCPATH_VALUE')
+(SRCPATH / '.graphify_semantic.json').write_text(json.dumps({'nodes':[],'edges':[],'hyperedges':[],'input_tokens':0,'output_tokens':0}))
+"
+```
+
+**Merge AST + semantic:**
+```bash
+$(cat .graphify_python) -c "
+import json
+from pathlib import Path
+
+SRCPATH = Path('SRCPATH_VALUE')
+ast = json.loads((SRCPATH / '.graphify_ast.json').read_text())
+sem = json.loads((SRCPATH / '.graphify_semantic.json').read_text())
+
+seen = {n['id'] for n in ast['nodes']}
+merged_nodes = list(ast['nodes'])
+for n in sem['nodes']:
+    if n['id'] not in seen:
+        merged_nodes.append(n)
+        seen.add(n['id'])
+
+merged = {
+    'nodes': merged_nodes,
+    'edges': ast['edges'] + sem['edges'],
+    'hyperedges': sem.get('hyperedges', []),
+    'input_tokens': sem.get('input_tokens', 0),
+    'output_tokens': sem.get('output_tokens', 0),
+}
+(SRCPATH / '.graphify_extract.json').write_text(json.dumps(merged, indent=2))
+print(f'Merged: {len(merged_nodes)} nodes, {len(merged[\"edges\"])} edges')
+"
+```
+
+**Merge into existing graph:**
+```bash
+$(cat .graphify_python) -c "
+import json
+from graphify.build import build_from_json
+from graphify.export import to_json
+from networkx.readwrite import json_graph
+import networkx as nx
+from pathlib import Path
+
+SRCPATH = Path('SRCPATH_VALUE')
+out_dir = SRCPATH / 'graphify-out'
+out_dir.mkdir(parents=True, exist_ok=True)
+
+existing_path = out_dir / 'graph.json'
+if existing_path.exists():
+    G = json_graph.node_link_graph(json.loads(existing_path.read_text()), edges='links')
+else:
+    G = nx.DiGraph()
+
+G_new = build_from_json(json.loads((SRCPATH / '.graphify_extract.json').read_text()))
+G.update(G_new)
+to_json(G, {}, str(out_dir / 'graph.json'))
+print(f'Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges')
+"
+```
+
+Then run **Steps 4–9 from the main pipeline** on this source, substituting:
+- All `Path('graphify-out/...')` → `Path('SRCPATH_VALUE/graphify-out/...')`
+- All `Path('.graphify_*.json')` → `Path('SRCPATH_VALUE/.graphify_*.json')`
+- `INPUT_PATH` in report generation → `SRCPATH_VALUE`
+
+**Clean up temp files after each source:**
+```bash
+$(cat .graphify_python) -c "
+from pathlib import Path
+SRCPATH = Path('SRCPATH_VALUE')
+for f in ['.graphify_incremental.json', '.graphify_ast.json', '.graphify_semantic.json',
+          '.graphify_extract.json', '.graphify_analysis.json', '.graphify_labels.json',
+          '.graphify_cached.json', '.graphify_uncached.txt', '.graphify_semantic_new.json']:
+    (SRCPATH / f).unlink(missing_ok=True)
+"
+```
+
+**Step 4 - Summary**
+
+After processing all sources, print:
+```
+Reload complete.
+  /path/to/source1  →  N nodes, M edges
+  /path/to/source2  →  no changes
+```
+
+Clean up: `rm -f .graphify_reload_sources.txt`
 
 ---
 
