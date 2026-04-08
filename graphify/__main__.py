@@ -1,4 +1,4 @@
-"""graphify CLI - `graphify install` sets up the Claude Code skill."""
+"""graphify CLI - install skills and project instructions for supported platforms."""
 from __future__ import annotations
 import json
 import platform
@@ -6,6 +6,22 @@ import re
 import shutil
 import sys
 from pathlib import Path
+
+try:
+    from importlib.metadata import version as _pkg_version
+    __version__ = _pkg_version("graphifyy")
+except Exception:
+    __version__ = "unknown"
+
+
+def _check_skill_version(skill_dst: Path) -> None:
+    """Warn if the installed skill is from an older graphify version."""
+    version_file = skill_dst.parent / ".graphify_version"
+    if not version_file.exists():
+        return
+    installed = version_file.read_text(encoding="utf-8").strip()
+    if installed != __version__:
+        print(f"  warning: skill is from graphify {installed}, package is {__version__}. Run 'graphify install' to update.")
 
 _SETTINGS_HOOK = {
     "matcher": "Glob|Grep",
@@ -27,6 +43,13 @@ _SKILL_REGISTRATION = (
     "- any input to knowledge graph. Trigger: `/graphify`\n"
     "When the user types `/graphify`, invoke the Skill tool "
     "with `skill: \"graphify\"` before doing anything else.\n"
+)
+
+_REBUILD_GRAPH_COMMAND = (
+    "`python -c \"from graphify.watch import _rebuild_code; from pathlib import Path; "
+    "_rebuild_code(Path('.'))\"` "
+    "(or `python3 -c \"from graphify.watch import _rebuild_code; from pathlib import Path; "
+    "_rebuild_code(Path('.'))\"` if `python` is unavailable)"
 )
 
 
@@ -56,12 +79,24 @@ _PLATFORM_CONFIG: dict[str, dict] = {
         "skill_dst": Path(".factory") / "skills" / "graphify" / "SKILL.md",
         "claude_md": False,
     },
+    "copilot": {
+        "skill_file": "skill-copilot.md",
+        "skill_dst": Path(".copilot") / "skills" / "graphify" / "SKILL.md",
+        "claude_md": False,
+    },
     "windows": {
         "skill_file": "skill-windows.md",
         "skill_dst": Path(".claude") / "skills" / "graphify" / "SKILL.md",
         "claude_md": True,
     },
 }
+
+
+def _resolve_platform_config(platform_name: str) -> dict:
+    cfg = dict(_PLATFORM_CONFIG[platform_name])
+    if platform_name == "copilot" and platform.system() == "Windows":
+        cfg["skill_file"] = "skill-copilot-windows.md"
+    return cfg
 
 
 def install(platform: str = "claude") -> None:
@@ -72,7 +107,7 @@ def install(platform: str = "claude") -> None:
         )
         sys.exit(1)
 
-    cfg = _PLATFORM_CONFIG[platform]
+    cfg = _resolve_platform_config(platform)
     skill_src = Path(__file__).parent / cfg["skill_file"]
     if not skill_src.exists():
         print(f"error: {cfg['skill_file']} not found in package - reinstall graphify", file=sys.stderr)
@@ -81,7 +116,8 @@ def install(platform: str = "claude") -> None:
     skill_dst = Path.home() / cfg["skill_dst"]
     skill_dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(skill_src, skill_dst)
-    print(f"  skill installed  →  {skill_dst}")
+    (skill_dst.parent / ".graphify_version").write_text(__version__, encoding="utf-8")
+    print(f"  skill installed  ->  {skill_dst}")
 
     if cfg["claude_md"]:
         # Register in ~/.claude/CLAUDE.md (Claude Code only)
@@ -89,14 +125,14 @@ def install(platform: str = "claude") -> None:
         if claude_md.exists():
             content = claude_md.read_text(encoding="utf-8")
             if "graphify" in content:
-                print(f"  CLAUDE.md        →  already registered (no change)")
+                print(f"  CLAUDE.md        ->  already registered (no change)")
             else:
                 claude_md.write_text(content.rstrip() + _SKILL_REGISTRATION, encoding="utf-8")
-                print(f"  CLAUDE.md        →  skill registered in {claude_md}")
+                print(f"  CLAUDE.md        ->  skill registered in {claude_md}")
         else:
             claude_md.parent.mkdir(parents=True, exist_ok=True)
             claude_md.write_text(_SKILL_REGISTRATION.lstrip(), encoding="utf-8")
-            print(f"  CLAUDE.md        →  created at {claude_md}")
+            print(f"  CLAUDE.md        ->  created at {claude_md}")
 
     print()
     print("Done. Open your AI coding assistant and type:")
@@ -113,9 +149,10 @@ This project has a graphify knowledge graph at graphify-out/.
 Rules:
 - Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
-- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+- After modifying code files in this session, run {rebuild_command} to keep the graph current
 """
 
+_CLAUDE_MD_SECTION = _CLAUDE_MD_SECTION.format(rebuild_command=_REBUILD_GRAPH_COMMAND)
 _CLAUDE_MD_MARKER = "## graphify"
 
 # AGENTS.md section for Codex, OpenCode, and OpenClaw.
@@ -128,10 +165,78 @@ This project has a graphify knowledge graph at graphify-out/.
 Rules:
 - Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
-- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+- After modifying code files in this session, run {rebuild_command} to keep the graph current
 """
 
+_AGENTS_MD_SECTION = _AGENTS_MD_SECTION.format(rebuild_command=_REBUILD_GRAPH_COMMAND)
 _AGENTS_MD_MARKER = "## graphify"
+
+# Copilot instructions section for .github/copilot-instructions.md
+_COPILOT_INSTRUCTIONS_SECTION = """\
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run {rebuild_command} to keep the graph current
+"""
+
+_COPILOT_INSTRUCTIONS_SECTION = _COPILOT_INSTRUCTIONS_SECTION.format(rebuild_command=_REBUILD_GRAPH_COMMAND)
+_COPILOT_INSTRUCTIONS_MARKER = "## graphify"
+
+
+def _copilot_install(project_dir: Path) -> None:
+    """Write the graphify section to .github/copilot-instructions.md (GitHub Copilot CLI)."""
+    target = (project_dir or Path(".")) / ".github" / "copilot-instructions.md"
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    if target.exists():
+        content = target.read_text(encoding="utf-8")
+        if _COPILOT_INSTRUCTIONS_MARKER in content:
+            print("graphify already configured in .github/copilot-instructions.md")
+            return
+        new_content = content.rstrip() + "\n\n" + _COPILOT_INSTRUCTIONS_SECTION
+    else:
+        new_content = _COPILOT_INSTRUCTIONS_SECTION
+
+    target.write_text(new_content, encoding="utf-8")
+    print(f"graphify section written to {target.resolve()}")
+    print()
+    print("GitHub Copilot CLI will now check the knowledge graph before answering")
+    print("codebase questions and rebuild it after code changes.")
+    print()
+    print("Note: GitHub Copilot CLI reads .github/copilot-instructions.md automatically.")
+    print("The skill is also installed at ~/.copilot/skills/graphify/SKILL.md")
+
+
+def _copilot_uninstall(project_dir: Path) -> None:
+    """Remove the graphify section from .github/copilot-instructions.md."""
+    target = (project_dir or Path(".")) / ".github" / "copilot-instructions.md"
+
+    if not target.exists():
+        print("No .github/copilot-instructions.md found - nothing to do")
+        return
+
+    content = target.read_text(encoding="utf-8")
+    if _COPILOT_INSTRUCTIONS_MARKER not in content:
+        print("graphify section not found in .github/copilot-instructions.md - nothing to do")
+        return
+
+    cleaned = re.sub(
+        r"\n*## graphify\n.*?(?=\n## |\Z)",
+        "",
+        content,
+        flags=re.DOTALL,
+    ).rstrip()
+    if cleaned:
+        target.write_text(cleaned + "\n", encoding="utf-8")
+        print(f"graphify section removed from {target.resolve()}")
+    else:
+        target.unlink()
+        print(f".github/copilot-instructions.md was empty after removal - deleted {target.resolve()}")
 
 
 def _agents_install(project_dir: Path, platform: str) -> None:
@@ -226,12 +331,12 @@ def _install_claude_hook(project_dir: Path) -> None:
 
     # Check if already installed
     if any(h.get("matcher") == "Glob|Grep" and "graphify" in str(h) for h in pre_tool):
-        print(f"  .claude/settings.json  →  hook already registered (no change)")
+        print(f"  .claude/settings.json  ->  hook already registered (no change)")
         return
 
     pre_tool.append(_SETTINGS_HOOK)
     settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
-    print(f"  .claude/settings.json  →  PreToolUse hook registered")
+    print(f"  .claude/settings.json  ->  PreToolUse hook registered")
 
 
 def _uninstall_claude_hook(project_dir: Path) -> None:
@@ -249,7 +354,7 @@ def _uninstall_claude_hook(project_dir: Path) -> None:
         return
     settings["hooks"]["PreToolUse"] = filtered
     settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
-    print(f"  .claude/settings.json  →  PreToolUse hook removed")
+    print(f"  .claude/settings.json  ->  PreToolUse hook removed")
 
 
 def claude_uninstall(project_dir: Path | None = None) -> None:
@@ -283,11 +388,19 @@ def claude_uninstall(project_dir: Path | None = None) -> None:
 
 
 def main() -> None:
+    for cfg in _PLATFORM_CONFIG.values():
+        skill_dst = Path.home() / cfg["skill_dst"]
+        _check_skill_version(skill_dst)
+
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid|copilot)")
+        print("  query \"<question>\"       BFS traversal of graph.json for a question")
+        print("    --dfs                   use depth-first instead of breadth-first")
+        print("    --budget N              cap output at N tokens (default 2000)")
+        print("    --graph <path>          path to graph.json (default graphify-out/graph.json)")
         print("  benchmark [graph.json]  measure token reduction vs naive full-corpus approach")
         print("  hook install            install post-commit/post-checkout git hooks (all platforms)")
         print("  hook uninstall          remove git hooks")
@@ -302,6 +415,8 @@ def main() -> None:
         print("  claw uninstall          remove graphify section from AGENTS.md")
         print("  droid install           write graphify section to AGENTS.md (Factory Droid)")
         print("  droid uninstall         remove graphify section from AGENTS.md")
+        print("  copilot install         write graphify section to .github/copilot-instructions.md (GitHub Copilot CLI)")
+        print("  copilot uninstall       remove graphify section from .github/copilot-instructions.md")
         print()
         return
 
@@ -340,6 +455,15 @@ def main() -> None:
         else:
             print(f"Usage: graphify {cmd} [install|uninstall]", file=sys.stderr)
             sys.exit(1)
+    elif cmd == "copilot":
+        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
+        if subcmd == "install":
+            _copilot_install(Path("."))
+        elif subcmd == "uninstall":
+            _copilot_uninstall(Path("."))
+        else:
+            print("Usage: graphify copilot [install|uninstall]", file=sys.stderr)
+            sys.exit(1)
     elif cmd == "hook":
         from graphify.hooks import install as hook_install, uninstall as hook_uninstall, status as hook_status
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
@@ -352,6 +476,61 @@ def main() -> None:
         else:
             print("Usage: graphify hook [install|uninstall|status]", file=sys.stderr)
             sys.exit(1)
+    elif cmd == "query":
+        if len(sys.argv) < 3:
+            print("Usage: graphify query \"<question>\" [--dfs] [--budget N] [--graph path]", file=sys.stderr)
+            sys.exit(1)
+        from graphify.serve import _score_nodes, _bfs, _dfs, _subgraph_to_text
+        from networkx.readwrite import json_graph
+        question = sys.argv[2]
+        use_dfs = "--dfs" in sys.argv
+        budget = 2000
+        graph_path = "graphify-out/graph.json"
+        args = sys.argv[3:]
+        i = 0
+        while i < len(args):
+            if args[i] == "--budget" and i + 1 < len(args):
+                try:
+                    budget = int(args[i + 1])
+                except ValueError:
+                    print("error: --budget must be an integer", file=sys.stderr)
+                    sys.exit(1)
+                i += 2
+            elif args[i].startswith("--budget="):
+                try:
+                    budget = int(args[i].split("=", 1)[1])
+                except ValueError:
+                    print("error: --budget must be an integer", file=sys.stderr)
+                    sys.exit(1)
+                i += 1
+            elif args[i] == "--graph" and i + 1 < len(args):
+                graph_path = args[i + 1]
+                i += 2
+            else:
+                i += 1
+
+        gp = Path(graph_path).resolve()
+        if not gp.exists():
+            print(f"error: graph file not found: {gp}", file=sys.stderr)
+            sys.exit(1)
+        if gp.suffix != ".json":
+            print(f"error: graph file must be a .json file", file=sys.stderr)
+            sys.exit(1)
+        try:
+            import networkx as _nx
+            G = json_graph.node_link_graph(json.loads(gp.read_text(encoding="utf-8")), edges="links")
+        except Exception as exc:
+            print(f"error: could not load graph: {exc}", file=sys.stderr)
+            sys.exit(1)
+
+        terms = [t.lower() for t in question.split() if len(t) > 2]
+        scored = _score_nodes(G, terms)
+        if not scored:
+            print("No matching nodes found.")
+            sys.exit(0)
+        start = [nid for _, nid in scored[:5]]
+        nodes, edges = (_dfs if use_dfs else _bfs)(G, start, depth=2)
+        print(_subgraph_to_text(G, nodes, edges, token_budget=budget))
     elif cmd == "benchmark":
         from graphify.benchmark import run_benchmark, print_benchmark
         graph_path = sys.argv[2] if len(sys.argv) > 2 else "graphify-out/graph.json"

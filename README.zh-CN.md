@@ -4,6 +4,7 @@
 
 [![CI](https://github.com/safishamsi/graphify/actions/workflows/ci.yml/badge.svg?branch=v3)](https://github.com/safishamsi/graphify/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/graphifyy)](https://pypi.org/project/graphifyy/)
+[![Sponsor](https://img.shields.io/badge/sponsor-safishamsi-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/safishamsi)
 
 **一个面向 AI 编码助手的技能。** 在 Claude Code、Codex、OpenCode 或 OpenClaw 中输入 `/graphify`，它会读取你的文件、构建知识图谱，并把原本不明显的结构关系还给你。更快理解代码库，找到架构决策背后的“为什么”。
 
@@ -23,6 +24,18 @@ graphify-out/
 └── cache/           SHA256 缓存：重复运行时只处理变更过的文件
 ```
 
+如果有目录不想纳入图谱，可以添加 `.graphifyignore`：
+
+```
+# .graphifyignore
+vendor/
+node_modules/
+dist/
+*.generated.py
+```
+
+语法与 `.gitignore` 一致，模式匹配的是相对于 graphify 运行目录的文件路径。
+
 ## 工作原理
 
 graphify 分两轮执行。第一轮是确定性的 AST 提取，对代码文件做结构分析（类、函数、导入、调用图、docstring、解释性注释），这一轮不需要 LLM。第二轮会并行调用 Claude 子代理处理文档、论文和图片，从中提取概念、关系和设计动机。最后把两边结果合并到一个 NetworkX 图里，用 Leiden 社区发现算法做聚类，并导出成可交互 HTML、可查询 JSON，以及一份人类可读的审计报告。
@@ -33,7 +46,7 @@ graphify 分两轮执行。第一轮是确定性的 AST 提取，对代码文件
 
 ## 安装
 
-**要求：** Python 3.10+，并且使用以下平台之一：[Claude Code](https://claude.ai/code)、[Codex](https://openai.com/codex)、[OpenCode](https://opencode.ai) 或 [OpenClaw](https://openclaw.ai)
+**要求：** Python 3.10+，并且使用以下平台之一：[Claude Code](https://claude.ai/code)、[GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli)、[Codex](https://openai.com/codex)、[OpenCode](https://opencode.ai)、[OpenClaw](https://openclaw.ai) 或 [Factory Droid](https://factory.ai)
 
 ```bash
 pip install graphifyy && graphify install
@@ -45,18 +58,37 @@ pip install graphifyy && graphify install
 
 | 平台 | 安装命令 |
 |------|----------|
-| Claude Code | `graphify install` |
+| Claude Code（Linux/Mac） | `graphify install` |
+| Claude Code（Windows） | `graphify install`（自动识别）或 `graphify install --platform windows` |
 | Codex | `graphify install --platform codex` |
 | OpenCode | `graphify install --platform opencode` |
 | OpenClaw | `graphify install --platform claw` |
+| Factory Droid | `graphify install --platform droid` |
+| GitHub Copilot CLI | `graphify install --platform copilot` |
 
-Codex 用户还需要在 `~/.codex/config.toml` 的 `[features]` 下打开 `multi_agent = true`，这样才能并行提取。OpenClaw 目前的并行 agent 支持还比较早期，所以使用顺序提取。
+Codex 用户还需要在 `~/.codex/config.toml` 的 `[features]` 下打开 `multi_agent = true`，这样才能并行提取。Factory Droid 通过 `Task` 工具并行分发子代理。OpenClaw 目前的并行 agent 支持还比较早期，所以使用顺序提取。GitHub Copilot CLI 会顺序读取文件并做语义提取。
+
+> GitHub Copilot CLI 用户应显式运行 `graphify install --platform copilot`。在 Windows 上它会安装 PowerShell 版 Copilot skill；在 macOS/Linux 上它会安装 POSIX shell 版 Copilot skill。
+
+### 为 GitHub Copilot CLI 部署本地修改版 checkout
+
+如果你是在测试 fork，或者本地已经改过 graphify，请不要走 PyPI，直接从源码安装：
+
+```bash
+python -m pip install .
+graphify install --platform copilot
+graphify copilot install
+```
+
+这会把 Copilot skill 复制到 `~/.copilot/skills/graphify/SKILL.md`，并把常驻规则写入项目内的 `.github/copilot-instructions.md`。安装逻辑会按操作系统自动分流：Windows 使用 PowerShell 版 skill，macOS/Linux 使用 POSIX shell 版 skill。
 
 然后打开你的 AI 编码助手，输入：
 
 ```
 /graphify .
 ```
+
+注意：Codex 的 skill 触发前缀是 `$`，不是 `/`，所以应使用 `$graphify .`。
 
 ### 让助手始终优先使用图谱（推荐）
 
@@ -68,6 +100,8 @@ Codex 用户还需要在 `~/.codex/config.toml` 的 `[features]` 下打开 `mult
 | Codex | `graphify codex install` |
 | OpenCode | `graphify opencode install` |
 | OpenClaw | `graphify claw install` |
+| Factory Droid | `graphify droid install` |
+| GitHub Copilot CLI | `graphify copilot install` |
 
 **Claude Code** 会做两件事：
 1. 在 `CLAUDE.md` 中写入一段规则，告诉 Claude 在回答架构问题前先读 `graphify-out/GRAPH_REPORT.md`
@@ -75,7 +109,9 @@ Codex 用户还需要在 `~/.codex/config.toml` 的 `[features]` 下打开 `mult
 
 如果知识图谱存在，Claude 会先看到：_"graphify: Knowledge graph exists. Read graphify-out/GRAPH_REPORT.md for god nodes and community structure before searching raw files."_ —— 这样 Claude 会优先按图谱导航，而不是一上来就 grep 整个项目。
 
-**Codex、OpenCode、OpenClaw** 会把同样的规则写进项目根目录的 `AGENTS.md`。这些平台没有 PreToolUse hook，所以 `AGENTS.md` 是它们的常驻机制。
+**Codex、OpenCode、OpenClaw、Factory Droid** 会把同样的规则写进项目根目录的 `AGENTS.md`。这些平台没有 PreToolUse hook，所以 `AGENTS.md` 是它们的常驻机制。
+
+**GitHub Copilot CLI** 会把规则写进项目内的 `.github/copilot-instructions.md`，Copilot CLI 会自动读取它；skill 本体则安装到 `~/.copilot/skills/graphify/SKILL.md`。
 
 卸载时使用对应平台的 uninstall 命令即可（例如 `graphify claude uninstall`）。
 
@@ -146,14 +182,17 @@ graphify claude uninstall
 graphify codex install             # AGENTS.md（Codex）
 graphify opencode install          # AGENTS.md（OpenCode）
 graphify claw install              # AGENTS.md（OpenClaw）
+graphify droid install            # AGENTS.md（Factory Droid）
+graphify copilot install          # .github/copilot-instructions.md（GitHub Copilot CLI）
 ```
 
 支持混合文件类型：
 
 | 类型 | 扩展名 | 提取方式 |
 |------|--------|----------|
-| 代码 | `.py .ts .js .go .rs .java .c .cpp .rb .cs .kt .scala .php` | tree-sitter AST + 调用图 + docstring / 注释中的 rationale |
+| 代码 | `.py .ts .js .go .rs .java .c .cpp .rb .cs .kt .scala .php .swift .lua .zig .ps1 .ex .exs .m .mm` | tree-sitter AST + 调用图 + docstring / 注释中的 rationale |
 | 文档 | `.md .txt .rst` | 通过 Claude 提取概念、关系和设计动机 |
+| Office | `.docx .xlsx` | 先转成 Markdown，再经由 Claude 提取（需要 `pip install graphifyy[office]`） |
 | 论文 | `.pdf` | 引文挖掘 + 概念提取 |
 | 图片 | `.png .jpg .webp .gif` | Claude vision —— 截图、图表、任意语言都可以 |
 

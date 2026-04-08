@@ -6,16 +6,21 @@ import pytest
 
 PLATFORMS = {
     "claude": (".claude/skills/graphify/SKILL.md",),
+    "copilot": (".copilot/skills/graphify/SKILL.md",),
     "codex": (".agents/skills/graphify/SKILL.md",),
     "opencode": (".config/opencode/skills/graphify/SKILL.md",),
     "claw": (".claw/skills/graphify/SKILL.md",),
 }
 
 
-def _install(tmp_path, platform):
+def _install(tmp_path, platform, system_name=None):
     from graphify.__main__ import install
     with patch("graphify.__main__.Path.home", return_value=tmp_path):
-        install(platform=platform)
+        if system_name is None:
+            install(platform=platform)
+        else:
+            with patch("graphify.__main__.platform.system", return_value=system_name):
+                install(platform=platform)
 
 
 def test_install_default_claude(tmp_path):
@@ -26,6 +31,25 @@ def test_install_default_claude(tmp_path):
 def test_install_codex(tmp_path):
     _install(tmp_path, "codex")
     assert (tmp_path / ".agents" / "skills" / "graphify" / "SKILL.md").exists()
+
+
+def test_install_copilot(tmp_path):
+    _install(tmp_path, "copilot")
+    assert (tmp_path / ".copilot" / "skills" / "graphify" / "SKILL.md").exists()
+
+
+def test_install_copilot_windows_uses_windows_skill(tmp_path):
+    _install(tmp_path, "copilot", system_name="Windows")
+    skill = (tmp_path / ".copilot" / "skills" / "graphify" / "SKILL.md").read_text(encoding="utf-8")
+    assert "powershell" in skill
+    assert "Remove-Item" in skill
+
+
+def test_install_copilot_macos_uses_posix_skill(tmp_path):
+    _install(tmp_path, "copilot", system_name="Darwin")
+    skill = (tmp_path / ".copilot" / "skills" / "graphify" / "SKILL.md").read_text(encoding="utf-8")
+    assert "which graphify" in skill
+    assert "Remove-Item" not in skill
 
 
 def test_install_opencode(tmp_path):
@@ -46,21 +70,21 @@ def test_install_unknown_platform_exits(tmp_path):
 def test_codex_skill_contains_spawn_agent():
     """Codex skill file must reference spawn_agent."""
     import graphify
-    skill = (Path(graphify.__file__).parent / "skill-codex.md").read_text()
+    skill = (Path(graphify.__file__).parent / "skill-codex.md").read_text(encoding="utf-8")
     assert "spawn_agent" in skill
 
 
 def test_opencode_skill_contains_mention():
     """OpenCode skill file must reference @mention."""
     import graphify
-    skill = (Path(graphify.__file__).parent / "skill-opencode.md").read_text()
+    skill = (Path(graphify.__file__).parent / "skill-opencode.md").read_text(encoding="utf-8")
     assert "@mention" in skill
 
 
 def test_claw_skill_is_sequential():
     """OpenClaw skill file must describe sequential extraction."""
     import graphify
-    skill = (Path(graphify.__file__).parent / "skill-claw.md").read_text()
+    skill = (Path(graphify.__file__).parent / "skill-claw.md").read_text(encoding="utf-8")
     assert "sequential" in skill.lower()
     assert "spawn_agent" not in skill
     assert "@mention" not in skill
@@ -70,7 +94,7 @@ def test_all_skill_files_exist_in_package():
     """All four platform skill files must be present in the installed package."""
     import graphify
     pkg = Path(graphify.__file__).parent
-    for name in ("skill.md", "skill-codex.md", "skill-opencode.md", "skill-claw.md"):
+    for name in ("skill.md", "skill-codex.md", "skill-opencode.md", "skill-claw.md", "skill-copilot.md", "skill-copilot-windows.md"):
         assert (pkg / name).exists(), f"Missing: {name}"
 
 
@@ -83,6 +107,16 @@ def test_claude_install_registers_claude_md(tmp_path):
 def test_codex_install_does_not_write_claude_md(tmp_path):
     _install(tmp_path, "codex")
     assert not (tmp_path / ".claude" / "CLAUDE.md").exists()
+
+
+def _copilot_install(tmp_path):
+    from graphify.__main__ import _copilot_install as _install_fn
+    _install_fn(tmp_path)
+
+
+def _copilot_uninstall(tmp_path):
+    from graphify.__main__ import _copilot_uninstall as _uninstall_fn
+    _uninstall_fn(tmp_path)
 
 
 # --- always-on AGENTS.md install/uninstall tests ---
@@ -157,3 +191,47 @@ def test_agents_uninstall_no_op_when_not_installed(tmp_path, capsys):
     _agents_uninstall(tmp_path)
     out = capsys.readouterr().out
     assert "nothing to do" in out
+
+
+def test_copilot_install_writes_copilot_instructions(tmp_path):
+    _copilot_install(tmp_path)
+    target = tmp_path / ".github" / "copilot-instructions.md"
+    assert target.exists()
+    content = target.read_text()
+    assert "## graphify" in content
+    assert "GRAPH_REPORT.md" in content
+
+
+def test_copilot_install_is_idempotent(tmp_path):
+    _copilot_install(tmp_path)
+    _copilot_install(tmp_path)
+    content = (tmp_path / ".github" / "copilot-instructions.md").read_text()
+    assert content.count("## graphify") == 1
+
+
+def test_copilot_uninstall_removes_only_graphify_section(tmp_path):
+    target = tmp_path / ".github" / "copilot-instructions.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# existing\n")
+    _copilot_install(tmp_path)
+    _copilot_uninstall(tmp_path)
+    assert target.exists()
+    content = target.read_text()
+    assert "# existing" in content
+    assert "## graphify" not in content
+
+
+def test_copilot_skill_uses_posix_instructions():
+    import graphify
+    skill = (Path(graphify.__file__).parent / "skill-copilot.md").read_text(encoding="utf-8")
+    assert "which graphify" in skill
+    assert "Remove-Item" not in skill
+
+
+def test_copilot_windows_skill_uses_powershell_friendly_instructions():
+    import graphify
+    skill = (Path(graphify.__file__).parent / "skill-copilot-windows.md").read_text(encoding="utf-8")
+    assert "allowed-tools:" in skill
+    assert "powershell" in skill
+    assert "Remove-Item" in skill
+    assert "which graphify" not in skill

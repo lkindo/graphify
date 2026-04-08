@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/graphifyy)](https://pypi.org/project/graphifyy/)
 [![Sponsor](https://img.shields.io/badge/sponsor-safishamsi-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/safishamsi)
 
-**An AI coding assistant skill.** Type `/graphify` in Claude Code, Codex, OpenCode, OpenClaw, or Factory Droid - it reads your files, builds a knowledge graph, and gives you back structure you didn't know was there. Understand a codebase faster. Find the "why" behind architectural decisions.
+**An AI coding assistant skill.** Type `/graphify` in Claude Code, GitHub Copilot CLI, Codex, OpenCode, OpenClaw, or Factory Droid - it reads your files, builds a knowledge graph, and gives you back structure you didn't know was there. Understand a codebase faster. Find the "why" behind architectural decisions.
 
 Fully multimodal. Drop in code, PDFs, markdown, screenshots, diagrams, whiteboard photos, even images in other languages - graphify uses Claude vision to extract concepts and relationships from all of it and connects them into one graph.
 
@@ -46,7 +46,7 @@ Every relationship is tagged `EXTRACTED` (found directly in source), `INFERRED` 
 
 ## Install
 
-**Requires:** Python 3.10+ and one of: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [OpenClaw](https://openclaw.ai), or [Factory Droid](https://factory.ai)
+**Requires:** Python 3.10+ and one of: [Claude Code](https://claude.ai/code), [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [OpenClaw](https://openclaw.ai), or [Factory Droid](https://factory.ai)
 
 ```bash
 pip install graphifyy && graphify install
@@ -64,14 +64,31 @@ pip install graphifyy && graphify install
 | OpenCode | `graphify install --platform opencode` |
 | OpenClaw | `graphify install --platform claw` |
 | Factory Droid | `graphify install --platform droid` |
+| GitHub Copilot CLI | `graphify install --platform copilot` |
 
-Codex users also need `multi_agent = true` under `[features]` in `~/.codex/config.toml` for parallel extraction. Factory Droid uses the `Task` tool for parallel subagent dispatch. OpenClaw uses sequential extraction (parallel agent support is still early on that platform).
+Codex users also need `multi_agent = true` under `[features]` in `~/.codex/config.toml` for parallel extraction. Factory Droid uses the `Task` tool for parallel subagent dispatch. OpenClaw uses sequential extraction (parallel agent support is still early on that platform). GitHub Copilot CLI reads files directly for semantic extraction (sequential).
+
+> GitHub Copilot CLI users should explicitly run `graphify install --platform copilot`. On Windows, this installs the PowerShell-specific Copilot skill. On macOS/Linux, it installs the POSIX shell Copilot skill.
+
+### Deploying a modified local checkout for GitHub Copilot CLI
+
+If you are testing a fork or a locally modified checkout, install from source instead of PyPI:
+
+```bash
+python -m pip install .
+graphify install --platform copilot
+graphify copilot install
+```
+
+This copies the Copilot skill to `~/.copilot/skills/graphify/SKILL.md` and writes the always-on project rules to `.github/copilot-instructions.md`. The installed skill is OS-aware: Windows gets the PowerShell variant, while macOS/Linux gets the POSIX shell variant.
 
 Then open your AI coding assistant and type:
 
 ```
 /graphify .
 ```
+
+Note: Codex uses `$` instead of `/` for skill calling, so type `$graphify .` instead.
 
 ### Make your assistant always use the graph (recommended)
 
@@ -84,10 +101,13 @@ After building a graph, run this once in your project:
 | OpenCode | `graphify opencode install` |
 | OpenClaw | `graphify claw install` |
 | Factory Droid | `graphify droid install` |
+| GitHub Copilot CLI | `graphify copilot install` |
 
 **Claude Code** does two things: writes a `CLAUDE.md` section telling Claude to read `graphify-out/GRAPH_REPORT.md` before answering architecture questions, and installs a **PreToolUse hook** (`settings.json`) that fires before every Glob and Grep call. If a knowledge graph exists, Claude sees: _"graphify: Knowledge graph exists. Read GRAPH_REPORT.md for god nodes and community structure before searching raw files."_ — so Claude navigates via the graph instead of grepping through every file.
 
 **Codex, OpenCode, OpenClaw, Factory Droid** write the same rules to `AGENTS.md` in your project root. These platforms don't support PreToolUse hooks, so AGENTS.md is the always-on mechanism.
+
+**GitHub Copilot CLI** writes rules to `.github/copilot-instructions.md`, which Copilot CLI reads automatically. The skill is also installed to `~/.copilot/skills/graphify/SKILL.md` for invocation via `/graphify`.
 
 Uninstall with the matching uninstall command (e.g. `graphify claude uninstall`).
 
@@ -159,6 +179,7 @@ graphify codex install             # AGENTS.md (Codex)
 graphify opencode install          # AGENTS.md (OpenCode)
 graphify claw install              # AGENTS.md (OpenClaw)
 graphify droid install             # AGENTS.md (Factory Droid)
+graphify copilot install           # .github/copilot-instructions.md (GitHub Copilot CLI)
 ```
 
 Works with any mix of file types:

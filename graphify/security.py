@@ -1,7 +1,6 @@
 # Security helpers - URL validation, safe fetch, path guards, label sanitisation
 from __future__ import annotations
 
-import html
 import re
 import urllib.error
 import urllib.parse
@@ -186,13 +185,12 @@ _MAX_LABEL_LEN = 256
 
 
 def sanitize_label(text: str) -> str:
-    """Strip control characters, cap length, then HTML-escape.
+    """Strip control characters and cap length.
 
-    Applied to all node labels and edge titles before they are embedded
-    in pyvis HTML output or returned via the MCP server, preventing both
-    XSS and broken visualisations from malformed source identifiers.
+    Safe for embedding in JSON data (inside <script> tags) and plain text.
+    For direct HTML injection, wrap the result with html.escape().
     """
     text = _CONTROL_CHAR_RE.sub("", text)
     if len(text) > _MAX_LABEL_LEN:
         text = text[:_MAX_LABEL_LEN]
-    return html.escape(text)
+    return text
