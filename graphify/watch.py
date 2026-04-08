@@ -18,7 +18,13 @@ _CODE_EXTENSIONS = {
 }
 
 
-def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
+def _resolve_out(watch_path: Path, output_dir: str) -> Path:
+    """Resolve output_dir relative to watch_path if not absolute."""
+    p = Path(output_dir)
+    return p if p.is_absolute() else watch_path / p
+
+
+def _rebuild_code(watch_path: Path, output_dir: str = "graphify-out", *, follow_symlinks: bool = False) -> bool:
     """Re-run AST extraction + build + cluster + report for code files. No LLM needed.
 
     Returns True on success, False on error.
@@ -58,7 +64,7 @@ def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
         labels = {cid: "Community " + str(cid) for cid in communities}
         questions = suggest_questions(G, communities, labels)
 
-        out = watch_path / "graphify-out"
+        out = _resolve_out(watch_path, output_dir)
         out.mkdir(exist_ok=True)
 
         report = generate(G, communities, cohesion, labels, gods, surprises, detection,
@@ -81,9 +87,9 @@ def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
         return False
 
 
-def _notify_only(watch_path: Path) -> None:
+def _notify_only(watch_path: Path, output_dir: str = "graphify-out") -> None:
     """Write a flag file and print a notification (fallback for non-code-only corpora)."""
-    flag = watch_path / "graphify-out" / "needs_update"
+    flag = _resolve_out(watch_path, output_dir) / "needs_update"
     flag.parent.mkdir(parents=True, exist_ok=True)
     flag.write_text("1")
     print(f"\n[graphify watch] New or changed files detected in {watch_path}")
@@ -96,7 +102,7 @@ def _has_non_code(changed_paths: list[Path]) -> bool:
     return any(p.suffix.lower() not in _CODE_EXTENSIONS for p in changed_paths)
 
 
-def watch(watch_path: Path, debounce: float = 3.0) -> None:
+def watch(watch_path: Path, debounce: float = 3.0, output_dir: str = "graphify-out") -> None:
     """
     Watch watch_path for new or modified files and auto-update the graph.
 
@@ -152,9 +158,9 @@ def watch(watch_path: Path, debounce: float = 3.0) -> None:
                 changed.clear()
                 print(f"\n[graphify watch] {len(batch)} file(s) changed")
                 if _has_non_code(batch):
-                    _notify_only(watch_path)
+                    _notify_only(watch_path, output_dir=output_dir)
                 else:
-                    _rebuild_code(watch_path)
+                    _rebuild_code(watch_path, output_dir=output_dir)
     except KeyboardInterrupt:
         print("\n[graphify watch] Stopped.")
     finally:
@@ -168,5 +174,7 @@ if __name__ == "__main__":
     parser.add_argument("path", nargs="?", default=".", help="Folder to watch (default: .)")
     parser.add_argument("--debounce", type=float, default=3.0,
                         help="Seconds to wait after last change before updating (default: 3)")
+    parser.add_argument("--output-dir", default="graphify-out",
+                        help="Output directory for graph files (default: graphify-out)")
     args = parser.parse_args()
-    watch(Path(args.path), debounce=args.debounce)
+    watch(Path(args.path), debounce=args.debounce, output_dir=args.output_dir)

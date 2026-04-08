@@ -26,6 +26,13 @@ def test_notify_only_idempotent(tmp_path):
     flag = tmp_path / "graphify-out" / "needs_update"
     assert flag.read_text() == "1"
 
+def test_notify_only_custom_output_dir(tmp_path):
+    """_notify_only writes needs_update flag to custom output_dir."""
+    from graphify.watch import _notify_only
+    custom_out = tmp_path / "my-outputs"
+    _notify_only(tmp_path, output_dir=str(custom_out))
+    assert (custom_out / "needs_update").exists()
+
 
 # --- _WATCHED_EXTENSIONS ---
 
