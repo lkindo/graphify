@@ -125,7 +125,7 @@ When the user types `/graphify`, invoke the Skill tool with `skill: "graphify"` 
 /graphify                          # run on current directory
 /graphify ./raw                    # run on a specific folder
 /graphify ./raw --mode deep        # more aggressive INFERRED edge extraction
-/graphify ./raw --update           # re-extract only changed files, merge into existing graph
+/graphify ./raw --update           # re-extract changed files, prune deleted nodes, merge into existing graph
 /graphify ./raw --cluster-only     # rerun clustering on existing graph, no re-extraction
 /graphify ./raw --no-viz           # skip HTML, just produce report + JSON
 /graphify ./raw --obsidian                          # also generate Obsidian vault (opt-in)
