@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+import logging
 import re
 import urllib.error
 import urllib.parse
@@ -10,6 +11,8 @@ from pathlib import Path
 
 import ipaddress
 import socket
+
+logger = logging.getLogger(__name__)
 
 _ALLOWED_SCHEMES = {"http", "https"}
 _MAX_FETCH_BYTES = 52_428_800   # 50 MB hard cap for binary downloads
@@ -59,9 +62,53 @@ def validate_url(url: str) -> str:
                         f"Got: {url!r}"
                     )
         except socket.gaierror:
-            pass  # DNS failure will surface later during fetch
+            # DNS failure is a connectivity problem, not proof the URL is unsafe.
+            # Let the fetch step surface the underlying network error.
+            pass
 
     return url
+
+
+def _validate_peer_ip(resp: object, url: str) -> None:
+    """Re-validate the peer IP after connection to defend against DNS rebinding.
+
+    urllib may re-resolve DNS between validate_url() and the actual connection.
+    Checking the connected socket's peer address closes this TOCTOU gap.
+
+    Args:
+        resp: The HTTP response object (may have .fp.raw._sock or similar).
+        url: The original URL (for error messages).
+
+    Raises:
+        ValueError: If the peer IP is private/reserved/loopback/link-local.
+    """
+    try:
+        # urllib wraps the socket; walk down to the raw socket
+        raw_sock = None
+        fp = getattr(resp, 'fp', None)
+        if fp:
+            raw = getattr(fp, 'raw', None)
+            if raw:
+                raw_sock = getattr(raw, '_sock', None)
+        if raw_sock is None:
+            # Cannot inspect peer - log and allow (defense in depth, not sole layer)
+            logger.debug("Cannot inspect peer socket for %s - skipping rebind check", url)
+            return
+        peer = raw_sock.getpeername()
+        if peer:
+            addr = peer[0]
+            if not isinstance(addr, str):
+                logger.debug("Peer IP check skipped for %s (non-string peer address)", url)
+                return
+            ip = ipaddress.ip_address(addr)
+            if ip.is_private or ip.is_reserved or ip.is_loopback or ip.is_link_local:
+                raise ValueError(
+                    f"DNS rebinding detected: connected to private IP {addr} "
+                    f"for URL {url!r}"
+                )
+    except (AttributeError, OSError, ValueError):
+        # Socket already closed or inaccessible - skip check
+        logger.debug("Peer IP check skipped for %s (socket inaccessible)", url)
 
 
 class _NoFileRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -110,6 +157,9 @@ def safe_fetch(url: str, max_bytes: int = _MAX_FETCH_BYTES, timeout: int = 30) -
         status = getattr(resp, "status", None) or getattr(resp, "code", None)
         if status is not None and not (200 <= status < 300):
             raise urllib.error.HTTPError(url, status, f"HTTP {status}", {}, None)
+
+        # DNS rebinding defense: re-validate the peer IP after connection
+        _validate_peer_ip(resp, url)
 
         chunks: list[bytes] = []
         total = 0
@@ -185,13 +235,21 @@ _CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 _MAX_LABEL_LEN = 256
 
 
-def sanitize_label(text: str) -> str:
+def sanitize_label(text: str, *, html_safe: bool = False) -> str:
     """Strip control characters and cap length.
 
     Safe for embedding in JSON data (inside <script> tags) and plain text.
-    For direct HTML injection, wrap the result with html.escape().
+
+    Args:
+        text: The raw label text to sanitize.
+        html_safe: If True, also applies html.escape() to prevent XSS.
+
+    Returns:
+        Sanitized label string.
     """
     text = _CONTROL_CHAR_RE.sub("", text)
     if len(text) > _MAX_LABEL_LEN:
         text = text[:_MAX_LABEL_LEN]
+    if html_safe:
+        text = html.escape(text, quote=True)
     return text

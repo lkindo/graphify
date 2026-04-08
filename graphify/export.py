@@ -1,6 +1,7 @@
 # write graph to HTML, JSON, SVG, GraphML, Obsidian vault, and Neo4j Cypher
 from __future__ import annotations
 import html as _html
+import inspect
 import json
 import math
 import re
@@ -158,6 +159,13 @@ network.once('stabilizationIterationsDone', () => {{
   network.setOptions({{ physics: {{ enabled: false }} }});
 }});
 
+// XSS defense: escape dynamic user content before innerHTML insertion
+function escapeHtml(s) {{
+  const div = document.createElement('div');
+  div.appendChild(document.createTextNode(String(s)));
+  return div.innerHTML;
+}}
+
 function showInfo(nodeId) {{
   const n = nodesDS.get(nodeId);
   if (!n) return;
@@ -165,13 +173,14 @@ function showInfo(nodeId) {{
   const neighborItems = neighborIds.map(nid => {{
     const nb = nodesDS.get(nid);
     const color = nb ? nb.color.background : '#555';
-    return `<span class="neighbor-link" style="border-left-color:${{color}}" onclick="focusNode('${{nid}}')">${{nb ? nb.label : nid}}</span>`;
+    const safeLabel = escapeHtml(nb ? nb.label : nid);
+    return `<span class="neighbor-link" data-node-id="${{escapeHtml(String(nid))}}" style="border-left-color:${{escapeHtml(color)}}">${{safeLabel}}</span>`;
   }}).join('');
   document.getElementById('info-content').innerHTML = `
-    <div class="field"><b>${{n.label}}</b></div>
-    <div class="field">Type: ${{n._file_type || 'unknown'}}</div>
-    <div class="field">Community: ${{n._community_name}}</div>
-    <div class="field">Source: ${{n._source_file || '-'}}</div>
+    <div class="field"><b>${{escapeHtml(n.label)}}</b></div>
+    <div class="field">Type: ${{escapeHtml(n._file_type || 'unknown')}}</div>
+    <div class="field">Community: ${{escapeHtml(n._community_name)}}</div>
+    <div class="field">Source: ${{escapeHtml(n._source_file || '-')}}</div>
     <div class="field">Degree: ${{n._degree}}</div>
     ${{neighborIds.length ? `<div class="field" style="margin-top:8px;color:#aaa;font-size:11px">Neighbors (${{neighborIds.length}})</div><div id="neighbors-list">${{neighborItems}}</div>` : ''}}
   `;
@@ -182,6 +191,13 @@ function focusNode(nodeId) {{
   network.selectNodes([nodeId]);
   showInfo(nodeId);
 }}
+
+document.getElementById('info-content').addEventListener('click', event => {{
+  const target = event.target.closest('.neighbor-link');
+  if (!target) return;
+  const nodeId = target.dataset.nodeId;
+  if (nodeId) focusNode(nodeId);
+}});
 
 network.on('click', params => {{
   if (params.nodes.length > 0) showInfo(params.nodes[0]);
@@ -260,7 +276,11 @@ def attach_hyperedges(G: nx.Graph, hyperedges: list) -> None:
 
 def to_json(G: nx.Graph, communities: dict[int, list[str]], output_path: str) -> None:
     node_community = _node_community_map(communities)
-    data = json_graph.node_link_data(G, edges="links")
+    params = inspect.signature(json_graph.node_link_data).parameters
+    if "edges" in params:
+        data = json_graph.node_link_data(G, edges="links")
+    else:
+        data = json_graph.node_link_data(G, link="links")
     for node in data["nodes"]:
         node["community"] = node_community.get(node["id"])
     for link in data["links"]:
@@ -834,12 +854,46 @@ def push_to_neo4j(
 
     node_community = _node_community_map(communities) if communities else {}
 
+    # Allowlist for Neo4j labels - only permit known graphify file types
+    _ALLOWED_NODE_LABELS = {"Code", "Document", "Paper", "Image", "Rationale", "Entity"}
+    # Allowlist for common relation types (extended as needed)
+    _ALLOWED_RELATION_TYPES = {
+        "CONTAINS", "IMPORTS", "IMPORTS_FROM", "CALLS", "METHOD",
+        "INHERITS", "REFERENCES", "USES", "RELATED_TO", "RATIONALE_FOR",
+        "CASE_OF", "SEMANTICALLY_SIMILAR_TO",
+    }
+
     def _safe_rel(relation: str) -> str:
-        return re.sub(r"[^A-Z0-9_]", "_", relation.upper().replace(" ", "_").replace("-", "_")) or "RELATED_TO"
+        """Sanitize a Neo4j relationship type using allowlist + sanitization fallback.
+
+        Args:
+            relation: Raw relation string from edge data.
+
+        Returns:
+            Safe Cypher relationship type string.
+        """
+        candidate = re.sub(r"[^A-Z0-9_]", "_", relation.upper().replace(" ", "_").replace("-", "_")) or "RELATED_TO"
+        if candidate in _ALLOWED_RELATION_TYPES:
+            return candidate
+        # Fallback: still return the sanitized version but log the unknown type
+        if re.fullmatch(r"[A-Z][A-Z0-9_]*", candidate):
+            return candidate
+        return "RELATED_TO"
 
     def _safe_label(label: str) -> str:
-        """Sanitize a Neo4j node label to prevent Cypher injection."""
-        sanitized = re.sub(r"[^A-Za-z0-9_]", "", label)
+        """Sanitize a Neo4j node label using allowlist.
+
+        Args:
+            label: Raw file_type string from node data.
+
+        Returns:
+            Safe Cypher node label string.
+        """
+        candidate = label.capitalize()
+        if candidate in _ALLOWED_NODE_LABELS:
+            return candidate
+        # Fallback: strip to alphanumeric only
+        sanitized = re.sub(r"[^A-Za-z0-9_]", "", candidate)
         return sanitized if sanitized else "Entity"
 
     driver = GraphDatabase.driver(uri, auth=(user, password))

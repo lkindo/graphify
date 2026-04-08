@@ -7,6 +7,11 @@ import re
 from enum import Enum
 from pathlib import Path
 
+from graphify.constants import (
+    CODE_EXTENSIONS, DOC_EXTENSIONS, PAPER_EXTENSIONS,
+    IMAGE_EXTENSIONS, OFFICE_EXTENSIONS,
+)
+
 
 class FileType(str, Enum):
     CODE = "code"
@@ -17,11 +22,7 @@ class FileType(str, Enum):
 
 _MANIFEST_PATH = "graphify-out/manifest.json"
 
-CODE_EXTENSIONS = {'.py', '.ts', '.js', '.tsx', '.go', '.rs', '.java', '.cpp', '.cc', '.cxx', '.c', '.h', '.hpp', '.rb', '.swift', '.kt', '.kts', '.cs', '.scala', '.php', '.lua', '.toc', '.zig', '.ps1', '.ex', '.exs', '.m', '.mm'}
-DOC_EXTENSIONS = {'.md', '.txt', '.rst'}
-PAPER_EXTENSIONS = {'.pdf'}
-IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'}
-OFFICE_EXTENSIONS = {'.docx', '.xlsx'}
+
 
 CORPUS_WARN_THRESHOLD = 50_000    # words - below this, warn "you may not need a graph"
 CORPUS_UPPER_THRESHOLD = 500_000  # words - above this, warn about token cost

@@ -109,10 +109,17 @@ def _is_concept_node(G: nx.Graph, node_id: str) -> bool:
     return False
 
 
-_CODE_EXTENSIONS = {"py", "ts", "tsx", "js", "go", "rs", "java", "rb", "cpp", "c", "h", "cs", "kt", "scala", "php"}
-_DOC_EXTENSIONS = {"md", "txt", "rst"}
-_PAPER_EXTENSIONS = {"pdf"}
-_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif", "svg"}
+from graphify.constants import (
+    CODE_EXTENSIONS as _CODE_EXTENSIONS_SET,
+    DOC_EXTENSIONS as _DOC_EXTENSIONS_SET,
+    PAPER_EXTENSIONS as _PAPER_EXTENSIONS_SET,
+    IMAGE_EXTENSIONS as _IMAGE_EXTENSIONS_SET,
+)
+# Strip dots for suffix-based matching in _file_category
+_CODE_EXTENSIONS = {ext.lstrip(".") for ext in _CODE_EXTENSIONS_SET}
+_DOC_EXTENSIONS = {ext.lstrip(".") for ext in _DOC_EXTENSIONS_SET}
+_PAPER_EXTENSIONS = {ext.lstrip(".") for ext in _PAPER_EXTENSIONS_SET}
+_IMAGE_EXTENSIONS = {ext.lstrip(".") for ext in _IMAGE_EXTENSIONS_SET}
 
 
 def _file_category(path: str) -> str:

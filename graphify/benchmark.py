@@ -1,5 +1,6 @@
 """Token-reduction benchmark - measures how much context graphify saves vs naive full-corpus approach."""
 from __future__ import annotations
+import inspect
 import json
 from pathlib import Path
 import networkx as nx
@@ -76,7 +77,11 @@ def run_benchmark(
     Returns dict with: corpus_tokens, avg_query_tokens, reduction_ratio, per_question
     """
     data = json.loads(Path(graph_path).read_text())
-    G = json_graph.node_link_graph(data, edges="links")
+    params = inspect.signature(json_graph.node_link_graph).parameters
+    if "edges" in params:
+        G = json_graph.node_link_graph(data, edges="links")
+    else:
+        G = json_graph.node_link_graph(data, link="links")
 
     if corpus_words is None:
         # Rough estimate: each node label is ~3 words, plus source context
