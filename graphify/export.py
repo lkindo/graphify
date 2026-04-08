@@ -875,7 +875,7 @@ def push_to_neo4j(
         candidate = re.sub(r"[^A-Z0-9_]", "_", relation.upper().replace(" ", "_").replace("-", "_")) or "RELATED_TO"
         if candidate in _ALLOWED_RELATION_TYPES:
             return candidate
-        # Fallback: still return the sanitized version but log the unknown type
+        # Fallback: return the sanitized value if it is still a valid relationship type
         if re.fullmatch(r"[A-Z][A-Z0-9_]*", candidate):
             return candidate
         return "RELATED_TO"
