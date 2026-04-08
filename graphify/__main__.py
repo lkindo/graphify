@@ -1,4 +1,4 @@
-"""graphify CLI - `graphify install` sets up the Claude Code skill."""
+"""graphify CLI - install skills and project instructions for supported platforms."""
 from __future__ import annotations
 import json
 import platform
@@ -45,6 +45,13 @@ _SKILL_REGISTRATION = (
     "with `skill: \"graphify\"` before doing anything else.\n"
 )
 
+_REBUILD_GRAPH_COMMAND = (
+    "`python -c \"from graphify.watch import _rebuild_code; from pathlib import Path; "
+    "_rebuild_code(Path('.'))\"` "
+    "(or `python3 -c \"from graphify.watch import _rebuild_code; from pathlib import Path; "
+    "_rebuild_code(Path('.'))\"` if `python` is unavailable)"
+)
+
 
 _PLATFORM_CONFIG: dict[str, dict] = {
     "claude": {
@@ -82,12 +89,24 @@ _PLATFORM_CONFIG: dict[str, dict] = {
         "skill_dst": Path(".trae-cn") / "skills" / "graphify" / "SKILL.md",
         "claude_md": False,
     },
+    "copilot": {
+        "skill_file": "skill-copilot.md",
+        "skill_dst": Path(".copilot") / "skills" / "graphify" / "SKILL.md",
+        "claude_md": False,
+    },
     "windows": {
         "skill_file": "skill-windows.md",
         "skill_dst": Path(".claude") / "skills" / "graphify" / "SKILL.md",
         "claude_md": True,
     },
 }
+
+
+def _resolve_platform_config(platform_name: str) -> dict:
+    cfg = dict(_PLATFORM_CONFIG[platform_name])
+    if platform_name == "copilot" and platform.system() == "Windows":
+        cfg["skill_file"] = "skill-copilot-windows.md"
+    return cfg
 
 
 def install(platform: str = "claude") -> None:
@@ -98,7 +117,7 @@ def install(platform: str = "claude") -> None:
         )
         sys.exit(1)
 
-    cfg = _PLATFORM_CONFIG[platform]
+    cfg = _resolve_platform_config(platform)
     skill_src = Path(__file__).parent / cfg["skill_file"]
     if not skill_src.exists():
         print(f"error: {cfg['skill_file']} not found in package - reinstall graphify", file=sys.stderr)
@@ -140,9 +159,10 @@ This project has a graphify knowledge graph at graphify-out/.
 Rules:
 - Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
-- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+- After modifying code files in this session, run {rebuild_command} to keep the graph current
 """
 
+_CLAUDE_MD_SECTION = _CLAUDE_MD_SECTION.format(rebuild_command=_REBUILD_GRAPH_COMMAND)
 _CLAUDE_MD_MARKER = "## graphify"
 
 # AGENTS.md section for Codex, OpenCode, and OpenClaw.
@@ -155,9 +175,10 @@ This project has a graphify knowledge graph at graphify-out/.
 Rules:
 - Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
-- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+- After modifying code files in this session, run {rebuild_command} to keep the graph current
 """
 
+_AGENTS_MD_SECTION = _AGENTS_MD_SECTION.format(rebuild_command=_REBUILD_GRAPH_COMMAND)
 _AGENTS_MD_MARKER = "## graphify"
 
 # OpenCode tool.execute.before plugin — fires before every tool call.
@@ -299,6 +320,73 @@ def _uninstall_codex_hook(project_dir: Path) -> None:
     existing["hooks"]["PreToolUse"] = filtered
     hooks_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
     print(f"  .codex/hooks.json  ->  PreToolUse hook removed")
+
+# Copilot instructions section for .github/copilot-instructions.md
+_COPILOT_INSTRUCTIONS_SECTION = """\
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run {rebuild_command} to keep the graph current
+"""
+
+_COPILOT_INSTRUCTIONS_SECTION = _COPILOT_INSTRUCTIONS_SECTION.format(rebuild_command=_REBUILD_GRAPH_COMMAND)
+_COPILOT_INSTRUCTIONS_MARKER = "## graphify"
+
+
+def _copilot_install(project_dir: Path) -> None:
+    """Write the graphify section to .github/copilot-instructions.md (GitHub Copilot CLI)."""
+    target = (project_dir or Path(".")) / ".github" / "copilot-instructions.md"
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    if target.exists():
+        content = target.read_text(encoding="utf-8")
+        if _COPILOT_INSTRUCTIONS_MARKER in content:
+            print("graphify already configured in .github/copilot-instructions.md")
+            return
+        new_content = content.rstrip() + "\n\n" + _COPILOT_INSTRUCTIONS_SECTION
+    else:
+        new_content = _COPILOT_INSTRUCTIONS_SECTION
+
+    target.write_text(new_content, encoding="utf-8")
+    print(f"graphify section written to {target.resolve()}")
+    print()
+    print("GitHub Copilot CLI will now check the knowledge graph before answering")
+    print("codebase questions and rebuild it after code changes.")
+    print()
+    print("Note: GitHub Copilot CLI reads .github/copilot-instructions.md automatically.")
+    print("The skill is also installed at ~/.copilot/skills/graphify/SKILL.md")
+
+
+def _copilot_uninstall(project_dir: Path) -> None:
+    """Remove the graphify section from .github/copilot-instructions.md."""
+    target = (project_dir or Path(".")) / ".github" / "copilot-instructions.md"
+
+    if not target.exists():
+        print("No .github/copilot-instructions.md found - nothing to do")
+        return
+
+    content = target.read_text(encoding="utf-8")
+    if _COPILOT_INSTRUCTIONS_MARKER not in content:
+        print("graphify section not found in .github/copilot-instructions.md - nothing to do")
+        return
+
+    cleaned = re.sub(
+        r"\n*## graphify\n.*?(?=\n## |\Z)",
+        "",
+        content,
+        flags=re.DOTALL,
+    ).rstrip()
+    if cleaned:
+        target.write_text(cleaned + "\n", encoding="utf-8")
+        print(f"graphify section removed from {target.resolve()}")
+    else:
+        target.unlink()
+        print(f".github/copilot-instructions.md was empty after removal - deleted {target.resolve()}")
 
 
 def _agents_install(project_dir: Path, platform: str) -> None:
@@ -468,7 +556,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid|trae|trae-cn)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid|trae|trae-cn|copilot)")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -492,11 +580,13 @@ def main() -> None:
         print("  claw install            write graphify section to AGENTS.md (OpenClaw)")
         print("  claw uninstall          remove graphify section from AGENTS.md")
         print("  droid install           write graphify section to AGENTS.md (Factory Droid)")
-        print("  droid uninstall        remove graphify section from AGENTS.md")
+        print("  droid uninstall         remove graphify section from AGENTS.md")
         print("  trae install            write graphify section to AGENTS.md (Trae)")
-        print("  trae uninstall         remove graphify section from AGENTS.md")
+        print("  trae uninstall          remove graphify section from AGENTS.md")
         print("  trae-cn install         write graphify section to AGENTS.md (Trae CN)")
-        print("  trae-cn uninstall      remove graphify section from AGENTS.md")
+        print("  trae-cn uninstall       remove graphify section from AGENTS.md")
+        print("  copilot install         write graphify section to .github/copilot-instructions.md (GitHub Copilot CLI)")
+        print("  copilot uninstall       remove graphify section from .github/copilot-instructions.md")
         print()
         return
 
@@ -536,6 +626,15 @@ def main() -> None:
                 _uninstall_codex_hook(Path("."))
         else:
             print(f"Usage: graphify {cmd} [install|uninstall]", file=sys.stderr)
+            sys.exit(1)
+    elif cmd == "copilot":
+        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
+        if subcmd == "install":
+            _copilot_install(Path("."))
+        elif subcmd == "uninstall":
+            _copilot_uninstall(Path("."))
+        else:
+            print("Usage: graphify copilot [install|uninstall]", file=sys.stderr)
             sys.exit(1)
     elif cmd == "hook":
         from graphify.hooks import install as hook_install, uninstall as hook_uninstall, status as hook_status

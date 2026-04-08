@@ -2,6 +2,14 @@
 
 Full release notes with details on each version: [GitHub Releases](https://github.com/safishamsi/graphify/releases)
 
+## Unreleased
+
+- Add: GitHub Copilot CLI support via `graphify install --platform copilot`
+- Add: OS-aware Copilot skill installation — Windows gets the PowerShell skill, macOS/Linux get the POSIX skill
+- Add: `graphify copilot install` / `graphify copilot uninstall` for `.github/copilot-instructions.md`
+- Docs: README and README.zh-CN now document Copilot install and always-on usage
+- Test: install routing covers both Windows and macOS Copilot skill variants
+
 ## 0.3.21 (2026-04-09)
 
 - Fix: Codex PreToolUse hook now places `systemMessage` at the top level of the output JSON instead of inside `hookSpecificOutput` — matches the strict schema enforced by codex-cli 0.118.0+ which uses `additionalProperties: false` (#138)
