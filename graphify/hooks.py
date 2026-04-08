@@ -10,9 +10,16 @@ _CHECKOUT_MARKER_END = "# graphify-checkout-hook-end"
 
 _PYTHON_DETECT = """\
 # Detect the correct Python interpreter (handles pipx, venv, system installs)
-GRAPHIFY_BIN=$(which graphify 2>/dev/null)
+GRAPHIFY_BIN=$(command -v graphify 2>/dev/null)
 if [ -n "$GRAPHIFY_BIN" ]; then
-    GRAPHIFY_PYTHON=$(head -1 "$GRAPHIFY_BIN" | sed 's/^#!//' | tr -d ' ')
+    _SHEBANG=$(head -1 "$GRAPHIFY_BIN" | sed 's/^#![[:space:]]*//')
+    case "$_SHEBANG" in
+        */env\\ *) GRAPHIFY_PYTHON="${_SHEBANG#*/env }" ;;
+        *)         GRAPHIFY_PYTHON="$_SHEBANG" ;;
+    esac
+    if ! "$GRAPHIFY_PYTHON" -c "import graphify" 2>/dev/null; then
+        GRAPHIFY_PYTHON="python3"
+    fi
 else
     GRAPHIFY_PYTHON="python3"
 fi
