@@ -30,8 +30,11 @@ _SETTINGS_HOOK = {
             "type": "command",
             "command": (
                 "[ -f graphify-out/graph.json ] && "
-                "echo 'graphify: Knowledge graph exists. Read graphify-out/GRAPH_REPORT.md "
-                "for god nodes and community structure before searching raw files.' || true"
+                "printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\","
+                "\"permissionDecision\":\"allow\","
+                "\"additionalContext\":\"graphify: Knowledge graph exists. "
+                "Read graphify-out/GRAPH_REPORT.md for god nodes and community "
+                "structure before searching raw files.\"}}' || true"
             ),
         }
     ],
@@ -320,6 +323,7 @@ def main() -> None:
         print("  hook status             check if git hooks are installed")
         print("  claude install          write graphify section to CLAUDE.md + PreToolUse hook (Claude Code)")
         print("  claude uninstall        remove graphify section from CLAUDE.md + PreToolUse hook")
+        print("  wiki [--graph path]     generate Wikipedia-style wiki from graph.json")
         print("  codex install           write graphify section to AGENTS.md (Codex)")
         print("  codex uninstall         remove graphify section from AGENTS.md")
         print("  opencode install        write graphify section to AGENTS.md (OpenCode)")
@@ -407,6 +411,44 @@ def main() -> None:
         start = [nid for _, nid in scored[:5]]
         nodes, edges = (_dfs if use_dfs else _bfs)(G, start, depth=2)
         print(_subgraph_to_text(G, nodes, edges, token_budget=budget))
+    elif cmd == "wiki":
+        from graphify.serve import _load_graph, _communities_from_graph
+        from graphify.cluster import score_all
+        from graphify.analyze import god_nodes as _god_nodes
+        from graphify.wiki import to_wiki
+
+        graph_path = "graphify-out/graph.json"
+        args = sys.argv[2:]
+        i = 0
+        while i < len(args):
+            if args[i] == "--graph" and i + 1 < len(args):
+                graph_path = args[i + 1]; i += 2
+            elif args[i].startswith("--graph="):
+                graph_path = args[i].split("=", 1)[1]; i += 1
+            else:
+                i += 1
+
+        G = _load_graph(graph_path)
+        communities = _communities_from_graph(G)
+        cohesion = score_all(G, communities)
+        gods = _god_nodes(G)
+
+        # Load labels from .graphify_labels.json if available
+        labels_path = Path(".graphify_labels.json")
+        if labels_path.exists():
+            try:
+                raw = json.loads(labels_path.read_text(encoding="utf-8"))
+                labels = {int(k): v for k, v in raw.items()}
+            except Exception:
+                labels = {cid: f"Community {cid}" for cid in communities}
+        else:
+            labels = {cid: f"Community {cid}" for cid in communities}
+
+        out_dir = Path(graph_path).parent / "wiki"
+        count = to_wiki(G, communities, out_dir, community_labels=labels, cohesion=cohesion, god_nodes_data=gods)
+        print(f"Wiki generated: {count} articles in {out_dir}/")
+        print(f"Start at {out_dir}/index.md")
+
     elif cmd == "benchmark":
         from graphify.benchmark import run_benchmark, print_benchmark
         graph_path = sys.argv[2] if len(sys.argv) > 2 else "graphify-out/graph.json"
