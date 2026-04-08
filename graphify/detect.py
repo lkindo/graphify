@@ -18,10 +18,40 @@ class FileType(str, Enum):
 _MANIFEST_PATH = "graphify-out/manifest.json"
 
 CODE_EXTENSIONS = {'.py', '.ts', '.js', '.tsx', '.go', '.rs', '.java', '.cpp', '.cc', '.cxx', '.c', '.h', '.hpp', '.rb', '.swift', '.kt', '.kts', '.cs', '.scala', '.php', '.lua', '.toc', '.zig', '.ps1', '.ex', '.exs', '.m', '.mm'}
-DOC_EXTENSIONS = {'.md', '.txt', '.rst'}
+DOC_EXTENSIONS = {
+    '.md', '.txt', '.rst',
+    '.tex', '.latex',                     # LaTeX source
+    '.toml', '.ini', '.cfg', '.conf',     # config files
+    '.sql',                               # SQL
+    '.graphql', '.gql',                   # GraphQL schema
+}
 PAPER_EXTENSIONS = {'.pdf'}
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'}
-OFFICE_EXTENSIONS = {'.docx', '.xlsx'}
+OFFICE_EXTENSIONS = {
+    # Office documents
+    '.docx', '.xlsx', '.xlsm', '.xltx', '.xltm', '.xlam', '.xls', '.xlsb', '.pptx',
+    # Apple iWork
+    '.pages', '.numbers', '.keynote',
+    # OpenDocument
+    '.odt', '.ods', '.odp',
+    # eBook / rich text
+    '.epub', '.rtf',
+    # Web / markup
+    '.html', '.htm', '.xml', '.drawio',
+    # Data / config
+    '.csv', '.json', '.yaml', '.yml',
+    # Subtitles / transcripts
+    '.vtt', '.srt',
+    # Audio
+    '.mp3', '.wav', '.m4a', '.flac', '.ogg', '.aac', '.wma',
+    # Video
+    '.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv',
+    # Notebooks
+    '.ipynb',
+    # Design tools (Figma family / Make.com)
+    '.fig', '.jam', '.buzz', '.site', '.make',
+}
+ARCHIVE_EXTENSIONS = {'.zip', '.rar'}
 
 CORPUS_WARN_THRESHOLD = 50_000    # words - below this, warn "you may not need a graph"
 CORPUS_UPPER_THRESHOLD = 500_000  # words - above this, warn about token cost
@@ -178,26 +208,578 @@ def xlsx_to_markdown(path: Path) -> str:
         return ""
 
 
+def pptx_to_markdown(path: Path) -> str:
+    """Convert a .pptx file to markdown using python-pptx."""
+    try:
+        from pptx import Presentation
+        prs = Presentation(str(path))
+        slides = []
+        for i, slide in enumerate(prs.slides, 1):
+            title_text = ""
+            body_lines = []
+            for shape in slide.shapes:
+                if not hasattr(shape, "text"):
+                    continue
+                text = shape.text.strip()
+                if not text:
+                    continue
+                is_title = (
+                    hasattr(shape, "placeholder_format")
+                    and shape.placeholder_format is not None
+                    and shape.placeholder_format.idx == 0
+                )
+                if is_title:
+                    title_text = text
+                else:
+                    body_lines.append(text)
+            heading = f"## Slide {i}: {title_text}" if title_text else f"## Slide {i}"
+            slides.append("\n".join([heading] + body_lines))
+        return "\n\n".join(slides)
+    except ImportError:
+        return ""
+    except Exception:
+        return ""
+
+
+def epub_to_markdown(path: Path) -> str:
+    """Convert an .epub file to markdown using ebooklib + html2text."""
+    try:
+        import ebooklib
+        from ebooklib import epub
+        import html2text as _h2t
+        book = epub.read_epub(str(path), options={"ignore_ncx": True})
+        h = _h2t.HTML2Text()
+        h.ignore_links = False
+        h.ignore_images = True
+        h.body_width = 0
+        chapters = []
+        for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+            content = item.get_content().decode("utf-8", errors="ignore")
+            md = h.handle(content).strip()
+            if md:
+                chapters.append(md)
+        return "\n\n---\n\n".join(chapters)
+    except ImportError:
+        return ""
+    except Exception:
+        return ""
+
+
+def html_file_to_markdown(path: Path) -> str:
+    """Convert an on-disk HTML file to markdown using html2text."""
+    try:
+        import html2text as _h2t
+        h = _h2t.HTML2Text()
+        h.ignore_links = False
+        h.ignore_images = True
+        h.body_width = 0
+        return h.handle(path.read_text(errors="ignore"))
+    except ImportError:
+        text = path.read_text(errors="ignore")
+        text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+    except Exception:
+        return ""
+
+
+def csv_to_markdown(path: Path) -> str:
+    """Convert a CSV file to a markdown table (capped at 500 data rows)."""
+    import csv as _csv
+    try:
+        rows = []
+        with open(path, newline="", errors="ignore") as f:
+            reader = _csv.reader(f)
+            for i, row in enumerate(reader):
+                if i >= 502:
+                    break
+                rows.append(row)
+        if not rows:
+            return ""
+        max_cols = max(len(r) for r in rows)
+        rows = [r + [""] * (max_cols - len(r)) for r in rows]
+        header = "| " + " | ".join(rows[0]) + " |"
+        sep = "| " + " | ".join("---" for _ in rows[0]) + " |"
+        data = ["| " + " | ".join(str(c) for c in row) + " |" for row in rows[1:]]
+        return "\n".join([header, sep] + data)
+    except Exception:
+        return ""
+
+
+def json_to_markdown(path: Path) -> str:
+    """Convert a JSON file to a fenced code block (capped at 50k chars)."""
+    try:
+        import json as _json
+        data = _json.loads(path.read_text(errors="ignore"))
+        pretty = _json.dumps(data, indent=2, ensure_ascii=False)
+        return f"```json\n{pretty[:50000]}\n```"
+    except Exception:
+        return f"```json\n{path.read_text(errors='ignore')[:50000]}\n```"
+
+
+def yaml_to_markdown(path: Path) -> str:
+    """Wrap a YAML file in a fenced code block (capped at 50k chars)."""
+    return f"```yaml\n{path.read_text(errors='ignore')[:50000]}\n```"
+
+
+def vtt_to_markdown(path: Path) -> str:
+    """Parse a WebVTT subtitle/transcript file to clean plain text."""
+    lines = path.read_text(errors="ignore").splitlines()
+    out = []
+    for line in lines:
+        line = line.strip()
+        if not line or line.upper() == "WEBVTT":
+            continue
+        if re.match(r"^\d+$", line):
+            continue
+        if "-->" in line:
+            continue
+        line = re.sub(r"<[^>]+>", "", line).strip()
+        if line:
+            out.append(line)
+    return "\n".join(out)
+
+
+def srt_to_markdown(path: Path) -> str:
+    """Parse an SRT subtitle file to clean plain text."""
+    lines = path.read_text(errors="ignore").splitlines()
+    out = []
+    for line in lines:
+        line = line.strip()
+        if not line or re.match(r"^\d+$", line):
+            continue
+        if re.match(r"\d{1,2}:\d{2}:\d{2}[,\.]\d{3}\s*-->", line):
+            continue
+        line = re.sub(r"<[^>]+>", "", line).strip()
+        if line:
+            out.append(line)
+    return "\n".join(out)
+
+
+def audio_to_markdown(path: Path) -> str:
+    """Transcribe an audio file to markdown using faster-whisper (base model)."""
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        return ""
+    try:
+        model = WhisperModel(
+            "base", device="cpu", compute_type="int8",
+            download_root=str(Path.home() / ".cache" / "whisper"),
+        )
+        segments, info = model.transcribe(
+            str(path),
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 500, "threshold": 0.5},
+        )
+        duration = f"{info.duration:.1f}s" if hasattr(info, "duration") and info.duration else ""
+        lines = [f"# Transcript: {path.name}", f"Language: {info.language}"]
+        if duration:
+            lines.append(f"Duration: {duration}")
+        lines.append("")
+        for seg in segments:
+            lines.append(f"[{seg.start:.1f}s] {seg.text.strip()}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def video_to_markdown(path: Path) -> str:
+    """Extract audio from a video via ffmpeg, then transcribe with faster-whisper."""
+    import subprocess
+    import tempfile
+    import os
+    try:
+        from faster_whisper import WhisperModel  # noqa: F401 — check dep before extracting
+    except ImportError:
+        return ""
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp_path = tmp.name
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-i", str(path), "-ar", "16000", "-ac", "1", "-f", "wav", tmp_path],
+            capture_output=True,
+            timeout=300,
+        )
+        if result.returncode != 0:
+            return ""
+        md = audio_to_markdown(Path(tmp_path))
+        return md.replace(Path(tmp_path).name, path.name) if md else ""
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        return ""
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+
+def xls_to_markdown(path: Path) -> str:
+    """Convert old-format .xls to markdown using xlrd."""
+    try:
+        import xlrd
+        wb = xlrd.open_workbook(str(path))
+        sections = []
+        for sheet in wb.sheets():
+            rows = [
+                [str(sheet.cell_value(rx, cx)) for cx in range(sheet.ncols)]
+                for rx in range(sheet.nrows)
+            ]
+            if not rows:
+                continue
+            sections.append(f"## Sheet: {sheet.name}")
+            header = "| " + " | ".join(rows[0]) + " |"
+            sep = "| " + " | ".join("---" for _ in rows[0]) + " |"
+            sections.extend([header, sep])
+            for row in rows[1:]:
+                sections.append("| " + " | ".join(row) + " |")
+        return "\n".join(sections)
+    except ImportError:
+        return ""
+    except Exception:
+        return ""
+
+
+def xlsb_to_markdown(path: Path) -> str:
+    """Convert Excel binary format .xlsb to markdown using pyxlsb."""
+    try:
+        from pyxlsb import open_workbook
+        sections = []
+        with open_workbook(str(path)) as wb:
+            for sheet_name in wb.sheets:
+                with wb.get_sheet(sheet_name) as ws:
+                    rows = [
+                        [str(cell.v) if cell.v is not None else "" for cell in row]
+                        for row in ws.rows()
+                    ]
+                if not rows:
+                    continue
+                sections.append(f"## Sheet: {sheet_name}")
+                header = "| " + " | ".join(rows[0]) + " |"
+                sep = "| " + " | ".join("---" for _ in rows[0]) + " |"
+                sections.extend([header, sep])
+                for row in rows[1:]:
+                    sections.append("| " + " | ".join(row) + " |")
+        return "\n".join(sections)
+    except ImportError:
+        return ""
+    except Exception:
+        return ""
+
+
+def iwork_to_markdown(path: Path) -> str:
+    """Extract text from Apple iWork files (.pages, .numbers, .keynote).
+
+    Works for pre-2013 XML-based format. Newer .iwa (protobuf) files cannot
+    be parsed without specialised tools — a stub is returned instead.
+    """
+    import zipfile
+    import xml.etree.ElementTree as ET
+    try:
+        with zipfile.ZipFile(str(path), "r") as zf:
+            names = zf.namelist()
+            xml_files = [n for n in names if n.endswith(".xml") or n.endswith(".apxl")]
+            if not xml_files and any(n.endswith(".iwa") for n in names):
+                return (
+                    f"# {path.name}\n\n"
+                    "This file uses Apple's protobuf (.iwa) format.\n"
+                    "To extract text, convert with LibreOffice headless:\n"
+                    f"```\nlibreoffice --headless --convert-to docx \"{path.name}\"\n```\n"
+                )
+            texts = []
+            for xml_name in xml_files[:5]:
+                with zf.open(xml_name) as f:
+                    content = f.read().decode("utf-8", errors="ignore")
+                try:
+                    root = ET.fromstring(content)
+                    texts.append(" ".join(root.itertext()))
+                except ET.ParseError:
+                    texts.append(re.sub(r"<[^>]+>", " ", content))
+            return "\n\n".join(t.strip() for t in texts if t.strip())
+    except (zipfile.BadZipFile, Exception):
+        return ""
+
+
+def odf_to_markdown(path: Path) -> str:
+    """Extract text from OpenDocument files (.odt, .ods, .odp) via content.xml."""
+    import zipfile
+    import xml.etree.ElementTree as ET
+    try:
+        with zipfile.ZipFile(str(path), "r") as zf:
+            if "content.xml" not in zf.namelist():
+                return ""
+            with zf.open("content.xml") as f:
+                content = f.read().decode("utf-8", errors="ignore")
+        # Strip namespace prefixes so itertext() works cleanly
+        content = re.sub(r' xmlns[^=]*="[^"]*"', "", content)
+        content = re.sub(r"<\w+:([^> ]+)", r"<\1", content)
+        content = re.sub(r"</\w+:[^>]+>", lambda m: "</" + m.group(0).split(":")[-1], content)
+        try:
+            root = ET.fromstring(content)
+            parts = [t.strip() for t in root.itertext() if t.strip()]
+            return "\n".join(parts)
+        except ET.ParseError:
+            return re.sub(r"<[^>]+>", " ", content).strip()
+    except (zipfile.BadZipFile, Exception):
+        return ""
+
+
+def rtf_to_markdown(path: Path) -> str:
+    """Convert RTF to plain text using striprtf."""
+    try:
+        from striprtf.striprtf import rtf_to_text
+        return rtf_to_text(path.read_text(errors="ignore"))
+    except ImportError:
+        return ""
+    except Exception:
+        return ""
+
+
+def ipynb_to_markdown(path: Path) -> str:
+    """Convert a Jupyter notebook to markdown (code cells + outputs + markdown cells)."""
+    import json as _json
+    try:
+        nb = _json.loads(path.read_text(errors="ignore"))
+        lang = nb.get("metadata", {}).get("kernelspec", {}).get("language", "python")
+        parts = []
+        for cell in nb.get("cells", []):
+            ctype = cell.get("cell_type", "")
+            source = "".join(cell.get("source", []))
+            if not source.strip():
+                continue
+            if ctype == "markdown":
+                parts.append(source)
+            elif ctype == "code":
+                parts.append(f"```{lang}\n{source}\n```")
+                for output in cell.get("outputs", []):
+                    if output.get("output_type") in ("stream", "execute_result", "display_data"):
+                        text = "".join(
+                            output.get("text", output.get("data", {}).get("text/plain", []))
+                        )
+                        if text.strip():
+                            parts.append(f"**Output:**\n```\n{text.strip()}\n```")
+            elif ctype == "raw":
+                parts.append(source)
+        return "\n\n".join(parts)
+    except Exception:
+        return ""
+
+
+def xml_to_markdown(path: Path) -> str:
+    """Strip XML tags and return the text content of an XML file."""
+    import xml.etree.ElementTree as ET
+    try:
+        content = path.read_text(errors="ignore")
+        try:
+            root = ET.fromstring(content)
+            return "\n".join(t.strip() for t in root.itertext() if t.strip())
+        except ET.ParseError:
+            return re.sub(r"<[^>]+>", " ", content).strip()
+    except Exception:
+        return ""
+
+
+def drawio_to_markdown(path: Path) -> str:
+    """Extract shape labels from a draw.io diagram (.drawio / .xml)."""
+    import zipfile
+    import xml.etree.ElementTree as ET
+    try:
+        # .drawio files can be plain XML or a zipped XML bundle
+        try:
+            with zipfile.ZipFile(str(path), "r") as zf:
+                xml_names = [n for n in zf.namelist() if n.endswith(".xml")]
+                if not xml_names:
+                    raise zipfile.BadZipFile
+                with zf.open(xml_names[0]) as f:
+                    content = f.read().decode("utf-8", errors="ignore")
+        except zipfile.BadZipFile:
+            content = path.read_text(errors="ignore")
+        try:
+            root = ET.fromstring(content)
+            labels = []
+            for elem in root.iter():
+                for attr in ("value", "label", "tooltip"):
+                    text = re.sub(r"<[^>]+>", "", elem.get(attr, "")).strip()
+                    if text and text not in labels:
+                        labels.append(text)
+            return "\n".join(labels)
+        except ET.ParseError:
+            return re.sub(r"<[^>]+>", " ", content).strip()
+    except Exception:
+        return ""
+
+
+def fig_to_markdown(path: Path) -> str:
+    """Best-effort text extraction from Figma family files (.fig, .jam, .buzz, .site).
+
+    Figma's binary format is proprietary. This tries ZIP extraction for any
+    embedded JSON/text. For reliable extraction use the Figma REST API:
+    GET https://api.figma.com/v1/files/{file_key}
+    """
+    import zipfile
+    try:
+        with zipfile.ZipFile(str(path), "r") as zf:
+            texts: list[str] = []
+            for name in zf.namelist():
+                if name.endswith(".json"):
+                    with zf.open(name) as f:
+                        content = f.read().decode("utf-8", errors="ignore")
+                    texts.extend(
+                        re.findall(
+                            r'"(?:name|text|content|label|description)"\s*:\s*"([^"]{2,})"',
+                            content,
+                        )
+                    )
+                elif name.endswith(".xml"):
+                    with zf.open(name) as f:
+                        content = f.read().decode("utf-8", errors="ignore")
+                    texts.extend(re.findall(r">([^<]{2,})<", content))
+            if texts:
+                unique = list(dict.fromkeys(t.strip() for t in texts if t.strip()))
+                return f"# {path.name}\n\n" + "\n".join(unique[:500])
+    except (zipfile.BadZipFile, Exception):
+        pass
+    return (
+        f"# {path.name}\n\n"
+        "Figma binary format — local text extraction unavailable.\n"
+        "Export via Figma REST API: GET https://api.figma.com/v1/files/{{file_key}}\n"
+        "or File > Export from the Figma desktop/web app.\n"
+    )
+
+
+# ── Archive extraction ────────────────────────────────────────────────────────
+
+def _extract_archive(path: Path, out_dir: Path) -> Path | None:
+    """Extract a .zip or .rar archive to out_dir/extracted/{stem}_{hash}/."""
+    import hashlib
+    ext = path.suffix.lower()
+    name_hash = hashlib.sha256(str(path.resolve()).encode()).hexdigest()[:8]
+    target = out_dir / "extracted" / f"{path.stem}_{name_hash}"
+    if target.exists() and any(target.iterdir()):
+        return target  # already extracted
+    target.mkdir(parents=True, exist_ok=True)
+    try:
+        if ext == ".zip":
+            import zipfile
+            with zipfile.ZipFile(str(path), "r") as zf:
+                zf.extractall(str(target))
+            return target
+        if ext == ".rar":
+            import rarfile
+            with rarfile.RarFile(str(path)) as rf:
+                rf.extractall(str(target))
+            return target
+    except Exception:
+        return None
+    return None
+
+
+def _expand_archives(all_files: list[Path], seen: set[Path], converted_dir: Path) -> None:
+    """In-place: replace archive entries with their extracted file paths.
+
+    Nested archives are skipped to avoid recursive expansion.
+    """
+    archive_indices = [
+        i for i, p in enumerate(all_files) if p.suffix.lower() in ARCHIVE_EXTENSIONS
+    ]
+    for i in reversed(archive_indices):
+        archive_path = all_files.pop(i)
+        extracted = _extract_archive(archive_path, converted_dir)
+        if not extracted:
+            continue
+        for dirpath, dirnames, filenames in os.walk(extracted):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            for fname in filenames:
+                ep = Path(dirpath) / fname
+                if ep.suffix.lower() in ARCHIVE_EXTENSIONS:
+                    continue  # skip nested archives
+                if ep not in seen:
+                    seen.add(ep)
+                    all_files.append(ep)
+
+
+# Maps extension → (converter_fn, pip_hint) for all convertible formats
+_CONVERTER_DISPATCH: dict[str, tuple] = {
+    # Office / word processors
+    ".docx":    (docx_to_markdown,       "graphifyy[office]"),
+    ".xlsx":    (xlsx_to_markdown,        "graphifyy[office]"),
+    ".xlsm":    (xlsx_to_markdown,        "graphifyy[office]"),
+    ".xltx":    (xlsx_to_markdown,        "graphifyy[office]"),
+    ".xltm":    (xlsx_to_markdown,        "graphifyy[office]"),
+    ".xlam":    (xlsx_to_markdown,        "graphifyy[office]"),
+    ".xls":     (xls_to_markdown,         "graphifyy[xls]"),
+    ".xlsb":    (xlsb_to_markdown,        "graphifyy[xlsb]"),
+    ".pptx":    (pptx_to_markdown,        "graphifyy[pptx]"),
+    # Apple iWork
+    ".pages":   (iwork_to_markdown,       None),
+    ".numbers": (iwork_to_markdown,       None),
+    ".keynote": (iwork_to_markdown,       None),
+    # OpenDocument
+    ".odt":     (odf_to_markdown,         None),
+    ".ods":     (odf_to_markdown,         None),
+    ".odp":     (odf_to_markdown,         None),
+    # eBook / rich text
+    ".epub":    (epub_to_markdown,         "graphifyy[epub]"),
+    ".rtf":     (rtf_to_markdown,          "graphifyy[rtf]"),
+    # Web / markup
+    ".html":    (html_file_to_markdown,   "graphifyy[pdf]"),
+    ".htm":     (html_file_to_markdown,   "graphifyy[pdf]"),
+    ".xml":     (xml_to_markdown,          None),
+    ".drawio":  (drawio_to_markdown,       None),
+    # Data
+    ".csv":     (csv_to_markdown,          None),
+    ".json":    (json_to_markdown,         None),
+    ".yaml":    (yaml_to_markdown,         None),
+    ".yml":     (yaml_to_markdown,         None),
+    # Notebooks
+    ".ipynb":   (ipynb_to_markdown,        None),
+    # Subtitles / transcripts
+    ".vtt":     (vtt_to_markdown,          None),
+    ".srt":     (srt_to_markdown,          None),
+    # Audio
+    ".mp3":     (audio_to_markdown,        "graphifyy[audio] + torch"),
+    ".wav":     (audio_to_markdown,        "graphifyy[audio] + torch"),
+    ".m4a":     (audio_to_markdown,        "graphifyy[audio] + torch"),
+    ".flac":    (audio_to_markdown,        "graphifyy[audio] + torch"),
+    ".ogg":     (audio_to_markdown,        "graphifyy[audio] + torch"),
+    ".aac":     (audio_to_markdown,        "graphifyy[audio] + torch"),
+    ".wma":     (audio_to_markdown,        "graphifyy[audio] + torch"),
+    # Video
+    ".mp4":     (video_to_markdown,        "graphifyy[audio] + torch + ffmpeg"),
+    ".mkv":     (video_to_markdown,        "graphifyy[audio] + torch + ffmpeg"),
+    ".avi":     (video_to_markdown,        "graphifyy[audio] + torch + ffmpeg"),
+    ".mov":     (video_to_markdown,        "graphifyy[audio] + torch + ffmpeg"),
+    ".webm":    (video_to_markdown,        "graphifyy[audio] + torch + ffmpeg"),
+    ".wmv":     (video_to_markdown,        "graphifyy[audio] + torch + ffmpeg"),
+    # Design tools (Figma family)
+    ".fig":     (fig_to_markdown,          None),
+    ".jam":     (fig_to_markdown,          None),
+    ".buzz":    (fig_to_markdown,          None),
+    ".site":    (fig_to_markdown,          None),
+    # Automation workflows (Make.com JSON export)
+    ".make":    (json_to_markdown,         None),
+}
+
+
 def convert_office_file(path: Path, out_dir: Path) -> Path | None:
-    """Convert a .docx or .xlsx to a markdown sidecar in out_dir.
+    """Convert any supported non-text file to a markdown sidecar in out_dir.
 
     Returns the path of the converted .md file, or None if conversion failed
     or the required library is not installed.
     """
+    import hashlib
     ext = path.suffix.lower()
-    if ext == ".docx":
-        text = docx_to_markdown(path)
-    elif ext == ".xlsx":
-        text = xlsx_to_markdown(path)
-    else:
+    entry = _CONVERTER_DISPATCH.get(ext)
+    if entry is None:
         return None
-
+    converter, _ = entry
+    text = converter(path)
     if not text.strip():
         return None
-
     out_dir.mkdir(parents=True, exist_ok=True)
-    # Use a stable name derived from the original path to avoid collisions
-    import hashlib
     name_hash = hashlib.sha256(str(path.resolve()).encode()).hexdigest()[:8]
     out_path = out_dir / f"{path.stem}_{name_hash}.md"
     out_path.write_text(
@@ -212,10 +794,14 @@ def count_words(path: Path) -> int:
         ext = path.suffix.lower()
         if ext == ".pdf":
             return len(extract_pdf_text(path).split())
-        if ext == ".docx":
-            return len(docx_to_markdown(path).split())
-        if ext == ".xlsx":
-            return len(xlsx_to_markdown(path).split())
+        # Audio/video word count is unknown before transcription — skip to avoid slowdown
+        if ext in {'.mp3', '.wav', '.m4a', '.flac', '.ogg', '.aac', '.wma',
+                   '.mp4', '.mkv', '.avi', '.mov', '.webm', '.wmv'}:
+            return 0
+        entry = _CONVERTER_DISPATCH.get(ext)
+        if entry is not None:
+            converter, _ = entry
+            return len(converter(path).split())
         return len(path.read_text(errors="ignore").split())
     except Exception:
         return 0
@@ -340,6 +926,9 @@ def detect(root: Path, *, follow_symlinks: bool = False) -> dict:
 
     converted_dir = root / "graphify-out" / "converted"
 
+    # Extract archives and splice their contents into all_files
+    _expand_archives(all_files, seen, converted_dir)
+
     for p in all_files:
         # For memory dir files, skip hidden/noise filtering
         in_memory = memory_dir.exists() and str(p).startswith(str(memory_dir))
@@ -365,8 +954,10 @@ def detect(root: Path, *, follow_symlinks: bool = False) -> dict:
                     files[ftype].append(str(md_path))
                     total_words += count_words(md_path)
                 else:
-                    # Conversion failed (library not installed) - skip with note
-                    skipped_sensitive.append(str(p) + " [office conversion failed - pip install graphifyy[office]]")
+                    # Conversion failed (library not installed or empty output) - skip with note
+                    hint = _CONVERTER_DISPATCH.get(p.suffix.lower(), (None, None))[1]
+                    suffix = f" - pip install {hint}" if hint else ""
+                    skipped_sensitive.append(str(p) + f" [conversion failed{suffix}]")
                 continue
             files[ftype].append(str(p))
             total_words += count_words(p)

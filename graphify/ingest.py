@@ -173,6 +173,97 @@ Source: {url}
     return content, filename
 
 
+def _youtube_video_id(url: str) -> str | None:
+    """Extract the video ID from any standard YouTube URL form."""
+    parsed = urllib.parse.urlparse(url)
+    # youtu.be/VIDEO_ID
+    if "youtu.be" in parsed.netloc:
+        return parsed.path.lstrip("/").split("/")[0] or None
+    # youtube.com/watch?v=VIDEO_ID
+    qs = urllib.parse.parse_qs(parsed.query)
+    if "v" in qs:
+        return qs["v"][0]
+    # youtube.com/shorts/VIDEO_ID  youtube.com/embed/VIDEO_ID  youtube.com/live/VIDEO_ID
+    parts = [p for p in parsed.path.split("/") if p]
+    if len(parts) >= 2 and parts[0] in ("shorts", "embed", "live", "v"):
+        return parts[1]
+    return None
+
+
+def _fetch_youtube(url: str, author: str | None, contributor: str | None) -> tuple[str, str]:
+    """Fetch a YouTube video: transcript via youtube-transcript-api, with metadata from oEmbed."""
+    video_id = _youtube_video_id(url)
+    now = datetime.now(timezone.utc).isoformat()
+
+    # --- metadata via YouTube oEmbed (no API key) ---
+    title = url
+    channel = ""
+    try:
+        oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(url)}&format=json"
+        data = json.loads(safe_fetch_text(oembed_url))
+        title = data.get("title", url)
+        channel = data.get("author_name", "")
+    except Exception:
+        pass
+
+    # --- transcript via youtube-transcript-api ---
+    transcript_md = ""
+    transcript_source = ""
+    if video_id:
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+            try:
+                segments = YouTubeTranscriptApi.get_transcript(video_id)
+                transcript_source = "auto/manual captions"
+            except NoTranscriptFound:
+                # try any available language
+                tlist = YouTubeTranscriptApi.list_transcripts(video_id)
+                segments = next(iter(tlist)).fetch()
+                transcript_source = "translated captions"
+            lines = [f"[{int(s['start']//60):02d}:{int(s['start']%60):02d}] {s['text'].strip()}" for s in segments]
+            transcript_md = "\n".join(lines)
+        except ImportError:
+            transcript_source = "youtube-transcript-api not installed (pip install graphifyy[youtube])"
+        except Exception as exc:
+            transcript_source = f"transcript unavailable: {exc}"
+
+    # --- fallback: scrape description from page HTML ---
+    description_md = ""
+    if not transcript_md:
+        try:
+            html = _fetch_html(url)
+            description_md = _html_to_markdown(html, url)[:4000]
+        except Exception:
+            pass
+
+    content = f"""---
+source_url: {url}
+type: youtube
+title: "{_yaml_str(title)}"
+channel: "{_yaml_str(channel)}"
+video_id: {video_id or ''}
+captured_at: {now}
+contributor: {contributor or author or 'unknown'}
+transcript_source: {transcript_source}
+---
+
+# {title}
+
+**Channel:** {channel}
+**URL:** {url}
+
+"""
+    if transcript_md:
+        content += f"## Transcript\n\n{transcript_md}\n"
+    elif description_md:
+        content += f"## Page Content\n\n{description_md}\n"
+    else:
+        content += "_No transcript or description available._\n"
+
+    filename = f"youtube_{video_id or _safe_filename(url, '')}.md"
+    return content, filename
+
+
 def _download_binary(url: str, suffix: str, target_dir: Path) -> Path:
     """Download a binary file (PDF, image) directly."""
     filename = _safe_filename(url, suffix)
@@ -211,6 +302,8 @@ def ingest(url: str, target_dir: Path, author: str | None = None, contributor: s
             content, filename = _fetch_tweet(url, author, contributor)
         elif url_type == "arxiv":
             content, filename = _fetch_arxiv(url, author, contributor)
+        elif url_type == "youtube":
+            content, filename = _fetch_youtube(url, author, contributor)
         else:
             content, filename = _fetch_webpage(url, author, contributor)
     except (urllib.error.HTTPError, urllib.error.URLError, OSError) as exc:

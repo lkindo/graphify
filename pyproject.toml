@@ -40,13 +40,25 @@ Repository = "https://github.com/safishamsi/graphify"
 Issues = "https://github.com/safishamsi/graphify/issues"
 
 [project.optional-dependencies]
-mcp = ["mcp"]
-neo4j = ["neo4j"]
-pdf = ["pypdf", "html2text"]
-watch = ["watchdog"]
-leiden = ["graspologic"]
-office = ["python-docx", "openpyxl"]
-all = ["mcp", "neo4j", "pypdf", "html2text", "watchdog", "graspologic", "python-docx", "openpyxl"]
+mcp     = ["mcp"]
+neo4j   = ["neo4j"]
+pdf     = ["pypdf", "html2text"]
+watch   = ["watchdog"]
+leiden  = ["graspologic"]
+office  = ["python-docx", "openpyxl"]
+pptx    = ["python-pptx"]
+epub    = ["ebooklib"]
+xls     = ["xlrd"]
+xlsb    = ["pyxlsb"]
+rtf     = ["striprtf"]
+rar     = ["rarfile"]
+audio   = ["faster-whisper"]
+youtube = ["youtube-transcript-api"]
+all     = [
+    "mcp", "neo4j", "pypdf", "html2text", "watchdog",
+    "python-docx", "openpyxl", "python-pptx", "ebooklib",
+    "xlrd", "pyxlsb", "striprtf", "rarfile",
+]
 
 [project.scripts]
 graphify = "graphify.__main__:main"
