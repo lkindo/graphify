@@ -55,7 +55,7 @@ Use it for:
 
 If no path was given, use `.` (current directory). Do not ask the user for a path.
 
-Determine the output directory: if `--output-dir <dir>` was given, set `GRAPHIFY_OUT=<dir>`; otherwise `GRAPHIFY_OUT=graphify-out`. Substitute `${GRAPHIFY_OUT}` with this value in every bash block below before executing.
+Determine the output directory: if `--output-dir <dir>` was given, set `GRAPHIFY_OUT=<dir>`; otherwise `GRAPHIFY_OUT=graphify-out`. Substitute `${GRAPHIFY_OUT}` with this value in every bash block below before executing (including inside Python `-c "..."` strings — the shell expands `${GRAPHIFY_OUT}` before Python sees the argument).
 
 Follow these steps in order. Do not skip steps.
 
