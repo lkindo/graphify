@@ -21,9 +21,68 @@
 #    before any graph construction happens.
 #
 from __future__ import annotations
+import os
 import sys
 import networkx as nx
 from .validate import validate_extraction
+
+
+def _canonical_file_key(path: str) -> str:
+    """Normalize paths for comparing manifest paths to node source_file (Windows-safe)."""
+    return os.path.normcase(os.path.normpath(path))
+
+
+def prune_nodes_for_deleted_files(G: nx.Graph, deleted_files: list[str]) -> int:
+    """Remove nodes tied to deleted source files, plus incident edges.
+
+    Matches ``node['source_file']`` to paths in *deleted_files* using normalized
+    path comparison. Nodes without ``source_file`` are kept (e.g. some inferred
+    aggregates). Hyperedges that belong to a deleted file are dropped; remaining
+    hyperedges have removed node ids stripped, and hyperedges with fewer than two
+    nodes left are dropped.
+
+    Returns the number of nodes removed.
+    """
+    if not deleted_files:
+        return 0
+
+    deleted_keys = {_canonical_file_key(p) for p in deleted_files}
+    to_remove: list = []
+    for nid, data in G.nodes(data=True):
+        sf = (data.get("source_file") or "").strip()
+        if not sf:
+            continue
+        if _canonical_file_key(sf) in deleted_keys:
+            to_remove.append(nid)
+
+    removed_ids = set(to_remove)
+    G.remove_nodes_from(to_remove)
+    _prune_hyperedges_after_deletions(G, removed_ids, deleted_keys)
+    return len(to_remove)
+
+
+def _prune_hyperedges_after_deletions(
+    G: nx.Graph,
+    removed_node_ids: set[str],
+    deleted_keys: set[str],
+) -> None:
+    hes = G.graph.get("hyperedges")
+    if not hes:
+        return
+    new_list: list[dict] = []
+    for h in hes:
+        sf = (h.get("source_file") or "").strip()
+        if sf and _canonical_file_key(sf) in deleted_keys:
+            continue
+        nodes = h.get("nodes", [])
+        if isinstance(nodes, list):
+            nodes = [n for n in nodes if n not in removed_node_ids]
+        if len(nodes) < 2:
+            continue
+        h2 = dict(h)
+        h2["nodes"] = nodes
+        new_list.append(h2)
+    G.graph["hyperedges"] = new_list
 
 
 def build_from_json(extraction: dict) -> nx.Graph:

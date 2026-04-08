@@ -691,12 +691,17 @@ from pathlib import Path
 
 result = detect_incremental(Path('INPUT_PATH'))
 new_total = result.get('new_total', 0)
+deleted_files = result.get('deleted_files') or []
 print(json.dumps(result, indent=2))
 Path('.graphify_incremental.json').write_text(json.dumps(result))
-if new_total == 0:
+if new_total == 0 and not deleted_files:
     print('No files changed since last run. Nothing to update.')
     raise SystemExit(0)
-print(f'{new_total} new/changed file(s) to re-extract.')
+if new_total == 0 and deleted_files:
+    print(f'{len(deleted_files)} file(s) removed from corpus — graph will be pruned (no re-extraction).')
+    Path('.graphify_extract.json').write_text(json.dumps({'nodes': [], 'edges': [], 'hyperedges': []}))
+else:
+    print(f'{new_total} new/changed file(s) to re-extract.')
 "
 ```
 
@@ -725,7 +730,7 @@ Then:
 ```bash
 $(cat .graphify_python) -c "
 import sys, json
-from graphify.build import build_from_json
+from graphify.build import build_from_json, prune_nodes_for_deleted_files
 from graphify.export import to_json
 from networkx.readwrite import json_graph
 import networkx as nx
@@ -734,6 +739,15 @@ from pathlib import Path
 # Load existing graph
 existing_data = json.loads(Path('graphify-out/graph.json').read_text())
 G_existing = json_graph.node_link_graph(existing_data, edges='links')
+if 'hyperedges' in existing_data:
+    G_existing.graph['hyperedges'] = list(existing_data['hyperedges'])
+
+# Remove nodes for files deleted since last run (see detect_incremental deleted_files)
+inc = json.loads(Path('.graphify_incremental.json').read_text()) if Path('.graphify_incremental.json').exists() else {}
+deleted = inc.get('deleted_files') or []
+if deleted:
+    n_pruned = prune_nodes_for_deleted_files(G_existing, deleted)
+    print(f'Pruned {n_pruned} node(s) for {len(deleted)} deleted source file(s)')
 
 # Load new extraction
 new_extraction = json.loads(Path('.graphify_extract.json').read_text())
