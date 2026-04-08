@@ -72,3 +72,20 @@ def test_clear_cache(tmp_file, cache_root):
     assert len(list((cache_root / "graphify-out" / "cache").glob("*.json"))) > 0
     clear_cache(cache_root)
     assert len(list((cache_root / "graphify-out" / "cache").glob("*.json"))) == 0
+
+
+def test_cache_roundtrip_custom_output_dir(tmp_file, tmp_path):
+    """save/load works when output_dir is specified instead of root."""
+    custom_out = tmp_path / "my-custom-out"
+    result = {"nodes": [{"id": "n1", "label": "N1"}], "edges": []}
+    save_cached(tmp_file, result, output_dir=custom_out)
+    loaded = load_cached(tmp_file, output_dir=custom_out)
+    assert loaded == result
+
+
+def test_cache_dir_uses_output_dir(tmp_path):
+    """cache_dir() places cache inside output_dir when given."""
+    custom_out = tmp_path / "my-out"
+    d = cache_dir(output_dir=custom_out)
+    assert d == custom_out / "cache"
+    assert d.exists()
