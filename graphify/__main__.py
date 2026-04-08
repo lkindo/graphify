@@ -77,6 +77,12 @@ _PLATFORM_CONFIG: dict[str, dict] = {
         "skill_dst": Path(".claude") / "skills" / "graphify" / "SKILL.md",
         "claude_md": True,
     },
+    "gemini": {
+        "skill_file": "skill-gemini.md",
+        "skill_dst": Path(".gemini") / "extensions" / "graphify" / "skills" / "graphify" / "SKILL.md",
+        "claude_md": False,
+        "gemini_md": True,
+    },
 }
 
 
@@ -100,7 +106,18 @@ def install(platform: str = "claude") -> None:
     (skill_dst.parent / ".graphify_version").write_text(__version__, encoding="utf-8")
     print(f"  skill installed  ->  {skill_dst}")
 
-    if cfg["claude_md"]:
+    if platform == "gemini":
+        ext_json = skill_dst.parent.parent.parent / "gemini-extension.json"
+        ext_config = {
+            "name": "graphify",
+            "version": __version__,
+            "description": "any input to knowledge graph",
+            "skills": ["graphify"],
+        }
+        ext_json.write_text(json.dumps(ext_config, indent=2), encoding="utf-8")
+        print(f"  extension config ->  {ext_json}")
+
+    if cfg.get("claude_md"):
         # Register in ~/.claude/CLAUDE.md (Claude Code only)
         claude_md = Path.home() / ".claude" / "CLAUDE.md"
         if claude_md.exists():
@@ -114,6 +131,21 @@ def install(platform: str = "claude") -> None:
             claude_md.parent.mkdir(parents=True, exist_ok=True)
             claude_md.write_text(_SKILL_REGISTRATION.lstrip(), encoding="utf-8")
             print(f"  CLAUDE.md        ->  created at {claude_md}")
+
+    if cfg.get("gemini_md"):
+        # Register in ~/.gemini/GEMINI.md (Gemini CLI only)
+        gemini_md = Path.home() / ".gemini" / "GEMINI.md"
+        if gemini_md.exists():
+            content = gemini_md.read_text(encoding="utf-8")
+            if "graphify" in content:
+                print(f"  GEMINI.md        ->  already registered (no change)")
+            else:
+                gemini_md.write_text(content.rstrip() + _SKILL_REGISTRATION.replace(".claude/skills", ".gemini/extensions/graphify/skills"), encoding="utf-8")
+                print(f"  GEMINI.md        ->  skill registered in {gemini_md}")
+        else:
+            gemini_md.parent.mkdir(parents=True, exist_ok=True)
+            gemini_md.write_text(_SKILL_REGISTRATION.lstrip().replace(".claude/skills", ".gemini/extensions/graphify/skills"), encoding="utf-8")
+            print(f"  GEMINI.md        ->  created at {gemini_md}")
 
     print()
     print("Done. Open your AI coding assistant and type:")
@@ -134,6 +166,20 @@ Rules:
 """
 
 _CLAUDE_MD_MARKER = "## graphify"
+
+_GEMINI_MD_SECTION = """\
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+"""
+
+_GEMINI_MD_MARKER = "## graphify"
+
 
 # AGENTS.md section for Codex, OpenCode, and OpenClaw.
 # All three platforms read AGENTS.md in the project root for persistent instructions.
@@ -299,6 +345,55 @@ def claude_uninstall(project_dir: Path | None = None) -> None:
     _uninstall_claude_hook(project_dir or Path("."))
 
 
+def gemini_install(project_dir: Path | None = None) -> None:
+    """Write the graphify section to the local GEMINI.md."""
+    target = (project_dir or Path(".")) / "GEMINI.md"
+
+    if target.exists():
+        content = target.read_text(encoding="utf-8")
+        if _GEMINI_MD_MARKER in content:
+            print("graphify already configured in GEMINI.md")
+            return
+        new_content = content.rstrip() + "\n\n" + _GEMINI_MD_SECTION
+    else:
+        new_content = _GEMINI_MD_SECTION
+
+    target.write_text(new_content, encoding="utf-8")
+    print(f"graphify section written to {target.resolve()}")
+
+    print()
+    print("Gemini CLI will now check the knowledge graph before answering")
+    print("codebase questions and rebuild it after code changes.")
+
+
+def gemini_uninstall(project_dir: Path | None = None) -> None:
+    """Remove the graphify section from the local GEMINI.md."""
+    target = (project_dir or Path(".")) / "GEMINI.md"
+
+    if not target.exists():
+        print("No GEMINI.md found in current directory - nothing to do")
+        return
+
+    content = target.read_text(encoding="utf-8")
+    if _GEMINI_MD_MARKER not in content:
+        print("graphify section not found in GEMINI.md - nothing to do")
+        return
+
+    # Remove the ## graphify section: from the marker to the next ## heading or EOF
+    cleaned = re.sub(
+        r"\n*## graphify\n.*?(?=\n## |\Z)",
+        "",
+        content,
+        flags=re.DOTALL,
+    ).rstrip()
+    if cleaned:
+        target.write_text(cleaned + "\n", encoding="utf-8")
+        print(f"graphify section removed from {target.resolve()}")
+    else:
+        target.unlink()
+        print(f"GEMINI.md was empty after removal - deleted {target.resolve()}")
+
+
 def main() -> None:
     # Check all known skill install locations for a stale version stamp
     for cfg in _PLATFORM_CONFIG.values():
@@ -309,7 +404,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|gemini|windows|codex|opencode|claw|droid)")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -320,6 +415,8 @@ def main() -> None:
         print("  hook status             check if git hooks are installed")
         print("  claude install          write graphify section to CLAUDE.md + PreToolUse hook (Claude Code)")
         print("  claude uninstall        remove graphify section from CLAUDE.md + PreToolUse hook")
+        print("  gemini install          write graphify section to GEMINI.md (Gemini CLI)")
+        print("  gemini uninstall        remove graphify section from GEMINI.md")
         print("  codex install           write graphify section to AGENTS.md (Codex)")
         print("  codex uninstall         remove graphify section from AGENTS.md")
         print("  opencode install        write graphify section to AGENTS.md (OpenCode)")
@@ -356,6 +453,15 @@ def main() -> None:
             claude_uninstall()
         else:
             print("Usage: graphify claude [install|uninstall]", file=sys.stderr)
+            sys.exit(1)
+    elif cmd == "gemini":
+        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
+        if subcmd == "install":
+            gemini_install()
+        elif subcmd == "uninstall":
+            gemini_uninstall()
+        else:
+            print("Usage: graphify gemini [install|uninstall]", file=sys.stderr)
             sys.exit(1)
     elif cmd in ("codex", "opencode", "claw", "droid"):
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""

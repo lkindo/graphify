@@ -46,6 +46,7 @@ pip install graphifyy && graphify install
 | 平台 | 安装命令 |
 |------|----------|
 | Claude Code | `graphify install` |
+| Gemini CLI | `graphify install --platform gemini` |
 | Codex | `graphify install --platform codex` |
 | OpenCode | `graphify install --platform opencode` |
 | OpenClaw | `graphify install --platform claw` |
@@ -65,6 +66,7 @@ Codex 用户还需要在 `~/.codex/config.toml` 的 `[features]` 下打开 `mult
 | 平台 | 命令 |
 |------|------|
 | Claude Code | `graphify claude install` |
+| Gemini CLI | `graphify gemini install` |
 | Codex | `graphify codex install` |
 | OpenCode | `graphify opencode install` |
 | OpenClaw | `graphify claw install` |
@@ -74,6 +76,8 @@ Codex 用户还需要在 `~/.codex/config.toml` 的 `[features]` 下打开 `mult
 2. 安装一个 **PreToolUse hook**（写入 `settings.json`），在每次 `Glob` 和 `Grep` 前触发
 
 如果知识图谱存在，Claude 会先看到：_"graphify: Knowledge graph exists. Read graphify-out/GRAPH_REPORT.md for god nodes and community structure before searching raw files."_ —— 这样 Claude 会优先按图谱导航，而不是一上来就 grep 整个项目。
+
+**Gemini CLI** 会把同样的规则写进项目根目录的 `GEMINI.md`。和 Claude Code 一样，它会在每次会话开始时检查这些指令。
 
 **Codex、OpenCode、OpenClaw** 会把同样的规则写进项目根目录的 `AGENTS.md`。这些平台没有 PreToolUse hook，所以 `AGENTS.md` 是它们的常驻机制。
 
