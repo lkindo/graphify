@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/graphifyy)](https://pypi.org/project/graphifyy/)
 [![Sponsor](https://img.shields.io/badge/sponsor-safishamsi-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/safishamsi)
 
-**An AI coding assistant skill.** Type `/graphify` in Claude Code, Codex, OpenCode, OpenClaw, or Factory Droid - it reads your files, builds a knowledge graph, and gives you back structure you didn't know was there. Understand a codebase faster. Find the "why" behind architectural decisions.
+**An AI coding assistant skill.** Type `/graphify` in Claude Code, Codex, OpenCode, OpenClaw, OB-1, or Factory Droid - it reads your files, builds a knowledge graph, and gives you back structure you didn't know was there. Understand a codebase faster. Find the "why" behind architectural decisions.
 
 Fully multimodal. Drop in code, PDFs, markdown, screenshots, diagrams, whiteboard photos, even images in other languages - graphify uses Claude vision to extract concepts and relationships from all of it and connects them into one graph. 19 languages supported via tree-sitter AST (Python, JS, TS, Go, Rust, Java, C, C++, Ruby, C#, Kotlin, Scala, PHP, Swift, Lua, Zig, PowerShell, Elixir, Objective-C).
 
@@ -46,7 +46,7 @@ Every relationship is tagged `EXTRACTED` (found directly in source), `INFERRED` 
 
 ## Install
 
-**Requires:** Python 3.10+ and one of: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [OpenClaw](https://openclaw.ai), or [Factory Droid](https://factory.ai)
+**Requires:** Python 3.10+ and one of: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [OpenClaw](https://openclaw.ai), [OB-1](https://www.openblocklabs.com), or [Factory Droid](https://factory.ai)
 
 ```bash
 pip install graphifyy && graphify install
@@ -62,6 +62,7 @@ pip install graphifyy && graphify install
 | Claude Code (Windows) | `graphify install` (auto-detected) or `graphify install --platform windows` |
 | Codex | `graphify install --platform codex` |
 | OpenCode | `graphify install --platform opencode` |
+| OB-1 | `graphify install --platform ob1` |
 | OpenClaw | `graphify install --platform claw` |
 | Factory Droid | `graphify install --platform droid` |
 
@@ -84,12 +85,13 @@ After building a graph, run this once in your project:
 | Claude Code | `graphify claude install` |
 | Codex | `graphify codex install` |
 | OpenCode | `graphify opencode install` |
+| OB-1 | `graphify ob1 install` |
 | OpenClaw | `graphify claw install` |
 | Factory Droid | `graphify droid install` |
 
 **Claude Code** does two things: writes a `CLAUDE.md` section telling Claude to read `graphify-out/GRAPH_REPORT.md` before answering architecture questions, and installs a **PreToolUse hook** (`settings.json`) that fires before every Glob and Grep call. If a knowledge graph exists, Claude sees: _"graphify: Knowledge graph exists. Read GRAPH_REPORT.md for god nodes and community structure before searching raw files."_ — so Claude navigates via the graph instead of grepping through every file.
 
-**Codex, OpenCode, OpenClaw, Factory Droid** write the same rules to `AGENTS.md` in your project root. These platforms don't support PreToolUse hooks, so AGENTS.md is the always-on mechanism.
+**Codex, OpenCode, OB-1, OpenClaw, Factory Droid** write the same rules to `AGENTS.md` in your project root. These platforms don't support PreToolUse hooks, so AGENTS.md is the always-on mechanism.
 
 Uninstall with the matching uninstall command (e.g. `graphify claude uninstall`).
 
