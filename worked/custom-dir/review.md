@@ -1,7 +1,7 @@
-# Review: doc-pipeline
+# Review: custom-dir
 
 **Corpus:** `worked/example/raw` — 5 Python modules + 2 markdown docs, ~2,159 words  
-**Command:** `/graphify worked/example/raw --output-dir worked/doc-pipeline`  
+**Command:** `/graphify worked/example/raw --output-dir worked/custom-dir`  
 **Result:** 73 nodes · 112 edges · 5 communities
 
 ---
@@ -28,4 +28,4 @@
 
 ## Note on --output-dir
 
-This corpus was run specifically to verify the `--output-dir` flag added in PR #61. The flag routes all outputs to a user-specified directory (`worked/doc-pipeline/`) instead of the hardcoded `graphify-out/`. Confirmed: `graphify-out/` was never created.
+This corpus was run specifically to verify the `--output-dir` flag added in PR #61. The flag routes all outputs to a user-specified directory (`worked/custom-dir/`) instead of the hardcoded `graphify-out/`. Confirmed: `graphify-out/` was never created.
