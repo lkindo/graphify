@@ -37,10 +37,12 @@ def _rebuild_code(watch_path: Path, output_dir: str = "graphify-out", *, follow_
         from graphify.report import generate
         from graphify.export import to_json
 
+        out = _resolve_out(watch_path, output_dir)
+        out_name = out.name
         code_files = collect_files(watch_path, follow_symlinks=follow_symlinks)
         code_files = [
             f for f in code_files
-            if "graphify-out" not in f.parts
+            if out_name not in f.parts
             and "__pycache__" not in f.parts
         ]
 
@@ -64,7 +66,6 @@ def _rebuild_code(watch_path: Path, output_dir: str = "graphify-out", *, follow_
         labels = {cid: "Community " + str(cid) for cid in communities}
         questions = suggest_questions(G, communities, labels)
 
-        out = _resolve_out(watch_path, output_dir)
         out.mkdir(exist_ok=True)
 
         report = generate(G, communities, cohesion, labels, gods, surprises, detection,
@@ -133,7 +134,8 @@ def watch(watch_path: Path, debounce: float = 3.0, output_dir: str = "graphify-o
                 return
             if any(part.startswith(".") for part in path.parts):
                 return
-            if "graphify-out" in path.parts:
+            out_name = _resolve_out(watch_path, output_dir).name
+            if out_name in path.parts:
                 return
             last_trigger = time.monotonic()
             pending = True
