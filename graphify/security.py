@@ -100,13 +100,17 @@ def _validate_peer_ip(resp: object, url: str) -> None:
             if not isinstance(addr, str):
                 logger.debug("Peer IP check skipped for %s (non-string peer address)", url)
                 return
-            ip = ipaddress.ip_address(addr)
+            try:
+                ip = ipaddress.ip_address(addr)
+            except ValueError:
+                logger.debug("Peer IP check skipped for %s (unparsable peer address)", url)
+                return
             if ip.is_private or ip.is_reserved or ip.is_loopback or ip.is_link_local:
                 raise ValueError(
                     f"DNS rebinding detected: connected to private IP {addr} "
                     f"for URL {url!r}"
                 )
-    except (AttributeError, OSError, ValueError):
+    except (AttributeError, OSError):
         # Socket already closed or inaccessible - skip check
         logger.debug("Peer IP check skipped for %s (socket inaccessible)", url)
 
