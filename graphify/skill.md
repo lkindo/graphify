@@ -27,6 +27,8 @@ Turn any folder of files into a navigable knowledge graph with community detecti
 /graphify <path> --wiki                               # build agent-crawlable wiki (index.md + one article per community)
 /graphify <path> --obsidian --obsidian-dir ~/vaults/my-project  # write vault to custom path (e.g. existing vault)
 /graphify add <url>                                   # fetch URL, save to ./raw, update graph
+/graphify add <url> --crawl                           # auto-crawl related pages (docs, wikis, shops…)
+/graphify add <url> --crawl --max-pages 100           # crawl up to 100 pages (default: 50)
 /graphify add <url> --author "Name"                   # tag who wrote it
 /graphify add <url> --contributor "Name"              # tag who added it to the corpus
 /graphify query "<question>"                          # BFS traversal - broad context
@@ -1129,6 +1131,32 @@ print('Explanation saved to graphify-out/memory/')
 
 Fetch a URL and add it to the corpus, then update the graph.
 
+### Deciding whether to crawl
+
+Before calling ingest, check whether crawling is warranted using the reasoning engine:
+
+```python
+from graphify.crawl import should_crawl
+import urllib.request
+html = urllib.request.urlopen(url).read().decode('utf-8', errors='ignore')[:50000]
+do_crawl, reason = should_crawl(url, html)
+print(reason)
+```
+
+**Always crawl** (`ingest_crawl`) when the user:
+- Passes `--crawl` explicitly
+- Provides a documentation URL (readthedocs, gitbook, /docs/, /guide/, /reference/, etc.)
+- Provides a wiki URL (/wiki/, Confluence, Notion, MediaWiki)
+- Provides a product catalog / e-commerce category page
+- Provides a help center or knowledge base
+- Provides a blog index or changelog
+
+**Single page** (`ingest`) for: tweets, arXiv papers, PDFs, images, individual news articles, YouTube videos.
+
+When uncertain, call `should_crawl(url, html)` and let the reasoning engine decide — its `reason` string explains the signal that triggered (or blocked) crawling, show it to the user.
+
+### Single page (default)
+
 ```bash
 $(cat .graphify_python) -c "
 import sys
@@ -1137,24 +1165,57 @@ from pathlib import Path
 
 try:
     out = ingest('URL', Path('./raw'), author='AUTHOR', contributor='CONTRIBUTOR')
-    print(f'Saved to {out}')
-except ValueError as e:
-    print(f'error: {e}', file=sys.stderr)
-    sys.exit(1)
-except RuntimeError as e:
+    print(f'Saved: {out}')
+except (ValueError, RuntimeError) as e:
     print(f'error: {e}', file=sys.stderr)
     sys.exit(1)
 "
 ```
 
-Replace `URL` with the actual URL, `AUTHOR` with the user's name if provided, `CONTRIBUTOR` likewise. If the command exits with an error, tell the user what went wrong - do not silently continue. After a successful save, automatically run the `--update` pipeline on `./raw` to merge the new file into the existing graph.
+### With crawling (--crawl flag or doc/wiki/shop URLs)
 
-Supported URL types (auto-detected):
-- Twitter/X → fetched via oEmbed, saved as `.md` with tweet text and author
-- arXiv → abstract + metadata saved as `.md`  
-- PDF → downloaded as `.pdf`
-- Images (.png/.jpg/.webp) → downloaded, Claude vision extracts on next run
-- Any webpage → converted to markdown via html2text
+```bash
+$(cat .graphify_python) -c "
+import sys
+from graphify.ingest import ingest_crawl
+from pathlib import Path
+
+try:
+    saved = ingest_crawl(
+        'URL', Path('./raw'),
+        max_pages=MAX_PAGES,
+        max_depth=3,
+        author='AUTHOR',
+        contributor='CONTRIBUTOR',
+    )
+    print(f'Saved {len(saved)} pages')
+    for p in saved[:5]:
+        print(f'  {p.name}')
+    if len(saved) > 5:
+        print(f'  ... and {len(saved)-5} more')
+except (ValueError, RuntimeError) as e:
+    print(f'error: {e}', file=sys.stderr)
+    sys.exit(1)
+"
+```
+
+Replace `MAX_PAGES` with the user-specified value or `50` (default). Replace `URL`, `AUTHOR`, `CONTRIBUTOR` as before.
+
+After a successful save (either mode), automatically run the `--update` pipeline on `./raw` to merge new files into the existing graph.
+
+### Supported URL types (auto-detected)
+
+| Type | Handler | Notes |
+|------|---------|-------|
+| Twitter/X | oEmbed | saved as `.md` with tweet text |
+| arXiv | HTML parse | abstract + metadata as `.md` |
+| YouTube | youtube-transcript-api | timestamped transcript + metadata |
+| PDF | download | saved as `.pdf` |
+| Image | download | `.png`/`.jpg`/`.webp` |
+| Any webpage | html2text | converted to `.md` |
+| Documentation site | **crawl** | all pages in the section |
+| Wiki | **crawl** | all linked pages |
+| E-commerce catalog | **crawl** | product pages in category |
 
 ---
 

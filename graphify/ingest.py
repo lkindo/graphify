@@ -272,7 +272,14 @@ def _download_binary(url: str, suffix: str, target_dir: Path) -> Path:
     return out_path
 
 
-def ingest(url: str, target_dir: Path, author: str | None = None, contributor: str | None = None) -> Path:
+def ingest(
+    url: str,
+    target_dir: Path,
+    author: str | None = None,
+    contributor: str | None = None,
+    *,
+    _skip_crawl: bool = False,
+) -> Path:
     """
     Fetch a URL and save it into target_dir as a graphify-ready file.
 
@@ -370,6 +377,61 @@ def save_query_result(
     out_path = memory_dir / filename
     out_path.write_text(content, encoding="utf-8")
     return out_path
+
+
+def ingest_crawl(
+    url: str,
+    target_dir: Path,
+    *,
+    max_pages: int = 50,
+    max_depth: int = 3,
+    delay: float = 0.5,
+    author: str | None = None,
+    contributor: str | None = None,
+) -> list[Path]:
+    """Ingest a URL and, when warranted, crawl its related sub-pages.
+
+    The reasoning engine (graphify.crawl.should_crawl) inspects the URL
+    pattern and the page HTML to decide whether crawling is appropriate.
+    Examples of when it fires automatically:
+      - Documentation sites  (/docs/, readthedocs.io, gitbook.io …)
+      - Wiki pages            (/wiki/, confluence, notion …)
+      - E-commerce catalogs  (/products/, /shop/, /category/ …)
+      - Help/KB centres      (/help/, /kb/, /faq/ …)
+      - Blogs / release notes (/blog/, /changelog …)
+
+    Returns a list of all saved Paths (start page first, then crawled pages).
+    If crawling is not warranted, the list contains only the start page.
+    """
+    from graphify.crawl import should_crawl, crawl as _crawl
+
+    # Always ingest the landing page first
+    initial = ingest(url, target_dir, author=author, contributor=contributor,
+                     _skip_crawl=True)
+    saved = [initial]
+
+    # Fetch HTML for reasoning (may re-fetch, but keeps ingest() clean)
+    try:
+        html = _fetch_html(url)
+    except Exception:
+        return saved
+
+    do_crawl, reason = should_crawl(url, html)
+    if not do_crawl:
+        print(f"[crawl] {reason} — single page only")
+        return saved
+
+    print(f"[crawl] {reason} — crawling up to {max_pages} sub-pages")
+    crawled = _crawl(
+        url, target_dir,
+        max_pages=max_pages,
+        max_depth=max_depth,
+        delay=delay,
+        author=author,
+        contributor=contributor,
+    )
+    saved.extend(crawled)
+    return saved
 
 
 if __name__ == "__main__":
