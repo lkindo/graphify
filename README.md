@@ -36,6 +36,12 @@ dist/
 
 Same syntax as `.gitignore`. Patterns match against file paths relative to the folder you run graphify on.
 
+## Demo
+
+> Interactive graph from [Karpathy's repos + papers + images](worked/karpathy-repos/) (177 nodes, 246 edges). Click any node to see type, community, connections, and source file.
+
+![graphify interactive graph visualization](docs/images/demo-graph.png)
+
 ## How it works
 
 graphify runs in two passes. First, a deterministic AST pass extracts structure from code files (classes, functions, imports, call graphs, docstrings, rationale comments) with no LLM needed. Second, Claude subagents run in parallel over docs, papers, and images to extract concepts, relationships, and design rationale. The results are merged into a NetworkX graph, clustered with Leiden community detection, and exported as interactive HTML, queryable JSON, and a plain-language audit report.
