@@ -724,7 +724,7 @@ Then:
 ```bash
 $(cat .graphify_python) -c "
 import sys, json
-from graphify.build import build_from_json
+from graphify.build import build_from_json, prune_deleted_nodes
 from graphify.export import to_json
 from networkx.readwrite import json_graph
 import networkx as nx
@@ -733,6 +733,13 @@ from pathlib import Path
 # Load existing graph
 existing_data = json.loads(Path('graphify-out/graph.json').read_text())
 G_existing = json_graph.node_link_graph(existing_data, edges='links')
+
+# Prune nodes from deleted files before merging
+incremental = json.loads(Path('.graphify_incremental.json').read_text()) if Path('.graphify_incremental.json').exists() else {}
+deleted_files = incremental.get('deleted_files', [])
+if deleted_files:
+    pruned = prune_deleted_nodes(G_existing, deleted_files)
+    print(f'Pruned {pruned} node(s) from {len(deleted_files)} deleted file(s)')
 
 # Load new extraction
 new_extraction = json.loads(Path('.graphify_extract.json').read_text())
@@ -770,6 +777,10 @@ if old_data:
         print('New nodes:', ', '.join(n['label'] for n in diff['new_nodes'][:5]))
     if diff['new_edges']:
         print('New edges:', len(diff['new_edges']))
+    if diff['removed_nodes']:
+        print('Removed nodes:', ', '.join(n['label'] for n in diff['removed_nodes'][:5]))
+    if diff['removed_edges']:
+        print('Removed edges:', len(diff['removed_edges']))
 "
 ```
 

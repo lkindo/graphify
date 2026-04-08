@@ -52,6 +52,22 @@ def build_from_json(extraction: dict) -> nx.Graph:
     return G
 
 
+def prune_deleted_nodes(G: nx.Graph, deleted_files: list[str]) -> int:
+    """Remove all nodes whose source_file matches a deleted file path.
+
+    NetworkX remove_node() also removes all edges connected to that node.
+    Returns the number of nodes removed.
+    """
+    deleted_set = set(deleted_files)
+    nodes_to_remove = [
+        n for n, data in G.nodes(data=True)
+        if data.get("source_file", "") in deleted_set
+    ]
+    for node_id in nodes_to_remove:
+        G.remove_node(node_id)
+    return len(nodes_to_remove)
+
+
 def build(extractions: list[dict]) -> nx.Graph:
     """Merge multiple extraction results into one graph.
 
