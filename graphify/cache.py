@@ -35,7 +35,8 @@ def load_cached(path: Path, root: Path = Path("."), output_dir: Path | None = No
     """Return cached extraction for this file if hash matches, else None.
 
     Cache key: SHA256 of file contents.
-    Cache value: stored as graphify-out/cache/{hash}.json
+    Cache value: stored as {cache_dir}/{hash}.json where cache_dir depends on output_dir.
+    If output_dir is given, cache is in output_dir/cache/. Otherwise in root/graphify-out/cache/.
     Returns None if no cache entry or file has changed.
     """
     try:
@@ -54,7 +55,8 @@ def load_cached(path: Path, root: Path = Path("."), output_dir: Path | None = No
 def save_cached(path: Path, result: dict, root: Path = Path("."), output_dir: Path | None = None) -> None:
     """Save extraction result for this file.
 
-    Stores as graphify-out/cache/{hash}.json where hash = SHA256 of current file contents.
+    Stores as {cache_dir}/{hash}.json where hash = SHA256 of current file contents.
+    Cache location depends on output_dir: if given, uses output_dir/cache/; otherwise uses root/graphify-out/cache/.
     result should be a dict with 'nodes' and 'edges' lists.
     """
     h = file_hash(path)
@@ -75,7 +77,10 @@ def cached_files(root: Path = Path("."), output_dir: Path | None = None) -> set[
 
 
 def clear_cache(root: Path = Path("."), output_dir: Path | None = None) -> None:
-    """Delete all graphify-out/cache/*.json files."""
+    """Delete all cache files.
+
+    Clears the cache directory (output_dir/cache/ if output_dir is given, otherwise root/graphify-out/cache/).
+    """
     d = cache_dir(root, output_dir)
     for f in d.glob("*.json"):
         f.unlink()
