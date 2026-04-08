@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import inspect
 
-from networkx.readwrite import json_graph
+try:
+    from networkx.readwrite import json_graph
+except ImportError:
+    json_graph = None
 
 
 def _patch_networkx_node_link_compat() -> None:
     """Allow both NetworkX node-link keyword styles across 3.x variants."""
+    if json_graph is None:
+        return
     data_params = inspect.signature(json_graph.node_link_data).parameters
     if "edges" not in data_params:
         _orig_node_link_data = json_graph.node_link_data
