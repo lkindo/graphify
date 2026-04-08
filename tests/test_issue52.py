@@ -7,6 +7,7 @@ Sub-issue 8: extract() logs progress for large file batches
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -74,18 +75,19 @@ def test_tree_sitter_version_mismatch_error_message():
 
     # Simulate tree-sitter version mismatch: Language() raises TypeError
     # Language is imported inside _extract_generic via `from tree_sitter import Language`
-    fake_language = type("FakeLanguage", (), {
-        "__init__": None,  # placeholder
-    })
-
     def raise_type_error(*args, **kwargs):
         raise TypeError("missing 1 required positional argument: 'name'")
+
+    import types
+    fake_ts = types.ModuleType("tree_sitter")
+    fake_ts.Language = raise_type_error
+    fake_ts.Parser = None
 
     with patch("graphify.extract.importlib.import_module") as mock_import:
         mock_mod = type("FakeMod", (), {"language": lambda: None})()
         mock_import.return_value = mock_mod
 
-        with patch.dict("sys.modules", {"tree_sitter": type("FakeTS", (), {"Language": raise_type_error, "Parser": None})()}):
+        with patch.dict(sys.modules, {"tree_sitter": fake_ts}):
             result = _extract_generic(Path("test.py"), config)
 
     assert "error" in result
