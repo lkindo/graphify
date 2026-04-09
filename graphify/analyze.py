@@ -1,6 +1,7 @@
 """Graph analysis: god nodes (most connected), surprising connections (cross-community), suggested questions."""
 from __future__ import annotations
 import networkx as nx
+from .detect import CODE_EXTENSIONS, DOC_EXTENSIONS, PAPER_EXTENSIONS, IMAGE_EXTENSIONS
 
 
 def _node_community_map(communities: dict[int, list[str]]) -> dict[str, int]:
@@ -109,19 +110,13 @@ def _is_concept_node(G: nx.Graph, node_id: str) -> bool:
     return False
 
 
-_CODE_EXTENSIONS = {"py", "ts", "tsx", "js", "go", "rs", "java", "rb", "cpp", "c", "h", "cs", "kt", "scala", "php"}
-_DOC_EXTENSIONS = {"md", "txt", "rst"}
-_PAPER_EXTENSIONS = {"pdf"}
-_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif", "svg"}
-
-
 def _file_category(path: str) -> str:
-    ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
-    if ext in _CODE_EXTENSIONS:
+    ext = ("." + path.rsplit(".", 1)[-1].lower()) if "." in path else ""
+    if ext in CODE_EXTENSIONS:
         return "code"
-    if ext in _PAPER_EXTENSIONS:
+    if ext in PAPER_EXTENSIONS:
         return "paper"
-    if ext in _IMAGE_EXTENSIONS:
+    if ext in IMAGE_EXTENSIONS:
         return "image"
     return "doc"
 

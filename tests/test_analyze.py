@@ -137,6 +137,15 @@ def test_file_category():
     assert _file_category("flash.pdf") == "paper"
     assert _file_category("diagram.png") == "image"
     assert _file_category("notes.md") == "doc"
+    # Languages that were previously misclassified as "doc"
+    assert _file_category("main.swift") == "code"
+    assert _file_category("lib.lua") == "code"
+    assert _file_category("build.zig") == "code"
+    assert _file_category("script.ps1") == "code"
+    assert _file_category("app.ex") == "code"
+    assert _file_category("view.jsx") == "code"
+    assert _file_category("solver.jl") == "code"
+    assert _file_category("bridge.m") == "code"
 
 
 def test_is_concept_node_empty_source():
