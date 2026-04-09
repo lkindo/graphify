@@ -157,3 +157,110 @@ def test_agents_uninstall_no_op_when_not_installed(tmp_path, capsys):
     _agents_uninstall(tmp_path)
     out = capsys.readouterr().out
     assert "nothing to do" in out
+
+
+# --- gemini install/uninstall tests ---
+
+def _gemini_install(tmp_path):
+    from graphify.__main__ import gemini_install
+    gemini_install(tmp_path)
+
+
+def _gemini_uninstall(tmp_path):
+    from graphify.__main__ import gemini_uninstall
+    gemini_uninstall(tmp_path)
+
+
+def test_gemini_install_writes_gemini_md(tmp_path):
+    _gemini_install(tmp_path)
+    gemini_md = tmp_path / "GEMINI.md"
+    assert gemini_md.exists()
+    assert "graphify" in gemini_md.read_text()
+    assert "GRAPH_REPORT.md" in gemini_md.read_text()
+
+
+def test_gemini_install_creates_settings_json(tmp_path):
+    import json
+    _gemini_install(tmp_path)
+    settings_path = tmp_path / ".gemini" / "settings.json"
+    assert settings_path.exists()
+    settings = json.loads(settings_path.read_text())
+    hooks = settings.get("hooks", {}).get("BeforeTool", [])
+    assert any("graphify" in str(h) for h in hooks)
+
+
+def test_gemini_install_idempotent(tmp_path, capsys):
+    _gemini_install(tmp_path)
+    _gemini_install(tmp_path)
+    content = (tmp_path / "GEMINI.md").read_text()
+    assert content.count("## graphify") == 1
+    out = capsys.readouterr().out
+    assert "already configured" in out
+
+
+def test_gemini_install_settings_json_idempotent(tmp_path):
+    import json
+    _gemini_install(tmp_path)
+    _gemini_install(tmp_path)
+    settings_path = tmp_path / ".gemini" / "settings.json"
+    settings = json.loads(settings_path.read_text())
+    hooks = settings.get("hooks", {}).get("BeforeTool", [])
+    graphify_hooks = [h for h in hooks if "graphify" in str(h)]
+    assert len(graphify_hooks) == 1
+
+
+def test_gemini_install_appends_to_existing_gemini_md(tmp_path):
+    gemini_md = tmp_path / "GEMINI.md"
+    gemini_md.write_text("# Existing content\n\nSome rules here.\n")
+    _gemini_install(tmp_path)
+    content = gemini_md.read_text()
+    assert "Existing content" in content
+    assert "## graphify" in content
+
+
+def test_gemini_uninstall_removes_section(tmp_path):
+    _gemini_install(tmp_path)
+    _gemini_uninstall(tmp_path)
+    gemini_md = tmp_path / "GEMINI.md"
+    if gemini_md.exists():
+        assert "## graphify" not in gemini_md.read_text()
+
+
+def test_gemini_uninstall_preserves_other_content(tmp_path):
+    gemini_md = tmp_path / "GEMINI.md"
+    gemini_md.write_text("# My Project\n\nSome rules.\n")
+    _gemini_install(tmp_path)
+    _gemini_uninstall(tmp_path)
+    assert gemini_md.exists()
+    content = gemini_md.read_text()
+    assert "My Project" in content
+    assert "## graphify" not in content
+
+
+def test_gemini_uninstall_removes_hook(tmp_path):
+    import json
+    _gemini_install(tmp_path)
+    _gemini_uninstall(tmp_path)
+    settings_path = tmp_path / ".gemini" / "settings.json"
+    if settings_path.exists():
+        settings = json.loads(settings_path.read_text())
+        hooks = settings.get("hooks", {}).get("BeforeTool", [])
+        assert not any("graphify" in str(h) for h in hooks)
+
+
+def test_gemini_uninstall_no_op_when_no_file(tmp_path, capsys):
+    _gemini_uninstall(tmp_path)
+    out = capsys.readouterr().out
+    assert "nothing to do" in out.lower() or "No GEMINI.md" in out
+
+
+def test_gemini_install_skill_exists_in_package():
+    import graphify
+    skill = Path(graphify.__file__).parent / "skill-gemini.md"
+    assert skill.exists()
+
+
+def test_gemini_skill_contains_gemini_reference():
+    import graphify
+    skill = (Path(graphify.__file__).parent / "skill-gemini.md").read_text()
+    assert "Gemini" in skill
