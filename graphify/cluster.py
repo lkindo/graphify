@@ -52,18 +52,6 @@ def _partition(G: nx.Graph) -> dict[str, int]:
     return {node: cid for cid, nodes in enumerate(communities) for node in nodes}
 
 
-def build_graph(nodes: list[dict], edges: list[dict]) -> nx.DiGraph:
-    """Build a directed NetworkX graph from graphify node/edge dicts."""
-    G = nx.DiGraph()
-    for n in nodes:
-        G.add_node(n["id"], **{k: v for k, v in n.items() if k != "id"})
-    for e in edges:
-        attrs = {k: v for k, v in e.items() if k not in ("source", "target")}
-        attrs["_src"] = e["source"]
-        attrs["_tgt"] = e["target"]
-        G.add_edge(e["source"], e["target"], **attrs)
-    return G
-
 _MAX_COMMUNITY_FRACTION = 0.25   # communities larger than 25% of graph get split
 _MIN_SPLIT_SIZE = 10             # only split if community has at least this many nodes
 
