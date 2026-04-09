@@ -469,3 +469,72 @@ def detect_incremental(root: Path, manifest_path: str = _MANIFEST_PATH) -> dict:
     full["new_total"] = new_total
     full["deleted_files"] = deleted_files
     return full
+
+
+def load_tsconfig_paths(root: Path) -> dict[str, str]:
+    """Parse tsconfig.json compilerOptions.paths and return an alias→prefix map.
+
+    Walks up from *root* until a tsconfig.json is found or the filesystem root
+    is reached.  Returns a dict mapping each alias prefix (e.g. ``"@/"`` or
+    ``"@components/"```) to its resolved filesystem prefix (e.g. ``"src/"``).
+
+    Only the first glob pattern for each alias is used; ``*`` wildcards are
+    stripped to give a plain prefix that can be used with ``str.startswith``.
+
+    Returns an empty dict when no tsconfig.json is found or when it contains
+    no ``paths`` mapping.
+    """
+    # Walk up directory tree to find tsconfig.json
+    current = Path(root).resolve()
+    tsconfig_path: Path | None = None
+    while True:
+        candidate = current / "tsconfig.json"
+        if candidate.exists():
+            tsconfig_path = candidate
+            break
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+    if tsconfig_path is None:
+        return {}
+
+    try:
+        data = json.loads(tsconfig_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+    compiler_options = data.get("compilerOptions", {})
+    base_url = compiler_options.get("baseUrl", ".")
+    paths = compiler_options.get("paths", {})
+    if not paths:
+        return {}
+
+    alias_map: dict[str, str] = {}
+    tsconfig_dir = tsconfig_path.parent
+    base_dir = (tsconfig_dir / base_url).resolve()
+
+    for alias, targets in paths.items():
+        if not targets:
+            continue
+        # Strip trailing /* from alias to get the prefix used in import strings
+        alias_prefix = alias.rstrip("*").rstrip("/")
+        # Use first target, strip trailing /*
+        target = targets[0].rstrip("*").rstrip("/")
+        resolved = (base_dir / target).resolve()
+        alias_map[alias_prefix] = str(resolved)
+
+    return alias_map
+
+
+def resolve_ts_alias(import_path: str, alias_map: dict[str, str]) -> str:
+    """Replace a TypeScript path alias with its resolved filesystem path.
+
+    Returns the original *import_path* unchanged if no alias matches.
+    """
+    for alias_prefix, resolved_prefix in alias_map.items():
+        if import_path == alias_prefix or import_path.startswith(alias_prefix + "/"):
+            remainder = import_path[len(alias_prefix):]
+            return resolved_prefix + remainder
+    return import_path
