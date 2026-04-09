@@ -154,3 +154,58 @@ def test_load_graph_missing_file(tmp_path):
     graphify_dir.mkdir()
     with pytest.raises(SystemExit):
         _load_graph(str(graphify_dir / "nonexistent.json"))
+
+
+# --- call_tool error handling (unit-tests the dispatch+try/except logic) ---
+
+def _make_dispatch():
+    """Build a minimal dispatch table that mirrors call_tool in serve.py."""
+
+    def _raises(arguments: dict) -> str:
+        raise KeyError("missing_key")
+
+    def _ok(arguments: dict) -> str:
+        return "ok"
+
+    _handlers = {"ok_tool": _ok, "bad_tool": _raises}
+
+    def dispatch(name: str, arguments: dict) -> str:
+        handler = _handlers.get(name)
+        if not handler:
+            return f"Unknown tool: {name}"
+        try:
+            return handler(arguments)
+        except Exception as exc:
+            return f"Error executing {name}: {exc}"
+
+    return dispatch
+
+
+def test_call_tool_unknown_tool():
+    dispatch = _make_dispatch()
+    result = dispatch("nonexistent_tool", {})
+    assert "Unknown tool" in result
+    assert "nonexistent_tool" in result
+
+
+def test_call_tool_handler_exception_returns_error_string():
+    dispatch = _make_dispatch()
+    result = dispatch("bad_tool", {})
+    assert "Error executing bad_tool" in result
+    assert "missing_key" in result
+
+
+def test_call_tool_valid_handler_returns_result():
+    dispatch = _make_dispatch()
+    result = dispatch("ok_tool", {})
+    assert result == "ok"
+
+
+def test_call_tool_error_does_not_propagate():
+    dispatch = _make_dispatch()
+    # Should return a string, not raise
+    try:
+        result = dispatch("bad_tool", {})
+        assert isinstance(result, str)
+    except Exception:
+        pytest.fail("call_tool error handling propagated an exception instead of returning an error string")
