@@ -19,6 +19,9 @@ def __getattr__(name):
         "to_svg": ("graphify.export", "to_svg"),
         "to_canvas": ("graphify.export", "to_canvas"),
         "to_wiki": ("graphify.wiki", "to_wiki"),
+        "build_semantic_index": ("graphify.semantic", "build_semantic_index"),
+        "load_semantic_index": ("graphify.semantic", "load_semantic_index"),
+        "semantic_search": ("graphify.semantic", "semantic_search"),
     }
     if name in _map:
         import importlib

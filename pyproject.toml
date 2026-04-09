@@ -12,6 +12,7 @@ keywords = ["claude", "claude-code", "codex", "opencode", "cursor", "knowledge-g
 requires-python = ">=3.10"
 dependencies = [
     "networkx",
+    "numpy",
     "tree-sitter>=0.23.0",
     "tree-sitter-python",
     "tree-sitter-javascript",
@@ -47,7 +48,8 @@ pdf = ["pypdf", "html2text"]
 watch = ["watchdog"]
 leiden = ["graspologic"]
 office = ["python-docx", "openpyxl"]
-all = ["mcp", "neo4j", "pypdf", "html2text", "watchdog", "graspologic", "python-docx", "openpyxl"]
+embeddings = ["sentence-transformers"]
+all = ["mcp", "neo4j", "pypdf", "html2text", "watchdog", "graspologic", "python-docx", "openpyxl", "sentence-transformers"]
 
 [project.scripts]
 graphify = "graphify.__main__:main"
