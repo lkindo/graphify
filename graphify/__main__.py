@@ -1,4 +1,4 @@
-"""graphify CLI - `graphify install` sets up the Claude Code skill."""
+"""graphify CLI - `graphify install` sets up platform skills."""
 from __future__ import annotations
 import json
 import platform
@@ -86,6 +86,11 @@ _PLATFORM_CONFIG: dict[str, dict] = {
         "skill_file": "skill-windows.md",
         "skill_dst": Path(".claude") / "skills" / "graphify" / "SKILL.md",
         "claude_md": True,
+    },
+    "copilot": {
+        "skill_file": "skill-copilot.md",
+        "skill_dst": Path(".copilot") / "skills" / "graphify" / "SKILL.md",
+        "claude_md": False,
     },
 }
 
@@ -468,7 +473,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid|trae|trae-cn)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid|trae|trae-cn|copilot)")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -497,6 +502,8 @@ def main() -> None:
         print("  trae uninstall         remove graphify section from AGENTS.md")
         print("  trae-cn install         write graphify section to AGENTS.md (Trae CN)")
         print("  trae-cn uninstall      remove graphify section from AGENTS.md")
+        print("  copilot install         copy graphify skill to ~/.copilot/skills (Copilot CLI)")
+        print("  copilot uninstall       remove graphify skill from ~/.copilot/skills")
         print()
         return
 
@@ -526,14 +533,40 @@ def main() -> None:
         else:
             print("Usage: graphify claude [install|uninstall]", file=sys.stderr)
             sys.exit(1)
-    elif cmd in ("codex", "opencode", "claw", "droid", "trae", "trae-cn"):
+    elif cmd in ("codex", "opencode", "claw", "droid", "trae", "trae-cn", "copilot"):
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
         if subcmd == "install":
-            _agents_install(Path("."), cmd)
+            if cmd == "copilot":
+                install(platform="copilot")
+            else:
+                _agents_install(Path("."), cmd)
         elif subcmd == "uninstall":
-            _agents_uninstall(Path("."))
-            if cmd == "codex":
-                _uninstall_codex_hook(Path("."))
+            if cmd == "copilot":
+                skill_dst = Path.home() / _PLATFORM_CONFIG["copilot"]["skill_dst"]
+                messages: list[str] = []
+                if skill_dst.exists():
+                    skill_dst.unlink()
+                    messages.append(f"removed skill at {skill_dst}")
+                else:
+                    messages.append(f"no skill found at {skill_dst}")
+
+                version_file = skill_dst.parent / ".graphify_version"
+                if version_file.exists():
+                    version_file.unlink()
+                    messages.append(f"removed version stamp at {version_file}")
+
+                for directory in (skill_dst.parent, skill_dst.parent.parent, skill_dst.parent.parent.parent):
+                    try:
+                        directory.rmdir()
+                        messages.append(f"removed empty dir at {directory}")
+                    except OSError:
+                        break
+
+                print("; ".join(messages))
+            else:
+                _agents_uninstall(Path("."))
+                if cmd == "codex":
+                    _uninstall_codex_hook(Path("."))
         else:
             print(f"Usage: graphify {cmd} [install|uninstall]", file=sys.stderr)
             sys.exit(1)

@@ -1,4 +1,5 @@
 """Tests for graphify install --platform routing."""
+import sys
 from pathlib import Path
 from unittest.mock import patch
 import pytest
@@ -6,6 +7,7 @@ import pytest
 
 PLATFORMS = {
     "claude": (".claude/skills/graphify/SKILL.md",),
+    "copilot": (".copilot/skills/graphify/SKILL.md",),
     "codex": (".agents/skills/graphify/SKILL.md",),
     "opencode": (".config/opencode/skills/graphify/SKILL.md",),
     "claw": (".claw/skills/graphify/SKILL.md",),
@@ -62,29 +64,50 @@ def test_install_windows(tmp_path):
     assert (tmp_path / ".claude" / "skills" / "graphify" / "SKILL.md").exists()
 
 
+def test_install_copilot(tmp_path):
+    _install(tmp_path, "copilot")
+    assert (tmp_path / ".copilot" / "skills" / "graphify" / "SKILL.md").exists()
+
+
 def test_install_unknown_platform_exits(tmp_path):
     with pytest.raises(SystemExit):
         _install(tmp_path, "unknown")
 
 
+def test_copilot_install_uninstall_cleans_up_skill(tmp_path):
+    _install(tmp_path, "copilot")
+    skill = tmp_path / ".copilot" / "skills" / "graphify" / "SKILL.md"
+    stamp = skill.parent / ".graphify_version"
+    assert skill.exists()
+    assert stamp.exists()
+    from graphify.__main__ import main
+    with patch("graphify.__main__.Path.home", return_value=tmp_path), patch.object(
+        sys, "argv", ["graphify", "copilot", "uninstall"]
+    ):
+        main()
+    assert not skill.exists()
+    assert not stamp.exists()
+    assert not skill.parent.exists()
+
+
 def test_codex_skill_contains_spawn_agent():
     """Codex skill file must reference spawn_agent."""
     import graphify
-    skill = (Path(graphify.__file__).parent / "skill-codex.md").read_text()
+    skill = (Path(graphify.__file__).parent / "skill-codex.md").read_text(encoding="utf-8")
     assert "spawn_agent" in skill
 
 
 def test_opencode_skill_contains_mention():
     """OpenCode skill file must reference @mention."""
     import graphify
-    skill = (Path(graphify.__file__).parent / "skill-opencode.md").read_text()
+    skill = (Path(graphify.__file__).parent / "skill-opencode.md").read_text(encoding="utf-8")
     assert "@mention" in skill
 
 
 def test_claw_skill_is_sequential():
     """OpenClaw skill file must describe sequential extraction."""
     import graphify
-    skill = (Path(graphify.__file__).parent / "skill-claw.md").read_text()
+    skill = (Path(graphify.__file__).parent / "skill-claw.md").read_text(encoding="utf-8")
     assert "sequential" in skill.lower()
     assert "spawn_agent" not in skill
     assert "@mention" not in skill
@@ -94,8 +117,18 @@ def test_all_skill_files_exist_in_package():
     """All installable platform skill files must be present in the installed package."""
     import graphify
     pkg = Path(graphify.__file__).parent
-    for name in ("skill.md", "skill-codex.md", "skill-opencode.md", "skill-claw.md", "skill-windows.md", "skill-droid.md", "skill-trae.md"):
+    for name in ("skill.md", "skill-codex.md", "skill-copilot.md", "skill-opencode.md", "skill-claw.md", "skill-windows.md", "skill-droid.md", "skill-trae.md"):
         assert (pkg / name).exists(), f"Missing: {name}"
+
+
+def test_copilot_skill_has_copilot_frontmatter():
+    """Copilot skill file should use Copilot-compatible frontmatter."""
+    import graphify
+    skill = (Path(graphify.__file__).parent / "skill-copilot.md").read_text(encoding="utf-8")
+    frontmatter = skill.split("---", 2)[1]
+    assert "name: graphify" in frontmatter
+    assert "description:" in frontmatter
+    assert "trigger:" not in frontmatter
 
 
 def test_claude_install_registers_claude_md(tmp_path):
