@@ -82,6 +82,11 @@ _PLATFORM_CONFIG: dict[str, dict] = {
         "skill_dst": Path(".trae-cn") / "skills" / "graphify" / "SKILL.md",
         "claude_md": False,
     },
+    "hermes": {
+        "skill_file": "skill-hermes.md",
+        "skill_dst": Path(".hermes") / "skills" / "productivity" / "graphify" / "SKILL.md",
+        "claude_md": False,
+    },
     "windows": {
         "skill_file": "skill-windows.md",
         "skill_dst": Path(".claude") / "skills" / "graphify" / "SKILL.md",
@@ -159,6 +164,70 @@ Rules:
 """
 
 _AGENTS_MD_MARKER = "## graphify"
+
+# .hermes.md section for Hermes Agent.
+# Hermes reads .hermes.md in the project root as system context.
+_HERMES_MD_SECTION = """\
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+"""
+
+_HERMES_MD_MARKER = "## graphify"
+
+def _hermes_install(project_dir: Path) -> None:
+    """Write the graphify section to .hermes.md (Hermes Agent)."""
+    target = (project_dir or Path(".")) / ".hermes.md"
+
+    if target.exists():
+        content = target.read_text(encoding="utf-8")
+        if _HERMES_MD_MARKER in content:
+            print("graphify already configured in .hermes.md")
+            return
+        new_content = content.rstrip() + "\n\n" + _HERMES_MD_SECTION
+    else:
+        new_content = _HERMES_MD_SECTION
+
+    target.write_text(new_content, encoding="utf-8")
+    print(f"graphify section written to {target.resolve()}")
+    print()
+    print("Hermes will now check the knowledge graph before answering")
+    print("codebase questions and rebuild it after code changes.")
+    print()
+    print("Note: unlike Claude Code, there is no PreToolUse hook for")
+    print("Hermes — the .hermes.md rules are the always-on mechanism.")
+
+
+def _hermes_uninstall(project_dir: Path) -> None:
+    """Remove the graphify section from .hermes.md."""
+    target = (project_dir or Path(".")) / ".hermes.md"
+
+    if not target.exists():
+        print("No .hermes.md found in current directory - nothing to do")
+        return
+
+    content = target.read_text(encoding="utf-8")
+    if _HERMES_MD_MARKER not in content:
+        print("graphify section not found in .hermes.md - nothing to do")
+        return
+
+    cleaned = re.sub(
+        r"\n*## graphify\n.*?(?=\n## |\Z)",
+        "",
+        content,
+        flags=re.DOTALL,
+    ).rstrip()
+    if cleaned:
+        target.write_text(cleaned + "\n", encoding="utf-8")
+        print(f"graphify section removed from {target.resolve()}")
+    else:
+        target.unlink()
+        print(f".hermes.md was empty after removal - deleted {target.resolve()}")
 
 # OpenCode tool.execute.before plugin — fires before every tool call.
 # Injects a graph reminder into bash command output when graph.json exists.
@@ -468,7 +537,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid|trae|trae-cn)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid|trae|trae-cn|hermes)")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -497,6 +566,8 @@ def main() -> None:
         print("  trae uninstall         remove graphify section from AGENTS.md")
         print("  trae-cn install         write graphify section to AGENTS.md (Trae CN)")
         print("  trae-cn uninstall      remove graphify section from AGENTS.md")
+        print("  hermes install          write graphify section to .hermes.md (Hermes Agent)")
+        print("  hermes uninstall        remove graphify section from .hermes.md")
         print()
         return
 
@@ -536,6 +607,15 @@ def main() -> None:
                 _uninstall_codex_hook(Path("."))
         else:
             print(f"Usage: graphify {cmd} [install|uninstall]", file=sys.stderr)
+            sys.exit(1)
+    elif cmd == "hermes":
+        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
+        if subcmd == "install":
+            _hermes_install(Path("."))
+        elif subcmd == "uninstall":
+            _hermes_uninstall(Path("."))
+        else:
+            print("Usage: graphify hermes [install|uninstall]", file=sys.stderr)
             sys.exit(1)
     elif cmd == "hook":
         from graphify.hooks import install as hook_install, uninstall as hook_uninstall, status as hook_status
