@@ -1,4 +1,4 @@
-"""graphify CLI - `graphify install` sets up the Claude Code skill."""
+"""graphify CLI - `graphify install` sets up assistant skills."""
 from __future__ import annotations
 import json
 import platform
@@ -52,6 +52,11 @@ _PLATFORM_CONFIG: dict[str, dict] = {
         "skill_dst": Path(".claude") / "skills" / "graphify" / "SKILL.md",
         "claude_md": True,
     },
+    "copilot": {
+        "skill_file": "skill.md",
+        "skill_dst": Path(".copilot") / "skills" / "graphify" / "SKILL.md",
+        "claude_md": False,
+    },
     "codex": {
         "skill_file": "skill-codex.md",
         "skill_dst": Path(".agents") / "skills" / "graphify" / "SKILL.md",
@@ -90,6 +95,14 @@ _PLATFORM_CONFIG: dict[str, dict] = {
 }
 
 
+def _install_prompt(platform: str) -> tuple[str, str | None]:
+    if platform == "codex":
+        return "$graphify .", None
+    if platform == "copilot":
+        return "Use the /graphify skill on .", "If Copilot CLI is already running, run `/skills reload` first."
+    return "/graphify .", None
+
+
 def install(platform: str = "claude") -> None:
     if platform not in _PLATFORM_CONFIG:
         print(
@@ -126,9 +139,14 @@ def install(platform: str = "claude") -> None:
             print(f"  CLAUDE.md        ->  created at {claude_md}")
 
     print()
-    print("Done. Open your AI coding assistant and type:")
+    prompt, note = _install_prompt(platform)
+
+    print("Done. In your AI coding assistant, use:")
     print()
-    print("  /graphify .")
+    print(f"  {prompt}")
+    if note:
+        print()
+        print(note)
     print()
 
 
@@ -145,8 +163,7 @@ Rules:
 
 _CLAUDE_MD_MARKER = "## graphify"
 
-# AGENTS.md section for Codex, OpenCode, and OpenClaw.
-# All three platforms read AGENTS.md in the project root for persistent instructions.
+# AGENTS.md section for platforms that use repository instructions.
 _AGENTS_MD_SECTION = """\
 ## graphify
 
@@ -302,7 +319,7 @@ def _uninstall_codex_hook(project_dir: Path) -> None:
 
 
 def _agents_install(project_dir: Path, platform: str) -> None:
-    """Write the graphify section to the local AGENTS.md (Codex/OpenCode/OpenClaw)."""
+    """Write the graphify section to the local AGENTS.md (Copilot/Codex/OpenCode/OpenClaw)."""
     target = (project_dir or Path(".")) / "AGENTS.md"
 
     if target.exists():
@@ -468,7 +485,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid|trae|trae-cn)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|copilot|codex|opencode|claw|droid|trae|trae-cn)")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -485,6 +502,8 @@ def main() -> None:
         print("  hook status             check if git hooks are installed")
         print("  claude install          write graphify section to CLAUDE.md + PreToolUse hook (Claude Code)")
         print("  claude uninstall        remove graphify section from CLAUDE.md + PreToolUse hook")
+        print("  copilot install         write graphify section to AGENTS.md (GitHub Copilot CLI)")
+        print("  copilot uninstall       remove graphify section from AGENTS.md")
         print("  codex install           write graphify section to AGENTS.md (Codex)")
         print("  codex uninstall         remove graphify section from AGENTS.md")
         print("  opencode install        write graphify section to AGENTS.md + tool.execute.before plugin (OpenCode)")
@@ -526,7 +545,7 @@ def main() -> None:
         else:
             print("Usage: graphify claude [install|uninstall]", file=sys.stderr)
             sys.exit(1)
-    elif cmd in ("codex", "opencode", "claw", "droid", "trae", "trae-cn"):
+    elif cmd in ("copilot", "codex", "opencode", "claw", "droid", "trae", "trae-cn"):
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
         if subcmd == "install":
             _agents_install(Path("."), cmd)

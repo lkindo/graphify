@@ -6,6 +6,7 @@ import pytest
 
 PLATFORMS = {
     "claude": (".claude/skills/graphify/SKILL.md",),
+    "copilot": (".copilot/skills/graphify/SKILL.md",),
     "codex": (".agents/skills/graphify/SKILL.md",),
     "opencode": (".config/opencode/skills/graphify/SKILL.md",),
     "claw": (".claw/skills/graphify/SKILL.md",),
@@ -25,6 +26,11 @@ def _install(tmp_path, platform):
 def test_install_default_claude(tmp_path):
     _install(tmp_path, "claude")
     assert (tmp_path / ".claude" / "skills" / "graphify" / "SKILL.md").exists()
+
+
+def test_install_copilot(tmp_path):
+    _install(tmp_path, "copilot")
+    assert (tmp_path / ".copilot" / "skills" / "graphify" / "SKILL.md").exists()
 
 
 def test_install_codex(tmp_path):
@@ -109,6 +115,11 @@ def test_codex_install_does_not_write_claude_md(tmp_path):
     assert not (tmp_path / ".claude" / "CLAUDE.md").exists()
 
 
+def test_copilot_install_does_not_write_claude_md(tmp_path):
+    _install(tmp_path, "copilot")
+    assert not (tmp_path / ".claude" / "CLAUDE.md").exists()
+
+
 # --- always-on AGENTS.md install/uninstall tests ---
 
 def _agents_install(tmp_path, platform):
@@ -127,6 +138,11 @@ def test_codex_agents_install_writes_agents_md(tmp_path):
     assert agents_md.exists()
     assert "graphify" in agents_md.read_text()
     assert "GRAPH_REPORT.md" in agents_md.read_text()
+
+
+def test_copilot_agents_install_writes_agents_md(tmp_path):
+    _agents_install(tmp_path, "copilot")
+    assert (tmp_path / "AGENTS.md").exists()
 
 
 def test_opencode_agents_install_writes_agents_md(tmp_path):
