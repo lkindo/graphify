@@ -49,6 +49,14 @@ leiden = ["graspologic"]
 office = ["python-docx", "openpyxl"]
 all = ["mcp", "neo4j", "pypdf", "html2text", "watchdog", "graspologic", "python-docx", "openpyxl"]
 
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
 [project.scripts]
 graphify = "graphify.__main__:main"
 
