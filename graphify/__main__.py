@@ -7,6 +7,14 @@ import shutil
 import sys
 from pathlib import Path
 
+from graphify.integrations import (
+    Integration,
+    get_integration,
+    project_command_keys,
+    supported_platform_keys,
+    supported_platforms_text,
+)
+
 try:
     from importlib.metadata import version as _pkg_version
     __version__ = _pkg_version("graphifyy")
@@ -46,84 +54,77 @@ _SKILL_REGISTRATION = (
 )
 
 
-_PLATFORM_CONFIG: dict[str, dict] = {
-    "claude": {
-        "skill_file": "skill.md",
-        "skill_dst": Path(".claude") / "skills" / "graphify" / "SKILL.md",
-        "claude_md": True,
-    },
-    "codex": {
-        "skill_file": "skill-codex.md",
-        "skill_dst": Path(".agents") / "skills" / "graphify" / "SKILL.md",
-        "claude_md": False,
-    },
-    "opencode": {
-        "skill_file": "skill-opencode.md",
-        "skill_dst": Path(".config") / "opencode" / "skills" / "graphify" / "SKILL.md",
-        "claude_md": False,
-    },
-    "claw": {
-        "skill_file": "skill-claw.md",
-        "skill_dst": Path(".claw") / "skills" / "graphify" / "SKILL.md",
-        "claude_md": False,
-    },
-    "droid": {
-        "skill_file": "skill-droid.md",
-        "skill_dst": Path(".factory") / "skills" / "graphify" / "SKILL.md",
-        "claude_md": False,
-    },
-    "trae": {
-        "skill_file": "skill-trae.md",
-        "skill_dst": Path(".trae") / "skills" / "graphify" / "SKILL.md",
-        "claude_md": False,
-    },
-    "trae-cn": {
-        "skill_file": "skill-trae.md",
-        "skill_dst": Path(".trae-cn") / "skills" / "graphify" / "SKILL.md",
-        "claude_md": False,
-    },
-    "windows": {
-        "skill_file": "skill-windows.md",
-        "skill_dst": Path(".claude") / "skills" / "graphify" / "SKILL.md",
-        "claude_md": True,
-    },
-}
+def _known_skill_destinations() -> tuple[Path, ...]:
+    return tuple(Path.home() / integration.skill_dst for integration in map(get_integration, supported_platform_keys()) if integration)
 
 
-def install(platform: str = "claude") -> None:
-    if platform not in _PLATFORM_CONFIG:
-        print(
-            f"error: unknown platform '{platform}'. Choose from: {', '.join(_PLATFORM_CONFIG)}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+def _project_command_usage(key: str) -> str:
+    return f"Usage: graphify {key} [install|uninstall]"
 
-    cfg = _PLATFORM_CONFIG[platform]
-    skill_src = Path(__file__).parent / cfg["skill_file"]
+
+def _default_install_platform() -> str:
+    return "windows" if platform.system() == "Windows" else "claude"
+
+
+def _project_help_line(integration: Integration, action: str) -> str:
+    if integration.project_context_kind == "claude_md":
+        if action == "install":
+            details = f"write graphify section to CLAUDE.md + PreToolUse hook ({integration.display_name})"
+        else:
+            details = "remove graphify section from CLAUDE.md + PreToolUse hook"
+    elif integration.project_context_kind == "agents_md":
+        verb = "write" if action == "install" else "remove"
+        details = f"{verb} graphify section {'to' if action == 'install' else 'from'} AGENTS.md ({integration.display_name})"
+    else:
+        details = f"{action} project integration"
+    return f"  {integration.key} {action}".ljust(31) + details
+
+
+def _register_home_claude_md() -> None:
+    """Register graphify in ~/.claude/CLAUDE.md when needed."""
+    claude_md = Path.home() / ".claude" / "CLAUDE.md"
+    if claude_md.exists():
+        content = claude_md.read_text(encoding="utf-8")
+        if "graphify" in content:
+            print(f"  CLAUDE.md        ->  already registered (no change)")
+        else:
+            claude_md.write_text(content.rstrip() + _SKILL_REGISTRATION, encoding="utf-8")
+            print(f"  CLAUDE.md        ->  skill registered in {claude_md}")
+    else:
+        claude_md.parent.mkdir(parents=True, exist_ok=True)
+        claude_md.write_text(_SKILL_REGISTRATION.lstrip(), encoding="utf-8")
+        print(f"  CLAUDE.md        ->  created at {claude_md}")
+
+
+def install_home_skill(integration: Integration) -> None:
+    skill_src = Path(__file__).parent / integration.skill_file
     if not skill_src.exists():
-        print(f"error: {cfg['skill_file']} not found in package - reinstall graphify", file=sys.stderr)
+        print(f"error: {integration.skill_file} not found in package - reinstall graphify", file=sys.stderr)
         sys.exit(1)
 
-    skill_dst = Path.home() / cfg["skill_dst"]
+    skill_dst = Path.home() / integration.skill_dst
     skill_dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(skill_src, skill_dst)
     (skill_dst.parent / ".graphify_version").write_text(__version__, encoding="utf-8")
     print(f"  skill installed  ->  {skill_dst}")
 
-    if cfg["claude_md"]:
-        # Register in ~/.claude/CLAUDE.md (Claude Code only)
-        claude_md = Path.home() / ".claude" / "CLAUDE.md"
-        if claude_md.exists():
-            content = claude_md.read_text(encoding="utf-8")
-            if "graphify" in content:
-                print(f"  CLAUDE.md        ->  already registered (no change)")
-            else:
-                claude_md.write_text(content.rstrip() + _SKILL_REGISTRATION, encoding="utf-8")
-                print(f"  CLAUDE.md        ->  skill registered in {claude_md}")
-        else:
-            claude_md.parent.mkdir(parents=True, exist_ok=True)
-            claude_md.write_text(_SKILL_REGISTRATION.lstrip(), encoding="utf-8")
-            print(f"  CLAUDE.md        ->  created at {claude_md}")
+
+def install_home_context(integration: Integration) -> None:
+    if integration.home_context_kind == "claude_md":
+        _register_home_claude_md()
+
+
+def install(platform: str = "claude") -> None:
+    integration = get_integration(platform)
+    if integration is None:
+        print(
+            f"error: unknown platform '{platform}'. Choose from: {supported_platforms_text()}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    install_home_skill(integration)
+    install_home_context(integration)
 
     print()
     print("Done. Open your AI coding assistant and type:")
@@ -458,17 +459,48 @@ def claude_uninstall(project_dir: Path | None = None) -> None:
     _uninstall_claude_hook(project_dir or Path("."))
 
 
+def install_project_integration(platform: str, project_dir: Path | None = None) -> None:
+    integration = get_integration(platform)
+    if integration is None:
+        print(f"error: unknown platform '{platform}'. Choose from: {supported_platforms_text()}", file=sys.stderr)
+        sys.exit(1)
+
+    if integration.project_context_kind == "claude_md":
+        claude_install(project_dir)
+    elif integration.project_context_kind == "agents_md":
+        _agents_install(project_dir or Path("."), platform)
+    else:
+        print(f"error: platform '{platform}' does not support project install", file=sys.stderr)
+        sys.exit(1)
+
+
+def uninstall_project_integration(platform: str, project_dir: Path | None = None) -> None:
+    integration = get_integration(platform)
+    if integration is None:
+        print(f"error: unknown platform '{platform}'. Choose from: {supported_platforms_text()}", file=sys.stderr)
+        sys.exit(1)
+
+    if integration.project_context_kind == "claude_md":
+        claude_uninstall(project_dir)
+    elif integration.project_context_kind == "agents_md":
+        _agents_uninstall(project_dir or Path("."))
+        if integration.project_hook_kind == "codex_pretooluse":
+            _uninstall_codex_hook(project_dir or Path("."))
+    else:
+        print(f"error: platform '{platform}' does not support project uninstall", file=sys.stderr)
+        sys.exit(1)
+
+
 def main() -> None:
     # Check all known skill install locations for a stale version stamp
-    for cfg in _PLATFORM_CONFIG.values():
-        skill_dst = Path.home() / cfg["skill_dst"]
+    for skill_dst in _known_skill_destinations():
         _check_skill_version(skill_dst)
 
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid|trae|trae-cn)")
+        print(f"  install [--platform P]  copy skill to platform config dir ({supported_platforms_text()})")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -483,28 +515,18 @@ def main() -> None:
         print("  hook install            install post-commit/post-checkout git hooks (all platforms)")
         print("  hook uninstall          remove git hooks")
         print("  hook status             check if git hooks are installed")
-        print("  claude install          write graphify section to CLAUDE.md + PreToolUse hook (Claude Code)")
-        print("  claude uninstall        remove graphify section from CLAUDE.md + PreToolUse hook")
-        print("  codex install           write graphify section to AGENTS.md (Codex)")
-        print("  codex uninstall         remove graphify section from AGENTS.md")
-        print("  opencode install        write graphify section to AGENTS.md + tool.execute.before plugin (OpenCode)")
-        print("  opencode uninstall      remove graphify section from AGENTS.md + plugin")
-        print("  claw install            write graphify section to AGENTS.md (OpenClaw)")
-        print("  claw uninstall          remove graphify section from AGENTS.md")
-        print("  droid install           write graphify section to AGENTS.md (Factory Droid)")
-        print("  droid uninstall        remove graphify section from AGENTS.md")
-        print("  trae install            write graphify section to AGENTS.md (Trae)")
-        print("  trae uninstall         remove graphify section from AGENTS.md")
-        print("  trae-cn install         write graphify section to AGENTS.md (Trae CN)")
-        print("  trae-cn uninstall      remove graphify section from AGENTS.md")
+        for key in project_command_keys():
+            integration = get_integration(key)
+            if integration is None:
+                continue
+            print(_project_help_line(integration, "install"))
+            print(_project_help_line(integration, "uninstall"))
         print()
         return
 
     cmd = sys.argv[1]
     if cmd == "install":
-        # Default to windows platform on Windows, claude elsewhere
-        default_platform = "windows" if platform.system() == "Windows" else "claude"
-        chosen_platform = default_platform
+        chosen_platform = _default_install_platform()
         args = sys.argv[2:]
         i = 0
         while i < len(args):
@@ -517,25 +539,14 @@ def main() -> None:
             else:
                 i += 1
         install(platform=chosen_platform)
-    elif cmd == "claude":
+    elif cmd in project_command_keys():
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
         if subcmd == "install":
-            claude_install()
+            install_project_integration(cmd)
         elif subcmd == "uninstall":
-            claude_uninstall()
+            uninstall_project_integration(cmd)
         else:
-            print("Usage: graphify claude [install|uninstall]", file=sys.stderr)
-            sys.exit(1)
-    elif cmd in ("codex", "opencode", "claw", "droid", "trae", "trae-cn"):
-        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
-        if subcmd == "install":
-            _agents_install(Path("."), cmd)
-        elif subcmd == "uninstall":
-            _agents_uninstall(Path("."))
-            if cmd == "codex":
-                _uninstall_codex_hook(Path("."))
-        else:
-            print(f"Usage: graphify {cmd} [install|uninstall]", file=sys.stderr)
+            print(_project_command_usage(cmd), file=sys.stderr)
             sys.exit(1)
     elif cmd == "hook":
         from graphify.hooks import install as hook_install, uninstall as hook_uninstall, status as hook_status
@@ -554,7 +565,6 @@ def main() -> None:
             print("Usage: graphify query \"<question>\" [--dfs] [--budget N] [--graph path]", file=sys.stderr)
             sys.exit(1)
         from graphify.serve import _score_nodes, _bfs, _dfs, _subgraph_to_text
-        from graphify.security import sanitize_label
         from networkx.readwrite import json_graph
         question = sys.argv[2]
         use_dfs = "--dfs" in sys.argv
@@ -592,7 +602,6 @@ def main() -> None:
             sys.exit(1)
         try:
             import json as _json
-            import networkx as _nx
             _raw = _json.loads(gp.read_text(encoding="utf-8"))
             try:
                 G = json_graph.node_link_graph(_raw, edges="links")
