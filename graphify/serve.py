@@ -6,6 +6,7 @@ from pathlib import Path
 import networkx as nx
 from networkx.readwrite import json_graph
 from graphify.security import validate_graph_path, sanitize_label
+from graphify.semantic import load_semantic_index, semantic_search
 
 
 def _load_graph(graph_path: str) -> nx.Graph:
@@ -43,6 +44,54 @@ def _score_nodes(G: nx.Graph, terms: list[str]) -> list[tuple[float, str]]:
         if score > 0:
             scored.append((score, nid))
     return sorted(scored, reverse=True)
+
+
+def _reciprocal_rank_fusion(rankings: list[tuple[str, list[tuple[float, str]]]], k: int = 60) -> list[tuple[float, str, set[str], dict[str, float]]]:
+    fused: dict[str, float] = {}
+    sources: dict[str, set[str]] = {}
+    raw_scores: dict[str, dict[str, float]] = {}
+    for source, ranked in rankings:
+        for rank, (score, node_id) in enumerate(ranked, start=1):
+            fused[node_id] = fused.get(node_id, 0.0) + 1.0 / (k + rank)
+            sources.setdefault(node_id, set()).add(source)
+            raw_scores.setdefault(node_id, {})[source] = score
+    return sorted(((score, node_id, sources[node_id], raw_scores[node_id]) for node_id, score in fused.items()), reverse=True)
+
+
+def _hybrid_seed_nodes(
+    G: nx.Graph,
+    graph_path: str,
+    question: str,
+    keyword_limit: int = 3,
+    semantic_limit: int = 5,
+) -> list[dict]:
+    terms = [t.lower() for t in question.split() if len(t) > 2]
+    scored = _score_nodes(G, terms)
+    rankings: list[tuple[str, list[tuple[float, str]]]] = [("keyword", [(float(score), nid) for score, nid in scored[:keyword_limit]])]
+
+    index = load_semantic_index(graph_path)
+    if index is not None:
+        try:
+            semantic_ranked = [
+                (float(match["score"]), match["id"])
+                for match in semantic_search(graph_path, question, index=index, top_k=semantic_limit)
+            ]
+        except (FileNotFoundError, ImportError, ValueError):
+            semantic_ranked = []
+        if semantic_ranked:
+            rankings.append(("semantic", semantic_ranked))
+
+    fused = _reciprocal_rank_fusion(rankings)
+    seeds = []
+    for fused_score, nid, sources, raw_scores in fused[: max(keyword_limit, semantic_limit)]:
+        if not sources:
+            continue
+        if sources == {"keyword", "semantic"}:
+            source = "hybrid"
+        else:
+            source = next(iter(sources))
+        seeds.append({"source": source, "id": nid, "fused_score": fused_score, "raw_scores": raw_scores})
+    return seeds
 
 
 def _bfs(G: nx.Graph, start_nodes: list[str], depth: int) -> tuple[set[str], list[tuple]]:
@@ -195,13 +244,25 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
         mode = arguments.get("mode", "bfs")
         depth = min(int(arguments.get("depth", 3)), 6)
         budget = int(arguments.get("token_budget", 2000))
-        terms = [t.lower() for t in question.split() if len(t) > 2]
-        scored = _score_nodes(G, terms)
-        start_nodes = [nid for _, nid in scored[:3]]
+        seeds = _hybrid_seed_nodes(G, graph_path, question)
+        start_nodes = [seed["id"] for seed in seeds]
         if not start_nodes:
             return "No matching nodes found."
         nodes, edges = _dfs(G, start_nodes, depth) if mode == "dfs" else _bfs(G, start_nodes, depth)
-        header = f"Traversal: {mode.upper()} depth={depth} | Start: {[G.nodes[n].get('label', n) for n in start_nodes]} | {len(nodes)} nodes found\n\n"
+        seed_summary = []
+        for seed in seeds:
+            nid = seed["id"]
+            label = G.nodes[nid].get("label", nid)
+            raw_scores = seed["raw_scores"]
+            if seed["source"] == "hybrid":
+                seed_summary.append(
+                    f"{label} (hybrid keyword={raw_scores.get('keyword', 0):.2f} semantic={raw_scores.get('semantic', 0):.2f})"
+                )
+            elif seed["source"] == "semantic":
+                seed_summary.append(f"{label} (semantic {raw_scores.get('semantic', 0):.2f})")
+            else:
+                seed_summary.append(f"{label} (keyword {raw_scores.get('keyword', 0):.2f})")
+        header = f"Traversal: {mode.upper()} depth={depth} | Start: {seed_summary} | {len(nodes)} nodes found\n\n"
         return header + _subgraph_to_text(G, nodes, edges, budget)
 
     def _tool_get_node(arguments: dict) -> str:

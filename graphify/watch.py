@@ -26,7 +26,7 @@ def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
         from graphify.export import to_json
 
         detected = detect(watch_path, follow_symlinks=follow_symlinks)
-        code_files = [Path(f) for f in detected[FileType.CODE]]
+        code_files = [Path(f) for f in detected["files"][FileType.CODE]]
 
         if not code_files:
             print("[graphify watch] No code files found - nothing to rebuild.")

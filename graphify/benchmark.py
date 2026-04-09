@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import networkx as nx
 from networkx.readwrite import json_graph
+from graphify.serve import _hybrid_seed_nodes
 
 
 _CHARS_PER_TOKEN = 4  # standard approximation
@@ -14,7 +15,7 @@ def _estimate_tokens(text: str) -> int:
 
 
 def _query_subgraph_tokens(G: nx.Graph, question: str, depth: int = 3) -> int:
-    """Run BFS from best-matching nodes and return estimated tokens in the subgraph context."""
+    """Run BFS from keyword seed nodes and return estimated tokens."""
     terms = [t.lower() for t in question.split() if len(t) > 2]
     scored = []
     for nid, data in G.nodes(data=True):
@@ -49,6 +50,34 @@ def _query_subgraph_tokens(G: nx.Graph, question: str, depth: int = 3) -> int:
             d = G.edges[u, v]
             lines.append(f"EDGE {G.nodes[u].get('label', u)} --{d.get('relation', '')}--> {G.nodes[v].get('label', v)}")
 
+    return _estimate_tokens("\n".join(lines))
+
+
+def _query_subgraph_tokens_semantic(G: nx.Graph, graph_path: str, question: str, depth: int = 3) -> int:
+    seeds = _hybrid_seed_nodes(G, graph_path, question)
+    start_nodes = [seed["id"] for seed in seeds]
+    if not start_nodes:
+        return 0
+    visited: set[str] = set(start_nodes)
+    frontier = set(start_nodes)
+    edges_seen: list[tuple] = []
+    for _ in range(depth):
+        next_frontier: set[str] = set()
+        for n in frontier:
+            for neighbor in G.neighbors(n):
+                if neighbor not in visited:
+                    next_frontier.add(neighbor)
+                    edges_seen.append((n, neighbor))
+        visited.update(next_frontier)
+        frontier = next_frontier
+    lines = []
+    for nid in visited:
+        d = G.nodes[nid]
+        lines.append(f"NODE {d.get('label', nid)} src={d.get('source_file', '')} loc={d.get('source_location', '')}")
+    for u, v in edges_seen:
+        if u in visited and v in visited:
+            d = G.edges[u, v]
+            lines.append(f"EDGE {G.nodes[u].get('label', u)} --{d.get('relation', '')}--> {G.nodes[v].get('label', v)}")
     return _estimate_tokens("\n".join(lines))
 
 
@@ -90,7 +119,7 @@ def run_benchmark(
     qs = questions or _SAMPLE_QUESTIONS
     per_question = []
     for q in qs:
-        qt = _query_subgraph_tokens(G, q)
+        qt = _query_subgraph_tokens_semantic(G, graph_path, q)
         if qt > 0:
             per_question.append({"question": q, "query_tokens": qt, "reduction": round(corpus_tokens / qt, 1)})
 
