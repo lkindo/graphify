@@ -1,4 +1,5 @@
 """Tests for graphify install --platform routing."""
+import json
 from pathlib import Path
 from unittest.mock import patch
 import pytest
@@ -122,11 +123,17 @@ def _agents_uninstall(tmp_path):
 
 
 def test_codex_agents_install_writes_agents_md(tmp_path):
+    from graphify.__main__ import _CODEX_HOOK
+
     _agents_install(tmp_path, "codex")
     agents_md = tmp_path / "AGENTS.md"
     assert agents_md.exists()
     assert "graphify" in agents_md.read_text()
     assert "GRAPH_REPORT.md" in agents_md.read_text()
+    hooks_path = tmp_path / ".codex" / "hooks.json"
+    assert hooks_path.exists()
+    hooks = json.loads(hooks_path.read_text())
+    assert hooks["hooks"]["PreToolUse"] == _CODEX_HOOK["hooks"]["PreToolUse"]
 
 
 def test_opencode_agents_install_writes_agents_md(tmp_path):
@@ -140,11 +147,27 @@ def test_claw_agents_install_writes_agents_md(tmp_path):
 
 
 def test_agents_install_idempotent(tmp_path):
-    """Installing twice does not duplicate the section."""
+    """Installing twice does not duplicate the section or Codex hook."""
     _agents_install(tmp_path, "codex")
     _agents_install(tmp_path, "codex")
     content = (tmp_path / "AGENTS.md").read_text()
     assert content.count("## graphify") == 1
+    hooks = json.loads((tmp_path / ".codex" / "hooks.json").read_text())
+    assert len(hooks["hooks"]["PreToolUse"]) == 1
+
+
+def test_codex_agents_install_repairs_missing_hook_after_partial_install(tmp_path):
+    """A rerun heals a partial Codex install where only AGENTS.md exists."""
+    from graphify.__main__ import _AGENTS_MD_SECTION
+
+    (tmp_path / "AGENTS.md").write_text(_AGENTS_MD_SECTION, encoding="utf-8")
+
+    _agents_install(tmp_path, "codex")
+
+    hooks_path = tmp_path / ".codex" / "hooks.json"
+    assert hooks_path.exists()
+    hooks = json.loads(hooks_path.read_text())
+    assert len(hooks["hooks"]["PreToolUse"]) == 1
 
 
 def test_agents_install_appends_to_existing(tmp_path):
