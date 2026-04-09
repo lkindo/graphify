@@ -104,8 +104,9 @@ network.on('afterDrawing', drawHyperedges);
 </script>"""
 
 
-def _html_script(nodes_json: str, edges_json: str, legend_json: str) -> str:
+def _html_script(nodes_json: str, edges_json: str, legend_json: str, *, directed: bool = False) -> str:
     return f"""<script>
+const GRAPH_IS_DIRECTED = {'true' if directed else 'false'};
 const RAW_NODES = {nodes_json};
 const RAW_EDGES = {edges_json};
 const LEGEND = {legend_json};
@@ -130,7 +131,7 @@ const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => ({{
   dashes: e.dashes,
   width: e.width,
   color: e.color,
-  arrows: {{ to: {{ enabled: true, scaleFactor: 0.5 }} }},
+  arrows: {{ to: {{ enabled: GRAPH_IS_DIRECTED, scaleFactor: 0.5 }} }},
 }})));
 
 const container = document.getElementById('graph');
@@ -425,7 +426,7 @@ def to_html(
   </div>
   <div id="stats">{stats}</div>
 </div>
-{_html_script(nodes_json, edges_json, legend_json)}
+{_html_script(nodes_json, edges_json, legend_json, directed=G.is_directed())}
 {_hyperedge_script(hyperedges_json)}
 </body>
 </html>"""

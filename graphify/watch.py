@@ -11,9 +11,10 @@ _WATCHED_EXTENSIONS = CODE_EXTENSIONS | DOC_EXTENSIONS | PAPER_EXTENSIONS | IMAG
 _CODE_EXTENSIONS = CODE_EXTENSIONS
 
 
-def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
+def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False, directed: bool = False) -> bool:
     """Re-run AST extraction + build + cluster + report for code files. No LLM needed.
 
+    directed=True produces a DiGraph that preserves edge direction (source→target).
     Returns True on success, False on error.
     """
     try:
@@ -40,7 +41,7 @@ def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
             "total_words": detected.get("total_words", 0),
         }
 
-        G = build_from_json(result)
+        G = build_from_json(result, directed=directed)
         communities = cluster(G)
         cohesion = score_all(G, communities)
         gods = god_nodes(G)
