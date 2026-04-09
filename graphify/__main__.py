@@ -165,33 +165,26 @@ Rules:
 
 _AGENTS_MD_MARKER = "## graphify"
 
-# .hermes.md section for Hermes Agent.
-# Hermes reads .hermes.md in the project root as system context.
-_HERMES_MD_SECTION = """\
-## graphify
-
-This project has a graphify knowledge graph at graphify-out/.
-
-Rules:
-- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
-- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
-- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
-"""
-
-_HERMES_MD_MARKER = "## graphify"
+# Hermes Agent uses AGENTS.md (same as Codex/OpenCode/OpenClaw) since Hermes
+# falls back to AGENTS.md when .hermes.md is absent. This keeps graphify
+# aligned with the cross-platform standard.
 
 def _hermes_install(project_dir: Path) -> None:
-    """Write the graphify section to .hermes.md (Hermes Agent)."""
-    target = (project_dir or Path(".")) / ".hermes.md"
+    """Write the graphify section to AGENTS.md (Hermes Agent).
+
+    Hermes reads AGENTS.md when .hermes.md is absent, and AGENTS.md is the
+    standard cross-platform file used by Codex/OpenCode/OpenClaw/etc.
+    """
+    target = (project_dir or Path(".")) / "AGENTS.md"
 
     if target.exists():
         content = target.read_text(encoding="utf-8")
-        if _HERMES_MD_MARKER in content:
-            print("graphify already configured in .hermes.md")
+        if _AGENTS_MD_MARKER in content:
+            print("graphify already configured in AGENTS.md")
             return
-        new_content = content.rstrip() + "\n\n" + _HERMES_MD_SECTION
+        new_content = content.rstrip() + "\n\n" + _AGENTS_MD_SECTION
     else:
-        new_content = _HERMES_MD_SECTION
+        new_content = _AGENTS_MD_SECTION
 
     target.write_text(new_content, encoding="utf-8")
     print(f"graphify section written to {target.resolve()}")
@@ -200,20 +193,20 @@ def _hermes_install(project_dir: Path) -> None:
     print("codebase questions and rebuild it after code changes.")
     print()
     print("Note: unlike Claude Code, there is no PreToolUse hook for")
-    print("Hermes — the .hermes.md rules are the always-on mechanism.")
+    print("Hermes — the AGENTS.md rules are the always-on mechanism.")
 
 
 def _hermes_uninstall(project_dir: Path) -> None:
-    """Remove the graphify section from .hermes.md."""
-    target = (project_dir or Path(".")) / ".hermes.md"
+    """Remove the graphify section from AGENTS.md."""
+    target = (project_dir or Path(".")) / "AGENTS.md"
 
     if not target.exists():
-        print("No .hermes.md found in current directory - nothing to do")
+        print("No AGENTS.md found in current directory - nothing to do")
         return
 
     content = target.read_text(encoding="utf-8")
-    if _HERMES_MD_MARKER not in content:
-        print("graphify section not found in .hermes.md - nothing to do")
+    if _AGENTS_MD_MARKER not in content:
+        print("graphify section not found in AGENTS.md - nothing to do")
         return
 
     cleaned = re.sub(
@@ -227,7 +220,7 @@ def _hermes_uninstall(project_dir: Path) -> None:
         print(f"graphify section removed from {target.resolve()}")
     else:
         target.unlink()
-        print(f".hermes.md was empty after removal - deleted {target.resolve()}")
+        print(f"AGENTS.md was empty after removal - deleted {target.resolve()}")
 
 # OpenCode tool.execute.before plugin — fires before every tool call.
 # Injects a graph reminder into bash command output when graph.json exists.
@@ -566,8 +559,8 @@ def main() -> None:
         print("  trae uninstall         remove graphify section from AGENTS.md")
         print("  trae-cn install         write graphify section to AGENTS.md (Trae CN)")
         print("  trae-cn uninstall      remove graphify section from AGENTS.md")
-        print("  hermes install          write graphify section to .hermes.md (Hermes Agent)")
-        print("  hermes uninstall        remove graphify section from .hermes.md")
+        print("  hermes install          write graphify section to AGENTS.md (Hermes Agent)")
+        print("  hermes uninstall        remove graphify section from AGENTS.md")
         print()
         return
 
