@@ -262,7 +262,7 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
                 seed_summary.append(f"{label} (semantic {raw_scores.get('semantic', 0):.2f})")
             else:
                 seed_summary.append(f"{label} (keyword {raw_scores.get('keyword', 0):.2f})")
-        header = f"Traversal: {mode.upper()} depth={depth} | Start: {seed_summary} | {len(nodes)} nodes found\n\n"
+        header = f"Traversal: {mode.upper()} depth={depth} | Start: {', '.join(seed_summary)} | {len(nodes)} nodes found\n\n"
         return header + _subgraph_to_text(G, nodes, edges, budget)
 
     def _tool_get_node(arguments: dict) -> str:

@@ -170,7 +170,10 @@ def build_semantic_index(
         return existing.meta
 
     data = json.loads(graph_path.read_text(encoding="utf-8"))
-    G = json_graph.node_link_graph(data, edges="links")
+    try:
+        G = json_graph.node_link_graph(data, edges="links")
+    except TypeError:
+        G = json_graph.node_link_graph(data)
     nodes = semantic_candidate_nodes(G)
     if backend is None:
         backend = _get_backend(model_name)
