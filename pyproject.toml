@@ -47,6 +47,7 @@ pdf = ["pypdf", "html2text"]
 watch = ["watchdog"]
 leiden = ["graspologic"]
 office = ["python-docx", "openpyxl"]
+fsharp = ["tree-sitter-fsharp"]
 all = ["mcp", "neo4j", "pypdf", "html2text", "watchdog", "graspologic", "python-docx", "openpyxl"]
 
 [project.scripts]
