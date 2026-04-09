@@ -2697,7 +2697,7 @@ def extract_fsharp(path: Path) -> dict:
             name = _type_name(node)
             if name:
                 line = node.start_point[0] + 1
-                type_nid = _make_id(stem, name)
+                type_nid = _make_id(module_nid, name) if module_nid else _make_id(stem, name)
                 add_node(type_nid, name, line)
                 add_edge(parent_nid, type_nid, "contains", line)
             return
@@ -2711,7 +2711,7 @@ def extract_fsharp(path: Path) -> dict:
                     break
             if mod_name:
                 line = node.start_point[0] + 1
-                mod_nid = _make_id(stem, mod_name)
+                mod_nid = _make_id(parent_nid, mod_name)
                 add_node(mod_nid, mod_name, line)
                 add_edge(parent_nid, mod_nid, "contains", line)
                 # Walk children inside the module context
@@ -2759,10 +2759,15 @@ def extract_fsharp(path: Path) -> dict:
             cursor = cursor.children[0]
         # Now cursor should be the callee identifier
         if cursor.type == "long_identifier_or_op":
-            # Simple function call: extract the identifier text
+            # May contain a direct identifier (simple call) or
+            # a long_identifier (qualified call like Module.func)
             for child in cursor.children:
                 if child.type == "identifier":
                     return _read_text(child, source)
+                if child.type == "long_identifier":
+                    # Qualified: take last segment
+                    parts = _read_text(child, source).split(".")
+                    return parts[-1].strip() if parts else None
             return _read_text(cursor, source)
         if cursor.type == "long_identifier":
             # Qualified call like Module.func — take last segment
@@ -2777,21 +2782,47 @@ def extract_fsharp(path: Path) -> dict:
                     return _read_text(child, source)
         return None
 
+    def _try_emit_call(caller_nid: str, callee_name: str, line: int) -> None:
+        """Emit a call edge if callee_name resolves to a known node."""
+        tgt_nid = label_to_nid.get(callee_name.lower())
+        if tgt_nid and tgt_nid != caller_nid:
+            pair = (caller_nid, tgt_nid)
+            if pair not in seen_call_pairs:
+                seen_call_pairs.add(pair)
+                add_edge(caller_nid, tgt_nid, "calls",
+                         line, confidence="EXTRACTED", weight=1.0)
+
+    def _resolve_identifier(node) -> str | None:
+        """Resolve a leaf identifier or qualified name to its last segment."""
+        if node.type == "identifier":
+            return _read_text(node, source)
+        if node.type in ("long_identifier_or_op", "long_identifier"):
+            text = _read_text(node, source)
+            parts = text.split(".")
+            return parts[-1].strip() if parts else None
+        return None
+
     def walk_calls(node, caller_nid: str) -> None:
-        # Don't descend into nested function definitions
+        # For nested let-bindings (value or function), still walk the body
+        # for calls, but don't treat the binding itself as a new caller.
         if node.type == "function_or_value_defn":
+            # Walk children to find calls inside the body
+            for child in node.children:
+                if child.type not in ("let", "=", "function_declaration_left",
+                                      "value_declaration_left", "rec", "inline"):
+                    walk_calls(child, caller_nid)
             return
 
         if node.type == "application_expression":
             callee_name = _resolve_callee(node)
             if callee_name:
-                tgt_nid = label_to_nid.get(callee_name.lower())
-                if tgt_nid and tgt_nid != caller_nid:
-                    pair = (caller_nid, tgt_nid)
-                    if pair not in seen_call_pairs:
-                        seen_call_pairs.add(pair)
-                        add_edge(caller_nid, tgt_nid, "calls",
-                                 node.start_point[0] + 1, confidence="EXTRACTED", weight=1.0)
+                _try_emit_call(caller_nid, callee_name, node.start_point[0] + 1)
+            # Also check non-callee arguments for function references
+            # e.g. List.map describePoint — describePoint is an argument
+            for child in node.children[1:]:
+                arg_name = _resolve_identifier(child)
+                if arg_name:
+                    _try_emit_call(caller_nid, arg_name, child.start_point[0] + 1)
 
         # Handle pipe expressions: x |> func
         if node.type == "infix_expression":
@@ -2812,13 +2843,7 @@ def extract_fsharp(path: Path) -> dict:
                 elif rhs.type == "application_expression":
                     callee_name = _resolve_callee(rhs)
                 if callee_name:
-                    tgt_nid = label_to_nid.get(callee_name.lower())
-                    if tgt_nid and tgt_nid != caller_nid:
-                        pair = (caller_nid, tgt_nid)
-                        if pair not in seen_call_pairs:
-                            seen_call_pairs.add(pair)
-                            add_edge(caller_nid, tgt_nid, "calls",
-                                     node.start_point[0] + 1, confidence="EXTRACTED", weight=1.0)
+                    _try_emit_call(caller_nid, callee_name, node.start_point[0] + 1)
 
         for child in node.children:
             walk_calls(child, caller_nid)
@@ -2910,9 +2935,11 @@ def extract(paths: list[Path]) -> dict:
         ".m": extract_objc,
         ".mm": extract_objc,
         ".jl": extract_julia,
-        ".fs": extract_fsharp,
-        ".fsx": extract_fsharp,
     }
+
+    if importlib.util.find_spec("tree_sitter_fsharp") is not None:
+        _DISPATCH[".fs"] = extract_fsharp
+        _DISPATCH[".fsx"] = extract_fsharp
 
     total = len(paths)
     _PROGRESS_INTERVAL = 100
@@ -2967,8 +2994,9 @@ def collect_files(target: Path, *, follow_symlinks: bool = False) -> list[Path]:
         ".rb", ".cs", ".kt", ".kts", ".scala", ".php", ".swift",
         ".lua", ".toc", ".zig", ".ps1",
         ".m", ".mm",
-        ".fs", ".fsx",
     }
+    if importlib.util.find_spec("tree_sitter_fsharp") is not None:
+        _EXTENSIONS |= {".fs", ".fsx"}
     if not follow_symlinks:
         results: list[Path] = []
         for ext in sorted(_EXTENSIONS):
