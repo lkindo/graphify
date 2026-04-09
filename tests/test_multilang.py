@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 import pytest
-from graphify.extract import extract_js, extract_go, extract_rust, extract
+from graphify.extract import extract_js, extract_go, extract_rust, extract_commonlisp, extract
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -131,6 +131,83 @@ def test_rust_no_dangling_edges():
             assert e["source"] in node_ids
 
 
+# ── Common Lisp ──────────────────────────────────────────────────────────────
+
+def test_cl_finds_package():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    assert "error" not in r
+    assert "http-server" in _labels(r)
+
+def test_cl_finds_class():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    assert "server" in _labels(r)
+    assert "ssl-server" in _labels(r)
+
+def test_cl_finds_defun():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    labels = _labels(r)
+    assert any("make-server" in l for l in labels)
+    assert any("start" in l for l in labels)
+    assert any("stop" in l for l in labels)
+
+def test_cl_finds_generic():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    assert any("process-request" in l for l in _labels(r))
+
+def test_cl_finds_macro():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    assert any("with-server" in l and "macro" in l for l in _labels(r))
+
+def test_cl_emits_calls():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    calls = _call_pairs(r)
+    # start() calls process-request
+    assert any("start" in src and "process-request" in tgt for src, tgt in calls)
+    # with-server macro calls make-server and start
+    assert any("with-server" in src and "make-server" in tgt for src, tgt in calls)
+    assert any("with-server" in src and "start" in tgt for src, tgt in calls)
+
+def test_cl_calls_are_extracted():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    for e in r["edges"]:
+        if e["relation"] == "calls":
+            assert e["confidence"] == "EXTRACTED"
+
+def test_cl_no_dangling_edges():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    node_ids = {n["id"] for n in r["nodes"]}
+    for e in r["edges"]:
+        if e["relation"] in ("contains", "method", "calls"):
+            assert e["source"] in node_ids
+
+def test_cl_docstrings():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    rationale_edges = [e for e in r["edges"] if e["relation"] == "rationale_for"]
+    assert len(rationale_edges) >= 3  # make-server, start, process-request have docstrings
+    labels = _labels(r)
+    assert any("Process an incoming" in l for l in labels)
+
+def test_cl_method_specializers():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    spec_edges = [e for e in r["edges"] if e["relation"] == "specializes"]
+    assert len(spec_edges) >= 1
+    # process-request specializes on server
+    assert any("process_request" in e["source"] and "server" in e["target"] for e in spec_edges)
+
+def test_cl_inherits():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    inherit_edges = [e for e in r["edges"] if e["relation"] == "inherits"]
+    assert len(inherit_edges) >= 1
+    assert any("ssl_server" in e["source"] and "server" in e["target"] for e in inherit_edges)
+
+def test_cl_imports():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    import_edges = [e for e in r["edges"] if e["relation"] == "imports"]
+    targets = {e["target"] for e in import_edges}
+    assert "cl" in targets
+    assert "alexandria" in targets
+
+
 # ── extract() dispatch ────────────────────────────────────────────────────────
 
 def test_extract_dispatches_all_languages():
@@ -139,14 +216,15 @@ def test_extract_dispatches_all_languages():
         FIXTURES / "sample.ts",
         FIXTURES / "sample.go",
         FIXTURES / "sample.rs",
+        FIXTURES / "sample.lisp",
     ]
     r = extract(files)
     source_files = {n["source_file"] for n in r["nodes"] if n["source_file"]}
-    # All four files should contribute nodes
     assert any("sample.py" in f for f in source_files)
     assert any("sample.ts" in f for f in source_files)
     assert any("sample.go" in f for f in source_files)
     assert any("sample.rs" in f for f in source_files)
+    assert any("sample.lisp" in f for f in source_files)
 
 
 # ── Cache ─────────────────────────────────────────────────────────────────────

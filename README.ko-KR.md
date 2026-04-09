@@ -8,7 +8,7 @@
 
 **AI 코딩 어시스턴트를 위한 스킬.** Claude Code, Codex, OpenCode, OpenClaw, Factory Droid, 또는 Trae에서 `/graphify`를 입력하면 파일을 읽고 지식 그래프를 구축하여, 미처 몰랐던 구조를 보여줍니다. 코드베이스를 더 빠르게 이해하고, 아키텍처 결정의 "이유"를 찾아보세요.
 
-완전한 멀티모달 지원. 코드, PDF, 마크다운, 스크린샷, 다이어그램, 화이트보드 사진, 심지어 다른 언어로 된 이미지까지 — graphify는 Claude Vision을 사용하여 이 모든 것에서 개념과 관계를 추출하고 하나의 그래프로 연결합니다. tree-sitter AST를 통해 20개 언어를 지원합니다(Python, JS, TS, Go, Rust, Java, C, C++, Ruby, C#, Kotlin, Scala, PHP, Swift, Lua, Zig, PowerShell, Elixir, Objective-C, Julia).
+완전한 멀티모달 지원. 코드, PDF, 마크다운, 스크린샷, 다이어그램, 화이트보드 사진, 심지어 다른 언어로 된 이미지까지 — graphify는 Claude Vision을 사용하여 이 모든 것에서 개념과 관계를 추출하고 하나의 그래프로 연결합니다. tree-sitter AST를 통해 21개 언어를 지원합니다(Python, JS, TS, Go, Rust, Java, C, C++, Ruby, C#, Kotlin, Scala, PHP, Swift, Lua, Zig, PowerShell, Elixir, Objective-C, Julia, Common Lisp).
 
 > Andrej Karpathy는 논문, 트윗, 스크린샷, 메모를 모아두는 `/raw` 폴더를 관리합니다. graphify는 바로 그 문제에 대한 답입니다 — 원본 파일을 직접 읽는 것 대비 쿼리당 토큰 소비가 71.5배 적고, 세션 간에 영속적이며, 발견한 것과 추측한 것을 정직하게 구분합니다.
 
@@ -214,7 +214,7 @@ graphify query "..." --graph path/to/graph.json
 
 | 유형 | 확장자 | 추출 방식 |
 |------|--------|-----------|
-| 코드 | `.py .ts .js .jsx .tsx .go .rs .java .c .cpp .rb .cs .kt .scala .php .swift .lua .zig .ps1 .ex .exs .m .mm .jl` | tree-sitter AST + 콜 그래프 + docstring/주석 근거 |
+| 코드 | `.py .ts .js .jsx .tsx .go .rs .java .c .cpp .rb .cs .kt .scala .php .swift .lua .zig .ps1 .ex .exs .m .mm .jl .lisp .cl .lsp .asd` | tree-sitter AST + 콜 그래프 + docstring/주석 근거 |
 | 문서 | `.md .txt .rst` | Claude를 통한 개념 + 관계 + 설계 근거 |
 | 오피스 | `.docx .xlsx` | 마크다운으로 변환 후 Claude를 통해 추출 (`pip install graphifyy[office]` 필요) |
 | 논문 | `.pdf` | 인용 마이닝 + 개념 추출 |

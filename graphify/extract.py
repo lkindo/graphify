@@ -2544,6 +2544,321 @@ def extract_elixir(path: Path) -> dict:
     return {"nodes": nodes, "edges": clean_edges, "input_tokens": 0, "output_tokens": 0}
 
 
+# ── Common Lisp ──────────────────────────────────────────────────────────────
+
+# CL special forms / macros that should not count as "calls" in the graph
+_CL_SPECIAL_FORMS = frozenset({
+    "let", "let*", "flet", "labels", "macrolet",
+    "if", "when", "unless", "cond", "case", "ecase", "typecase", "etypecase",
+    "progn", "prog1", "prog2", "block", "return-from", "tagbody", "go",
+    "lambda", "function", "funcall", "apply",
+    "setf", "setq", "psetf", "psetq", "incf", "decf", "push", "pop",
+    "loop", "do", "do*", "dolist", "dotimes", "map", "mapcar", "mapc",
+    "format", "print", "princ", "prin1", "write", "terpri",
+    "and", "or", "not", "null",
+    "values", "multiple-value-bind", "multiple-value-setq",
+    "declare", "the", "locally", "eval-when",
+    "quote", "backquote",
+    "error", "signal", "warn", "assert", "check-type",
+    "handler-case", "handler-bind", "restart-case", "ignore-errors",
+    "unwind-protect", "catch", "throw",
+    "with-open-file", "with-output-to-string", "with-input-from-string",
+    "with-slots", "with-accessors",
+    "defvar", "defparameter", "defconstant",
+    "in-package", "require", "provide", "use-package",
+    "t", "nil",
+})
+
+
+def extract_commonlisp(path: Path) -> dict:
+    """Extract packages, classes, functions, methods, macros, and calls from a Common Lisp file."""
+    try:
+        import tree_sitter_commonlisp as tscl
+        from tree_sitter import Language, Parser
+    except ImportError:
+        return {"nodes": [], "edges": [], "error": "tree-sitter-commonlisp not installed"}
+
+    try:
+        language = Language(tscl.language())
+        parser = Parser(language)
+        source = path.read_bytes()
+        tree = parser.parse(source)
+        root = tree.root_node
+    except Exception as e:
+        return {"nodes": [], "edges": [], "error": str(e)}
+
+    stem = path.stem
+    str_path = str(path)
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    seen_ids: set[str] = set()
+    function_bodies: list[tuple[str, object]] = []  # (nid, body_nodes)
+    current_package: str | None = None
+
+    def _text(node) -> str:
+        return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+
+    def add_node(nid: str, label: str, line: int) -> None:
+        if nid not in seen_ids:
+            seen_ids.add(nid)
+            nodes.append({
+                "id": nid,
+                "label": label,
+                "file_type": "code",
+                "source_file": str_path,
+                "source_location": f"L{line}",
+            })
+
+    def add_edge(src: str, tgt: str, relation: str, line: int,
+                 confidence: str = "EXTRACTED", weight: float = 1.0) -> None:
+        edges.append({
+            "source": src,
+            "target": tgt,
+            "relation": relation,
+            "confidence": confidence,
+            "source_file": str_path,
+            "source_location": f"L{line}",
+            "weight": weight,
+        })
+
+    file_nid = _make_id(stem)
+    add_node(file_nid, path.name, 1)
+
+    def _first_sym(node) -> str | None:
+        """Get the first sym_lit text from a list_lit's children."""
+        for child in node.children:
+            if child.type == "sym_lit":
+                return _text(child)
+        return None
+
+    def _kwd_text(node) -> str:
+        """Extract the symbol name from a kwd_lit, stripping the leading colon."""
+        t = _text(node)
+        return t.lstrip(":").lstrip("#:")
+
+    def _handle_defpackage(node) -> None:
+        nonlocal current_package
+        children = node.children
+        pkg_name = None
+        for child in children:
+            if child.type == "kwd_lit" and pkg_name is None:
+                pkg_name = _kwd_text(child)
+                break
+            if child.type == "sym_lit" and _text(child) != "defpackage":
+                pkg_name = _text(child)
+                break
+        if not pkg_name:
+            return
+        current_package = pkg_name
+        pkg_nid = _make_id(stem, pkg_name)
+        line = node.start_point[0] + 1
+        add_node(pkg_nid, pkg_name, line)
+        add_edge(file_nid, pkg_nid, "contains", line)
+
+        # Extract :use clauses as imports
+        for child in children:
+            if child.type == "list_lit":
+                first = _first_sym(child)
+                if first is None:
+                    # Could be (:use ...) with kwd_lit
+                    for gc in child.children:
+                        if gc.type == "kwd_lit" and _kwd_text(gc) == "use":
+                            for uc in child.children:
+                                if uc.type == "kwd_lit" and uc != gc:
+                                    mod_name = _kwd_text(uc)
+                                    if mod_name != "use":
+                                        tgt_nid = _make_id(mod_name)
+                                        add_edge(pkg_nid, tgt_nid, "imports",
+                                                 child.start_point[0] + 1)
+                            break
+
+    def _handle_defclass(node) -> None:
+        children = node.children
+        # Find class name: second sym_lit after "defclass"
+        sym_lits = [c for c in children if c.type == "sym_lit"]
+        if len(sym_lits) < 2:
+            return
+        class_name = _text(sym_lits[1])
+        line = node.start_point[0] + 1
+        class_nid = _make_id(stem, class_name)
+        add_node(class_nid, class_name, line)
+
+        parent_nid = file_nid
+        if current_package:
+            pkg_nid = _make_id(stem, current_package)
+            if pkg_nid in seen_ids:
+                parent_nid = pkg_nid
+        add_edge(parent_nid, class_nid, "contains", line)
+
+        # Superclasses (third element, a list)
+        list_lits = [c for c in children if c.type == "list_lit"]
+        if list_lits:
+            superclass_list = list_lits[0]
+            for sc in superclass_list.children:
+                if sc.type == "sym_lit":
+                    sc_name = _text(sc)
+                    sc_nid = _make_id(stem, sc_name)
+                    add_edge(class_nid, sc_nid, "inherits",
+                             superclass_list.start_point[0] + 1)
+
+    def _handle_defun_node(node) -> None:
+        """Handle a defun AST node (covers defun, defmethod, defgeneric, defmacro)."""
+        header = None
+        for child in node.children:
+            if child.type == "defun_header":
+                header = child
+                break
+        if not header:
+            return
+
+        # Determine keyword type
+        keyword_type = "defun"
+        func_name = None
+        for child in header.children:
+            if child.type == "defun_keyword":
+                for kc in child.children:
+                    if kc.type in ("defun", "defmethod", "defgeneric", "defmacro"):
+                        keyword_type = kc.type
+                        break
+            if child.type == "sym_lit" and func_name is None:
+                func_name = _text(child)
+
+        if not func_name:
+            return
+
+        line = node.start_point[0] + 1
+        func_nid = _make_id(stem, func_name)
+
+        if keyword_type == "defmethod":
+            label = f".{func_name}()"
+        elif keyword_type == "defmacro":
+            label = f"{func_name} (macro)"
+        elif keyword_type == "defgeneric":
+            label = f"{func_name} (generic)"
+        else:
+            label = f"{func_name}()"
+
+        add_node(func_nid, label, line)
+
+        parent_nid = file_nid
+        if current_package:
+            pkg_nid = _make_id(stem, current_package)
+            if pkg_nid in seen_ids:
+                parent_nid = pkg_nid
+        if keyword_type == "defmethod":
+            add_edge(parent_nid, func_nid, "method", line)
+        else:
+            add_edge(parent_nid, func_nid, "contains", line)
+
+        # Method specializers: (defmethod name ((param class) ...))
+        if keyword_type == "defmethod":
+            for child in header.children:
+                if child.type == "list_lit":
+                    # This is the parameter list
+                    for param in child.children:
+                        if param.type == "list_lit":
+                            syms = [c for c in param.children if c.type == "sym_lit"]
+                            if len(syms) >= 2:
+                                specializer_name = _text(syms[1])
+                                spec_nid = _make_id(stem, specializer_name)
+                                add_edge(func_nid, spec_nid, "specializes",
+                                         param.start_point[0] + 1)
+                    break
+
+        # Docstring
+        for child in node.children:
+            if child.type == "str_lit":
+                doc_text = _text(child).strip('"')
+                if doc_text:
+                    doc_nid = _make_id(func_nid, "rationale")
+                    add_node(doc_nid, doc_text[:120], child.start_point[0] + 1)
+                    add_edge(doc_nid, func_nid, "rationale_for",
+                             child.start_point[0] + 1)
+                break
+
+        # Collect body for call extraction
+        body_nodes = [c for c in node.children
+                      if c.type not in ("(", ")", "defun_header", "str_lit")]
+        if body_nodes:
+            function_bodies.append((func_nid, body_nodes))
+
+    # Walk top-level forms
+    for top in root.children:
+        if top.type != "list_lit":
+            continue
+
+        # Check for defun node type inside list_lit
+        has_defun = False
+        for child in top.children:
+            if child.type == "defun":
+                _handle_defun_node(child)
+                has_defun = True
+                break
+        if has_defun:
+            continue
+
+        # Plain list_lit forms: defpackage, in-package, defclass, require
+        first = _first_sym(top)
+        if not first:
+            continue
+        first_lower = first.lower()
+
+        if first_lower == "defpackage":
+            _handle_defpackage(top)
+        elif first_lower == "in-package":
+            for child in top.children:
+                if child.type == "kwd_lit":
+                    current_package = _kwd_text(child)
+                    break
+                if child.type == "sym_lit" and _text(child) != "in-package":
+                    current_package = _text(child)
+                    break
+        elif first_lower == "defclass":
+            _handle_defclass(top)
+        elif first_lower in ("require", "ql:quickload"):
+            for child in top.children:
+                if child.type in ("kwd_lit", "str_lit"):
+                    mod_name = _kwd_text(child) if child.type == "kwd_lit" else _text(child).strip('"')
+                    if mod_name:
+                        tgt_nid = _make_id(mod_name)
+                        add_edge(file_nid, tgt_nid, "imports",
+                                 top.start_point[0] + 1)
+                    break
+
+    # Call extraction pass
+    label_to_nid: dict[str, str] = {}
+    for n in nodes:
+        raw = n["label"]
+        normalised = raw.replace(" (macro)", "").replace(" (generic)", "").strip("()").lstrip(".")
+        label_to_nid[normalised.lower()] = n["id"]
+
+    seen_call_pairs: set[tuple[str, str]] = set()
+
+    def walk_calls(node, caller_nid: str) -> None:
+        if node.type == "defun":
+            return
+        if node.type == "list_lit":
+            callee = _first_sym(node)
+            if callee and callee.lower() not in _CL_SPECIAL_FORMS:
+                tgt_nid = label_to_nid.get(callee.lower())
+                if tgt_nid and tgt_nid != caller_nid:
+                    pair = (caller_nid, tgt_nid)
+                    if pair not in seen_call_pairs:
+                        seen_call_pairs.add(pair)
+                        add_edge(caller_nid, tgt_nid, "calls",
+                                 node.start_point[0] + 1, confidence="EXTRACTED", weight=1.0)
+        for child in node.children:
+            walk_calls(child, caller_nid)
+
+    for caller_nid, body_nodes in function_bodies:
+        for body_node in body_nodes:
+            walk_calls(body_node, caller_nid)
+
+    clean_edges = [e for e in edges if e["source"] in seen_ids and
+                   (e["target"] in seen_ids or e["relation"] in ("imports", "imports_from"))]
+    return {"nodes": nodes, "edges": clean_edges}
+
+
 # ── Main extract and collect_files ────────────────────────────────────────────
 
 
@@ -2622,6 +2937,10 @@ def extract(paths: list[Path]) -> dict:
         ".m": extract_objc,
         ".mm": extract_objc,
         ".jl": extract_julia,
+        ".lisp": extract_commonlisp,
+        ".cl": extract_commonlisp,
+        ".lsp": extract_commonlisp,
+        ".asd": extract_commonlisp,
     }
 
     total = len(paths)
