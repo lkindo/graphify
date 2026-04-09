@@ -8,6 +8,7 @@ PLATFORMS = {
     "claude": (".claude/skills/graphify/SKILL.md",),
     "codex": (".agents/skills/graphify/SKILL.md",),
     "opencode": (".config/opencode/skills/graphify/SKILL.md",),
+    "aider": (".aider/graphify/SKILL.md",),
     "claw": (".claw/skills/graphify/SKILL.md",),
     "droid": (".factory/skills/graphify/SKILL.md",),
     "trae": (".trae/skills/graphify/SKILL.md",),
@@ -94,7 +95,7 @@ def test_all_skill_files_exist_in_package():
     """All installable platform skill files must be present in the installed package."""
     import graphify
     pkg = Path(graphify.__file__).parent
-    for name in ("skill.md", "skill-codex.md", "skill-opencode.md", "skill-claw.md", "skill-windows.md", "skill-droid.md", "skill-trae.md"):
+    for name in ("skill.md", "skill-codex.md", "skill-opencode.md", "skill-aider.md", "skill-claw.md", "skill-windows.md", "skill-droid.md", "skill-trae.md"):
         assert (pkg / name).exists(), f"Missing: {name}"
 
 
@@ -318,3 +319,32 @@ def test_gemini_uninstall_removes_hook(tmp_path):
 def test_gemini_uninstall_noop_if_not_installed(tmp_path):
     from graphify.__main__ import gemini_uninstall
     gemini_uninstall(tmp_path)  # should not raise
+
+
+# --- Aider tests ---
+
+def test_install_aider(tmp_path):
+    _install(tmp_path, "aider")
+    assert (tmp_path / ".aider" / "graphify" / "SKILL.md").exists()
+
+
+def test_aider_install_does_not_write_claude_md(tmp_path):
+    _install(tmp_path, "aider")
+    assert not (tmp_path / ".claude" / "CLAUDE.md").exists()
+
+
+def test_aider_agents_install_writes_agents_md(tmp_path):
+    _agents_install(tmp_path, "aider")
+    agents_md = tmp_path / "AGENTS.md"
+    assert agents_md.exists()
+    assert "graphify" in agents_md.read_text()
+    assert "GRAPH_REPORT.md" in agents_md.read_text()
+
+
+def test_aider_skill_is_sequential():
+    """Aider skill file must describe sequential extraction (no spawn_agent/@mention)."""
+    import graphify
+    skill = (Path(graphify.__file__).parent / "skill-aider.md").read_text()
+    assert "sequential" in skill.lower()
+    assert "spawn_agent" not in skill
+    assert "@mention" not in skill
