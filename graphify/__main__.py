@@ -417,11 +417,13 @@ def _install_codex_hook(project_dir: Path) -> None:
         existing = {}
 
     pre_tool = existing.setdefault("hooks", {}).setdefault("PreToolUse", [])
-    if any("graphify" in str(h) for h in pre_tool):
-        print(f"  .codex/hooks.json  ->  hook already registered (no change)")
-        return
 
-    pre_tool.extend(_CODEX_HOOK["hooks"]["PreToolUse"])
+    # Remove any existing graphify hooks (handles upgrades from old versions)
+    filtered = [h for h in pre_tool if "graphify" not in str(h)]
+    existing["hooks"]["PreToolUse"] = filtered
+
+    # Install fresh hook with correct format
+    existing["hooks"]["PreToolUse"].extend(_CODEX_HOOK["hooks"]["PreToolUse"])
     hooks_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
     print(f"  .codex/hooks.json  ->  PreToolUse hook registered")
 
