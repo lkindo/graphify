@@ -7,6 +7,8 @@ import re
 from enum import Enum
 from pathlib import Path
 
+import pathspec
+
 
 class FileType(str, Enum):
     CODE = "code"
@@ -253,40 +255,174 @@ def _is_noise_dir(part: str) -> bool:
     return False
 
 
-def _load_graphifyignore(root: Path) -> list[str]:
-    """Read .graphifyignore from root **and ancestor directories**, returning patterns.
+def _read_ignore_file(filepath: Path) -> list[str]:
+    """Read a single .gitignore or .graphifyignore file and return pattern lines."""
+    if not filepath.exists():
+        return []
+    patterns: list[str] = []
+    for line in filepath.read_text(errors="ignore").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            patterns.append(line)
+    return patterns
 
-    Walks upward from *root* towards the filesystem root, collecting patterns
-    from every ``.graphifyignore`` encountered (like ``.gitignore`` discovery).
-    The search stops at the filesystem root or at a ``.git`` directory boundary
-    so it doesn't leak outside the repository.
 
-    Lines starting with # are comments. Blank lines are ignored.
-    Patterns follow gitignore semantics: glob matched against the path
-    relative to root. A leading slash anchors to root. A trailing slash
-    matches directories only (we match both dir and file for simplicity).
+def _load_ignore_patterns(directory: Path) -> list[str]:
+    """Read .gitignore and .graphifyignore from a directory, return combined patterns.
+
+    Both files use gitignore semantics. .graphifyignore patterns are appended
+    after .gitignore so they take precedence (last match wins in pathspec,
+    and negation patterns can override earlier ones).
     """
     patterns: list[str] = []
-    current = root.resolve()
+    for filename in (".gitignore", ".graphifyignore"):
+        patterns.extend(_read_ignore_file(directory / filename))
+    return patterns
+
+
+def _load_ancestor_patterns(root: Path) -> list[str]:
+    """Walk upward from root collecting .graphifyignore patterns from ancestors.
+
+    Stops at the filesystem root or at a .git boundary. This preserves the
+    existing behavior where a .graphifyignore placed above the scan root
+    still applies.
+    """
+    patterns: list[str] = []
+    current = root.resolve().parent  # start from parent — root itself is handled by _IgnoreTree
     while True:
-        ignore_file = current / ".graphifyignore"
-        if ignore_file.exists():
-            for line in ignore_file.read_text(errors="ignore").splitlines():
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    patterns.append(line)
-        # Stop climbing once we've processed the git repo root
+        patterns.extend(_read_ignore_file(current / ".graphifyignore"))
         if (current / ".git").exists():
             break
         parent = current.parent
         if parent == current:
-            break  # filesystem root
+            break
         current = parent
     return patterns
 
 
+class _IgnoreTree:
+    """Cascading ignore matcher that mirrors git's nested .gitignore behavior.
+
+    At each directory level during os.walk, patterns from .gitignore and
+    .graphifyignore are discovered. To check whether a path is ignored, all
+    ancestor patterns from root down to the path's parent are merged into a
+    single ``pathspec.GitIgnoreSpec``. This lets negation patterns in child
+    directories correctly override parent ignores — exactly like git.
+
+    Additionally, .graphifyignore patterns from directories *above* root are
+    loaded at construction time (the existing upward-walk behavior), so a
+    .graphifyignore placed in a parent repo still applies.
+    """
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        # Raw patterns per directory (loaded lazily during walk)
+        self._raw_patterns: dict[Path, list[str]] = {}
+        # Merged spec cache: directory -> GitIgnoreSpec covering root..directory
+        self._merged_specs: dict[Path, pathspec.GitIgnoreSpec | None] = {}
+        self._pattern_count = 0
+        # Load ancestor .graphifyignore patterns (above root)
+        self._ancestor_patterns = _load_ancestor_patterns(root)
+        self._pattern_count += len(self._ancestor_patterns)
+        # Load root level
+        self._ensure_loaded(root)
+
+    def _ensure_loaded(self, directory: Path) -> None:
+        """Load ignore patterns for a directory if not already cached."""
+        if directory in self._raw_patterns:
+            return
+        patterns = _load_ignore_patterns(directory)
+        self._raw_patterns[directory] = patterns
+        self._pattern_count += len(patterns)
+
+    def _get_merged_spec(self, directory: Path) -> pathspec.GitIgnoreSpec | None:
+        """Get a spec merging all patterns from ancestors + root down to directory.
+
+        Patterns from each level are rewritten to be root-relative before merging.
+        Parent patterns come first, child patterns last — pathspec uses
+        last-match-wins, so child negation overrides parent ignores.
+        """
+        if directory in self._merged_specs:
+            return self._merged_specs[directory]
+
+        try:
+            rel_to_root = directory.relative_to(self.root)
+        except ValueError:
+            self._merged_specs[directory] = None
+            return None
+
+        # Build directory chain: root -> ... -> directory
+        chain = [self.root]
+        current = self.root
+        for part in rel_to_root.parts:
+            current = current / part
+            chain.append(current)
+
+        # Start with ancestor patterns (above root, applied globally)
+        all_patterns: list[str] = list(self._ancestor_patterns)
+
+        # Add patterns from each level, rewriting to be root-relative
+        for ancestor in chain:
+            raw = self._raw_patterns.get(ancestor, [])
+            if not raw:
+                continue
+            if ancestor == self.root:
+                all_patterns.extend(raw)
+            else:
+                prefix = str(ancestor.relative_to(self.root)).replace(os.sep, "/")
+                for pat in raw:
+                    negated = pat.startswith("!")
+                    clean = pat[1:] if negated else pat
+                    rewritten = f"{prefix}/{clean}"
+                    if negated:
+                        rewritten = f"!{rewritten}"
+                    all_patterns.append(rewritten)
+
+        if all_patterns:
+            spec = pathspec.GitIgnoreSpec.from_lines(all_patterns)
+        else:
+            spec = None
+
+        self._merged_specs[directory] = spec
+        return spec
+
+    def notify_enter_dir(self, directory: Path) -> None:
+        """Called when os.walk enters a directory. Loads its ignore files."""
+        self._ensure_loaded(directory)
+
+    @property
+    def pattern_count(self) -> int:
+        return self._pattern_count
+
+    def is_ignored(self, path: Path, is_dir: bool = False) -> bool:
+        """Check if path is ignored by the combined ancestor ignore patterns."""
+        try:
+            rel = path.relative_to(self.root)
+        except ValueError:
+            return False
+
+        rel_str = str(rel).replace(os.sep, "/")
+        if is_dir:
+            rel_str += "/"
+
+        spec = self._get_merged_spec(path.parent)
+        if spec is None:
+            return False
+
+        return spec.match_file(rel_str)
+
+
+# --- Backwards-compatible functions (kept for external callers) ---
+
+def _load_graphifyignore(root: Path) -> list[str]:
+    """Read .graphifyignore from root and ancestors. Legacy API wrapper."""
+    patterns = _load_ancestor_patterns(root)
+    patterns.extend(_read_ignore_file(root / ".graphifyignore"))
+    return patterns
+
+
 def _is_ignored(path: Path, root: Path, patterns: list[str]) -> bool:
-    """Return True if path matches any .graphifyignore pattern."""
+    """Return True if path matches any ignore pattern. Legacy API wrapper."""
     if not patterns:
         return False
     try:
@@ -296,18 +432,13 @@ def _is_ignored(path: Path, root: Path, patterns: list[str]) -> bool:
     rel = rel.replace(os.sep, "/")
     parts = rel.split("/")
     for pattern in patterns:
-        # Normalize: strip leading/trailing slashes for matching purposes
         p = pattern.strip("/")
         if not p:
             continue
-        # Match against full relative path
         if fnmatch.fnmatch(rel, p):
             return True
-        # Match against filename alone
         if fnmatch.fnmatch(path.name, p):
             return True
-        # Match against any path segment or prefix
-        # e.g. "vendor" or "vendor/" should match "vendor/lib.py"
         for i, part in enumerate(parts):
             if fnmatch.fnmatch(part, p):
                 return True
@@ -327,7 +458,7 @@ def detect(root: Path, *, follow_symlinks: bool = False) -> dict:
     total_words = 0
 
     skipped_sensitive: list[str] = []
-    ignore_patterns = _load_graphifyignore(root)
+    ignore_tree = _IgnoreTree(root)
 
     # Always include graphify-out/memory/ - query results filed back into the graph
     memory_dir = root / "graphify-out" / "memory"
@@ -349,12 +480,14 @@ def detect(root: Path, *, follow_symlinks: bool = False) -> dict:
                     dirnames.clear()
                     continue
             if not in_memory_tree:
+                # Load ignore files for this directory level
+                ignore_tree.notify_enter_dir(dp)
                 # Prune noise dirs in-place so os.walk never descends into them
                 dirnames[:] = [
                     d for d in dirnames
                     if not d.startswith(".")
                     and not _is_noise_dir(d)
-                    and not _is_ignored(dp / d, root, ignore_patterns)
+                    and not ignore_tree.is_ignored(dp / d, is_dir=True)
                 ]
             for fname in filenames:
                 p = dp / fname
@@ -375,7 +508,7 @@ def detect(root: Path, *, follow_symlinks: bool = False) -> dict:
             # Skip files inside our own converted/ dir (avoid re-processing sidecars)
             if str(p).startswith(str(converted_dir)):
                 continue
-        if _is_ignored(p, root, ignore_patterns):
+        if ignore_tree.is_ignored(p):
             continue
         if _is_sensitive(p):
             skipped_sensitive.append(str(p))
@@ -420,7 +553,7 @@ def detect(root: Path, *, follow_symlinks: bool = False) -> dict:
         "needs_graph": needs_graph,
         "warning": warning,
         "skipped_sensitive": skipped_sensitive,
-        "graphifyignore_patterns": len(ignore_patterns),
+        "graphifyignore_patterns": ignore_tree.pattern_count,
     }
 
 
