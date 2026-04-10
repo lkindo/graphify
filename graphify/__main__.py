@@ -217,10 +217,13 @@ def _install_gemini_hook(project_dir: Path) -> None:
     except json.JSONDecodeError:
         settings = {}
     before_tool = settings.setdefault("hooks", {}).setdefault("BeforeTool", [])
-    if any("graphify" in str(h) for h in before_tool):
-        print("  .gemini/settings.json  ->  hook already registered (no change)")
-        return
-    before_tool.append(_GEMINI_HOOK)
+
+    # Remove any existing graphify hooks (handles upgrades from old versions)
+    filtered = [h for h in before_tool if "graphify" not in str(h)]
+    settings["hooks"]["BeforeTool"] = filtered
+
+    # Install fresh hook
+    settings["hooks"]["BeforeTool"].append(_GEMINI_HOOK)
     settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
     print("  .gemini/settings.json  ->  BeforeTool hook registered")
 
