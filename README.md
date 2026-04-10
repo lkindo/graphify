@@ -196,6 +196,13 @@ When the user types `/graphify`, invoke the Skill tool with `skill: "graphify"` 
 /graphify add https://... --author "Name"             # tag the original author
 /graphify add https://... --contributor "Name"        # tag who added it to the corpus
 
+# source management - register paths, reload all at once
+/graphify source add ./my-repo         # register a directory as a source
+/graphify source list                  # show all registered sources with status
+/graphify source reload                # incremental rebuild of all registered sources
+/graphify source reload ./my-repo      # rebuild one specific source
+/graphify source delete ./my-repo      # remove from registry
+
 /graphify query "what connects attention to the optimizer?"
 /graphify query "what connects attention to the optimizer?" --dfs   # trace a specific path
 /graphify query "what connects attention to the optimizer?" --budget 1500  # cap at N tokens
@@ -274,6 +281,8 @@ Works with any mix of file types:
 
 **Git hooks** (`graphify hook install`) - installs post-commit and post-checkout hooks. Graph rebuilds automatically after every commit and every branch switch. If a rebuild fails, the hook exits with a non-zero code so git surfaces the error instead of silently continuing. No background process needed.
 
+**Source management** (`/graphify source add|list|reload|delete`) - register multiple directories as sources and reload all at once with one command. Each source gets its own `graphify-out/` with independent graph, cache, and manifest. Registry stored at `graphify-out/sources.json` — paths tracked by inode so renames within the same parent directory are handled automatically.
+
 **Wiki** (`--wiki`) - Wikipedia-style markdown articles per community and god node, with an `index.md` entry point. Point any agent at `index.md` and it can navigate the knowledge base by reading files instead of parsing JSON.
 
 ## Worked examples
@@ -283,6 +292,7 @@ Works with any mix of file types:
 | Karpathy repos + 5 papers + 4 images | 52 | **71.5x** | [`worked/karpathy-repos/`](worked/karpathy-repos/) |
 | graphify source + Transformer paper | 4 | **5.4x** | [`worked/mixed-corpus/`](worked/mixed-corpus/) |
 | httpx (synthetic Python library) | 6 | ~1x | [`worked/httpx/`](worked/httpx/) |
+| source management workflow | 7 | same as example | [`worked/source-control/`](worked/source-control/) |
 
 Token reduction scales with corpus size. 6 files fits in a context window anyway, so graph value there is structural clarity, not compression. At 52 files (code + papers + images) you get 71x+. Each `worked/` folder has the raw input files and the actual output (`GRAPH_REPORT.md`, `graph.json`) so you can run it yourself and verify the numbers.
 
