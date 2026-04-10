@@ -318,3 +318,122 @@ def test_gemini_uninstall_removes_hook(tmp_path):
 def test_gemini_uninstall_noop_if_not_installed(tmp_path):
     from graphify.__main__ import gemini_uninstall
     gemini_uninstall(tmp_path)  # should not raise
+
+
+# ── Qwen Code CLI ─────────────────────────────────────────────────────────────
+
+def test_install_qwen_writes_markdown_command(tmp_path):
+    from graphify.__main__ import install
+    with patch("graphify.__main__.Path.home", return_value=tmp_path):
+        install(platform="qwen")
+    command_file = tmp_path / ".qwen" / "commands" / "graphify.md"
+    assert command_file.exists()
+
+
+def test_qwen_markdown_command_has_frontmatter_and_body(tmp_path):
+    from graphify.__main__ import install
+    with patch("graphify.__main__.Path.home", return_value=tmp_path):
+        install(platform="qwen")
+    content = (tmp_path / ".qwen" / "commands" / "graphify.md").read_text()
+    # Qwen Code format: YAML frontmatter with description, then Markdown body
+    assert content.startswith("---\n")
+    # The first frontmatter block must close before the body starts
+    parts = content.split("---\n", 2)
+    assert len(parts) >= 3, "expected opening ---, frontmatter body, closing ---"
+    frontmatter = parts[1]
+    assert "description:" in frontmatter
+    # No leaked Claude-specific frontmatter fields
+    assert "name: graphify" not in frontmatter
+    assert "trigger:" not in frontmatter
+    assert "{{args}}" in content
+
+
+def test_qwen_markdown_command_strips_original_frontmatter(tmp_path):
+    from graphify.__main__ import install
+    with patch("graphify.__main__.Path.home", return_value=tmp_path):
+        install(platform="qwen")
+    content = (tmp_path / ".qwen" / "commands" / "graphify.md").read_text()
+    # "trigger: /graphify" is from the Claude skill frontmatter and must not leak
+    assert "trigger: /graphify" not in content
+
+
+def test_qwen_install_removes_legacy_toml(tmp_path):
+    """If an old graphify.toml exists, install should remove it."""
+    from graphify.__main__ import install
+    commands_dir = tmp_path / ".qwen" / "commands"
+    commands_dir.mkdir(parents=True)
+    (commands_dir / "graphify.toml").write_text("stale content")
+    with patch("graphify.__main__.Path.home", return_value=tmp_path):
+        install(platform="qwen")
+    assert not (commands_dir / "graphify.toml").exists()
+    assert (commands_dir / "graphify.md").exists()
+
+
+def test_qwen_install_writes_qwen_md(tmp_path):
+    from graphify.__main__ import qwen_install
+    with patch("graphify.__main__.Path.home", return_value=tmp_path):
+        qwen_install(tmp_path)
+    md = tmp_path / "QWEN.md"
+    assert md.exists()
+    assert "graphify-out/GRAPH_REPORT.md" in md.read_text()
+
+
+def test_qwen_install_writes_hook(tmp_path):
+    import json as _json
+    from graphify.__main__ import qwen_install
+    with patch("graphify.__main__.Path.home", return_value=tmp_path):
+        qwen_install(tmp_path)
+    settings = _json.loads((tmp_path / ".qwen" / "settings.json").read_text())
+    hooks = settings["hooks"]["BeforeTool"]
+    assert any("graphify" in str(h) for h in hooks)
+
+
+def test_qwen_install_idempotent(tmp_path):
+    from graphify.__main__ import qwen_install
+    with patch("graphify.__main__.Path.home", return_value=tmp_path):
+        qwen_install(tmp_path)
+        qwen_install(tmp_path)
+    md = tmp_path / "QWEN.md"
+    assert md.read_text().count("## graphify") == 1
+
+
+def test_qwen_install_merges_existing_qwen_md(tmp_path):
+    from graphify.__main__ import qwen_install
+    (tmp_path / "QWEN.md").write_text("# My project rules\n")
+    with patch("graphify.__main__.Path.home", return_value=tmp_path):
+        qwen_install(tmp_path)
+    content = (tmp_path / "QWEN.md").read_text()
+    assert "# My project rules" in content
+    assert "graphify-out/GRAPH_REPORT.md" in content
+
+
+def test_qwen_uninstall_removes_section(tmp_path):
+    from graphify.__main__ import qwen_install, qwen_uninstall
+    with patch("graphify.__main__.Path.home", return_value=tmp_path):
+        qwen_install(tmp_path)
+        qwen_uninstall(tmp_path)
+    md = tmp_path / "QWEN.md"
+    assert not md.exists() or "## graphify" not in md.read_text()
+
+
+def test_qwen_uninstall_preserves_other_content(tmp_path):
+    from graphify.__main__ import qwen_install, qwen_uninstall
+    (tmp_path / "QWEN.md").write_text("# Existing rules\n\nDo not break things.\n")
+    with patch("graphify.__main__.Path.home", return_value=tmp_path):
+        qwen_install(tmp_path)
+        qwen_uninstall(tmp_path)
+    content = (tmp_path / "QWEN.md").read_text()
+    assert "Do not break things." in content
+    assert "## graphify" not in content
+
+
+def test_qwen_uninstall_removes_hook(tmp_path):
+    import json as _json
+    from graphify.__main__ import qwen_install, qwen_uninstall
+    with patch("graphify.__main__.Path.home", return_value=tmp_path):
+        qwen_install(tmp_path)
+        qwen_uninstall(tmp_path)
+    settings_path = tmp_path / ".qwen" / "settings.json"
+    settings = _json.loads(settings_path.read_text())
+    hooks = settings.get("hooks", {}).get("BeforeTool", [])
+    assert not any("graphify" in str(h) for h in hooks)
