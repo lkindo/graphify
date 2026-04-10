@@ -107,9 +107,15 @@ def install(platform: str = "claude") -> None:
     if platform == "cursor":
         _cursor_install()
         return
+    # Qwen Code uses Markdown custom commands instead of skill files — route to
+    # a dedicated installer that writes ~/.qwen/commands/graphify.md.
+    if platform == "qwen":
+        qwen_install()
+        return
     if platform not in _PLATFORM_CONFIG:
+        valid = list(_PLATFORM_CONFIG) + ["gemini", "cursor", "qwen"]
         print(
-            f"error: unknown platform '{platform}'. Choose from: {', '.join(_PLATFORM_CONFIG)}, gemini, cursor",
+            f"error: unknown platform '{platform}'. Choose from: {', '.join(valid)}",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -636,6 +642,172 @@ def claude_uninstall(project_dir: Path | None = None) -> None:
     _uninstall_claude_hook(project_dir or Path("."))
 
 
+# ── Qwen Code CLI ────────────────────────────────────────────────────────────
+# Qwen Code (https://github.com/QwenLM/qwen-code) is Alibaba's open-source
+# coding CLI. Its slash commands are defined as TOML files under
+# ~/.qwen/commands/ (user-level) or .qwen/commands/ (project-level).
+# It reads QWEN.md for persistent project instructions and uses a BeforeTool
+# hook schema in .qwen/settings.json matching read_file and list_directory.
+
+_QWEN_MD_SECTION = """\
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+"""
+
+_QWEN_MD_MARKER = "## graphify"
+
+_QWEN_HOOK = {
+    "matcher": "read_file|list_directory",
+    "hooks": [
+        {
+            "type": "command",
+            "command": (
+                "[ -f graphify-out/graph.json ] && "
+                r"""echo '{"decision":"allow","additionalContext":"graphify: Knowledge graph exists. Read graphify-out/GRAPH_REPORT.md for god nodes and community structure before searching raw files."}' """
+                r"""|| echo '{"decision":"allow"}'"""
+            ),
+        }
+    ],
+}
+
+
+_QWEN_COMMAND_DESCRIPTION = (
+    "any input (code, docs, papers, images) "
+    "-> knowledge graph -> clustered communities -> HTML + JSON + audit report"
+)
+
+
+def _build_qwen_command_markdown() -> str:
+    """Wrap the graphify skill markdown as a Qwen Code custom command (Markdown format).
+
+    Qwen Code uses Markdown files with YAML frontmatter under ~/.qwen/commands/.
+    TOML format is deprecated in Qwen Code. See:
+    ~/opt/homebrew/.../qc-helper/docs/features/commands.md
+    """
+    skill_src = Path(__file__).parent / "skill.md"
+    skill_text = skill_src.read_text(encoding="utf-8")
+    # Strip the existing Claude-flavored frontmatter (name/description/trigger)
+    # so the body isn't preceded by two frontmatter blocks.
+    body = re.sub(r"^---\n.*?\n---\n+", "", skill_text, count=1, flags=re.DOTALL)
+    return (
+        "---\n"
+        f"description: {_QWEN_COMMAND_DESCRIPTION}\n"
+        "---\n\n"
+        "User invoked: /graphify {{args}}\n"
+        "If {{args}} is empty, treat the input path as \".\" (current directory).\n\n"
+        f"{body}"
+    )
+
+
+def qwen_install(project_dir: Path | None = None) -> None:
+    """Write Qwen Code Markdown command, QWEN.md section, and BeforeTool hook."""
+    command_dst = Path.home() / ".qwen" / "commands" / "graphify.md"
+    command_dst.parent.mkdir(parents=True, exist_ok=True)
+    command_dst.write_text(_build_qwen_command_markdown(), encoding="utf-8")
+    (command_dst.parent / ".graphify_version").write_text(__version__, encoding="utf-8")
+    # Clean up legacy TOML file if it exists from an older graphify install.
+    legacy_toml = Path.home() / ".qwen" / "commands" / "graphify.toml"
+    if legacy_toml.exists():
+        legacy_toml.unlink()
+        print(f"  legacy toml removed ->  {legacy_toml}")
+    print(f"  command installed  ->  {command_dst}")
+
+    target = (project_dir or Path(".")) / "QWEN.md"
+    if target.exists():
+        content = target.read_text(encoding="utf-8")
+        if _QWEN_MD_MARKER in content:
+            print("graphify already configured in QWEN.md")
+        else:
+            target.write_text(content.rstrip() + "\n\n" + _QWEN_MD_SECTION, encoding="utf-8")
+            print(f"graphify section written to {target.resolve()}")
+    else:
+        target.write_text(_QWEN_MD_SECTION, encoding="utf-8")
+        print(f"graphify section written to {target.resolve()}")
+
+    _install_qwen_hook(project_dir or Path("."))
+    print()
+    print("Qwen CLI will now check the knowledge graph before answering")
+    print("codebase questions and rebuild it after code changes.")
+
+
+def _install_qwen_hook(project_dir: Path) -> None:
+    """Add graphify BeforeTool hook to .qwen/settings.json."""
+    settings_path = project_dir / ".qwen" / "settings.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8")) if settings_path.exists() else {}
+    except json.JSONDecodeError:
+        settings = {}
+    before_tool = settings.setdefault("hooks", {}).setdefault("BeforeTool", [])
+    if any("graphify" in str(h) for h in before_tool):
+        print("  .qwen/settings.json  ->  hook already registered (no change)")
+        return
+    before_tool.append(_QWEN_HOOK)
+    settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+    print("  .qwen/settings.json  ->  BeforeTool hook registered")
+
+
+def _uninstall_qwen_hook(project_dir: Path) -> None:
+    """Remove graphify BeforeTool hook from .qwen/settings.json."""
+    settings_path = project_dir / ".qwen" / "settings.json"
+    if not settings_path.exists():
+        return
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return
+    before_tool = settings.get("hooks", {}).get("BeforeTool", [])
+    filtered = [h for h in before_tool if "graphify" not in str(h)]
+    if len(filtered) == len(before_tool):
+        return
+    settings["hooks"]["BeforeTool"] = filtered
+    settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+    print("  .qwen/settings.json  ->  BeforeTool hook removed")
+
+
+def qwen_uninstall(project_dir: Path | None = None) -> None:
+    """Remove Qwen Code Markdown command, QWEN.md section, and BeforeTool hook."""
+    commands_dir = Path.home() / ".qwen" / "commands"
+    for filename in ("graphify.md", "graphify.toml"):
+        path = commands_dir / filename
+        if path.exists():
+            path.unlink()
+            print(f"  command removed  ->  {path}")
+    version_file = commands_dir / ".graphify_version"
+    if version_file.exists():
+        version_file.unlink()
+    for d in (commands_dir, commands_dir.parent):
+        try:
+            d.rmdir()
+        except OSError:
+            break
+
+    target = (project_dir or Path(".")) / "QWEN.md"
+    if not target.exists():
+        print("No QWEN.md found in current directory - nothing to do")
+        _uninstall_qwen_hook(project_dir or Path("."))
+        return
+    content = target.read_text(encoding="utf-8")
+    if _QWEN_MD_MARKER not in content:
+        print("graphify section not found in QWEN.md - nothing to do")
+        _uninstall_qwen_hook(project_dir or Path("."))
+        return
+    cleaned = re.sub(r"\n*## graphify\n.*?(?=\n## |\Z)", "", content, flags=re.DOTALL).rstrip()
+    if cleaned:
+        target.write_text(cleaned + "\n", encoding="utf-8")
+        print(f"graphify section removed from {target.resolve()}")
+    else:
+        target.unlink()
+        print(f"QWEN.md was empty after removal - deleted {target.resolve()}")
+    _uninstall_qwen_hook(project_dir or Path("."))
+
+
 def main() -> None:
     # Check all known skill install locations for a stale version stamp
     for cfg in _PLATFORM_CONFIG.values():
@@ -646,7 +818,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor|qwen)")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -677,12 +849,13 @@ def main() -> None:
         print("  copilot uninstall       remove graphify skill from ~/.copilot/skills")
         print("  claw install            write graphify section to AGENTS.md (OpenClaw)")
         print("  claw uninstall          remove graphify section from AGENTS.md")
-        print("  droid install           write graphify section to AGENTS.md (Factory Droid)")
-        print("  droid uninstall        remove graphify section from AGENTS.md")
+        print("  droid uninstall         remove graphify section from AGENTS.md")
         print("  trae install            write graphify section to AGENTS.md (Trae)")
-        print("  trae uninstall         remove graphify section from AGENTS.md")
+        print("  trae uninstall          remove graphify section from AGENTS.md")
         print("  trae-cn install         write graphify section to AGENTS.md (Trae CN)")
-        print("  trae-cn uninstall      remove graphify section from AGENTS.md")
+        print("  trae-cn uninstall       remove graphify section from AGENTS.md")
+        print("  qwen install            write QWEN.md section + BeforeTool hook (Qwen CLI)")
+        print("  qwen uninstall          remove QWEN.md section + BeforeTool hook")
         print()
         return
 
@@ -762,6 +935,15 @@ def main() -> None:
                 _uninstall_codex_hook(Path("."))
         else:
             print(f"Usage: graphify {cmd} [install|uninstall]", file=sys.stderr)
+            sys.exit(1)
+    elif cmd == "qwen":
+        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
+        if subcmd == "install":
+            qwen_install()
+        elif subcmd == "uninstall":
+            qwen_uninstall()
+        else:
+            print("Usage: graphify qwen [install|uninstall]", file=sys.stderr)
             sys.exit(1)
     elif cmd == "hook":
         from graphify.hooks import install as hook_install, uninstall as hook_uninstall, status as hook_status
