@@ -26,6 +26,20 @@ import networkx as nx
 from .validate import validate_extraction
 
 
+def edge_direction(u: str, v: str, data: dict) -> tuple[str, str]:
+    """Return (source, target) for an edge, honoring the extractor's
+    original direction stashed in the _src/_tgt attrs by build_from_json.
+
+    NetworkX undirected graphs (nx.Graph) store each edge once and pick
+    an arbitrary endpoint as "first" in adjacency iteration. That means
+    the (u, v) tuple yielded by G.edges() is NOT guaranteed to match the
+    direction the extractor produced. Export and display code that cares
+    about direction (JSON graph files, Cypher, HTML visualizations,
+    report arrow rendering) must route every edge through this helper.
+    """
+    return data.get("_src", u), data.get("_tgt", v)
+
+
 def build_from_json(extraction: dict) -> nx.Graph:
     errors = validate_extraction(extraction)
     # Dangling edges (stdlib/external imports) are expected - only warn about real schema errors.
@@ -41,8 +55,10 @@ def build_from_json(extraction: dict) -> nx.Graph:
         if src not in node_set or tgt not in node_set:
             continue  # skip edges to external/stdlib nodes - expected, not an error
         attrs = {k: v for k, v in edge.items() if k not in ("source", "target")}
-        # Preserve original edge direction - undirected graphs lose it otherwise,
-        # causing display functions to show edges backwards.
+        # Preserve original edge direction — undirected graphs lose it
+        # otherwise. Display/export sites must read these via the
+        # edge_direction() helper, not rely on the (u, v) returned by
+        # G.edges(), which NetworkX may have stored in the opposite order.
         attrs["_src"] = src
         attrs["_tgt"] = tgt
         G.add_edge(src, tgt, **attrs)

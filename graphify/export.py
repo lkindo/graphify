@@ -10,6 +10,7 @@ import networkx as nx
 from networkx.readwrite import json_graph
 from graphify.security import sanitize_label
 from graphify.analyze import _node_community_map
+from graphify.build import edge_direction
 
 COMMUNITY_COLORS = [
     "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
@@ -291,6 +292,15 @@ def to_json(G: nx.Graph, communities: dict[int, list[str]], output_path: str) ->
     for node in data["nodes"]:
         node["community"] = node_community.get(node["id"])
     for link in data["links"]:
+        # Restore the extractor's original direction. node_link_data
+        # uses the arbitrary (u, v) order from the underlying undirected
+        # adjacency dict, which flips roughly half the edges.
+        src = link.pop("_src", None)
+        tgt = link.pop("_tgt", None)
+        if src is not None:
+            link["source"] = src
+        if tgt is not None:
+            link["target"] = tgt
         if "confidence_score" not in link:
             conf = link.get("confidence", "EXTRACTED")
             link["confidence_score"] = _CONFIDENCE_SCORE_DEFAULTS.get(conf, 1.0)
@@ -314,12 +324,13 @@ def to_cypher(G: nx.Graph, output_path: str) -> None:
         lines.append(f"MERGE (n:{ftype} {{id: '{node_id_esc}', label: '{label}'}});")
     lines.append("")
     for u, v, data in G.edges(data=True):
+        src, tgt = edge_direction(u, v, data)
         rel = re.sub(r"[^A-Za-z0-9_]", "_", data.get("relation", "RELATES_TO").upper())
         conf = _cypher_escape(data.get("confidence", "EXTRACTED"))
-        u_esc = _cypher_escape(u)
-        v_esc = _cypher_escape(v)
+        src_esc = _cypher_escape(src)
+        tgt_esc = _cypher_escape(tgt)
         lines.append(
-            f"MATCH (a {{id: '{u_esc}'}}), (b {{id: '{v_esc}'}}) "
+            f"MATCH (a {{id: '{src_esc}'}}), (b {{id: '{tgt_esc}'}}) "
             f"MERGE (a)-[:{rel} {{confidence: '{conf}'}}]->(b);"
         )
     with open(output_path, "w") as f:
@@ -375,11 +386,12 @@ def to_html(
     # Build edges list
     vis_edges = []
     for u, v, data in G.edges(data=True):
+        src, tgt = edge_direction(u, v, data)
         confidence = data.get("confidence", "EXTRACTED")
         relation = data.get("relation", "")
         vis_edges.append({
-            "from": u,
-            "to": v,
+            "from": src,
+            "to": tgt,
             "label": relation,
             "title": _html.escape(f"{relation} [{confidence}]"),
             "dashes": confidence != "EXTRACTED",
@@ -820,18 +832,19 @@ def to_canvas(
     all_edges_weighted: list[tuple[float, str, str, str]] = []
     for u, v, edata in G.edges(data=True):
         if u in all_canvas_nodes and v in all_canvas_nodes:
+            src, tgt = edge_direction(u, v, edata)
             weight = edata.get("weight", 1.0)
             relation = edata.get("relation", "")
             conf = edata.get("confidence", "EXTRACTED")
             label = f"{relation} [{conf}]" if relation else f"[{conf}]"
-            all_edges_weighted.append((weight, u, v, label))
+            all_edges_weighted.append((weight, src, tgt, label))
 
     all_edges_weighted.sort(key=lambda x: -x[0])
-    for weight, u, v, label in all_edges_weighted[:200]:
+    for weight, src, tgt, label in all_edges_weighted[:200]:
         canvas_edges.append({
-            "id": f"e_{u}_{v}",
-            "fromNode": f"n_{u}",
-            "toNode": f"n_{v}",
+            "id": f"e_{src}_{tgt}",
+            "fromNode": f"n_{src}",
+            "toNode": f"n_{tgt}",
             "label": label,
         })
 
@@ -890,13 +903,14 @@ def push_to_neo4j(
             nodes_pushed += 1
 
         for u, v, data in G.edges(data=True):
+            src, tgt = edge_direction(u, v, data)
             rel = _safe_rel(data.get("relation", "RELATED_TO"))
-            props = {k: v for k, v in data.items() if isinstance(v, (str, int, float, bool))}
+            props = {k: val for k, val in data.items() if isinstance(val, (str, int, float, bool))}
             session.run(
                 f"MATCH (a {{id: $src}}), (b {{id: $tgt}}) "
                 f"MERGE (a)-[r:{rel}]->(b) SET r += $props",
-                src=u,
-                tgt=v,
+                src=src,
+                tgt=tgt,
                 props=props,
             )
             edges_pushed += 1

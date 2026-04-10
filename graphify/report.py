@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date
 import networkx as nx
 
+from .build import edge_direction
+
 
 def generate(
     G: nx.Graph,
@@ -104,10 +106,11 @@ def generate(
     if ambiguous:
         lines += ["", "## Ambiguous Edges - Review These"]
         for u, v, d in ambiguous:
-            ul = G.nodes[u].get("label", u)
-            vl = G.nodes[v].get("label", v)
+            src, tgt = edge_direction(u, v, d)
+            sl = G.nodes[src].get("label", src)
+            tl = G.nodes[tgt].get("label", tgt)
             lines += [
-                f"- `{ul}` → `{vl}`  [AMBIGUOUS]",
+                f"- `{sl}` → `{tl}`  [AMBIGUOUS]",
                 f"  {d.get('source_file', '')} · relation: {d.get('relation', 'unknown')}",
             ]
 
