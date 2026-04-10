@@ -1,5 +1,5 @@
 from pathlib import Path
-from graphify.detect import classify_file, count_words, detect, FileType, _looks_like_paper, _is_ignored, _load_graphifyignore
+from graphify.detect import classify_file, count_words, detect, FileType, _looks_like_paper, _is_ignored, _load_graphifyignore, _IgnoreTree
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -236,3 +236,189 @@ def test_detect_video_not_in_words(tmp_path):
     result = detect(tmp_path)
     # Only video file present — total_words should be 0
     assert result["total_words"] == 0
+
+
+# --- .gitignore support tests ---
+
+
+def test_gitignore_excludes_files(tmp_path):
+    """A .gitignore at the root excludes matching files from detect()."""
+    (tmp_path / ".gitignore").write_text("*.log\n*.pyc\n")
+    (tmp_path / "main.py").write_text("x = 1")
+    (tmp_path / "debug.log").write_text("log data")
+    (tmp_path / "cache.pyc").write_text("bytecode")
+
+    result = detect(tmp_path)
+    code_files = result["files"]["code"]
+    all_files = [f for flist in result["files"].values() for f in flist]
+    assert any("main.py" in f for f in code_files)
+    assert not any(".log" in f for f in all_files)
+    assert not any(".pyc" in f for f in all_files)
+
+
+def test_gitignore_excludes_directories(tmp_path):
+    """A .gitignore at the root prunes matching directories."""
+    (tmp_path / ".gitignore").write_text("node_modules/\ndist/\n")
+    (tmp_path / "app.py").write_text("x = 1")
+    nm = tmp_path / "node_modules"
+    nm.mkdir()
+    (nm / "pkg.js").write_text("x")
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "bundle.js").write_text("x")
+
+    result = detect(tmp_path)
+    all_files = [f for flist in result["files"].values() for f in flist]
+    assert any("app.py" in f for f in all_files)
+    assert not any("node_modules" in f for f in all_files)
+    assert not any("dist" in f for f in all_files)
+
+
+def test_nested_gitignore_in_subdirectory(tmp_path):
+    """A .gitignore in a subdirectory applies to that subdirectory's contents."""
+    (tmp_path / "root.py").write_text("x = 1")
+    sub = tmp_path / "project"
+    sub.mkdir()
+    (sub / ".gitignore").write_text("*.tmp\nbuild/\n")
+    (sub / "main.py").write_text("x = 1")
+    (sub / "temp.tmp").write_text("temp")
+    build = sub / "build"
+    build.mkdir()
+    (build / "out.js").write_text("x")
+
+    result = detect(tmp_path)
+    all_files = [f for flist in result["files"].values() for f in flist]
+    assert any("root.py" in f for f in all_files)
+    assert any("main.py" in f for f in all_files)
+    assert not any(".tmp" in f for f in all_files)
+    assert not any("build" in f for f in all_files)
+
+
+def test_gitignore_patterns_cascade_to_children(tmp_path):
+    """Root .gitignore patterns apply to all nested subdirectories."""
+    (tmp_path / ".gitignore").write_text("*.log\n")
+    deep = tmp_path / "a" / "b" / "c"
+    deep.mkdir(parents=True)
+    (deep / "app.py").write_text("x = 1")
+    (deep / "error.log").write_text("log")
+
+    result = detect(tmp_path)
+    all_files = [f for flist in result["files"].values() for f in flist]
+    assert any("app.py" in f for f in all_files)
+    assert not any(".log" in f for f in all_files)
+
+
+def test_gitignore_and_graphifyignore_merge(tmp_path):
+    """Both .gitignore and .graphifyignore in the same directory are respected."""
+    (tmp_path / ".gitignore").write_text("*.log\n")
+    (tmp_path / ".graphifyignore").write_text("secrets/\n")
+    (tmp_path / "main.py").write_text("x = 1")
+    (tmp_path / "debug.log").write_text("log")
+    secrets = tmp_path / "secrets"
+    secrets.mkdir()
+    (secrets / "keys.py").write_text("x = 1")
+
+    result = detect(tmp_path)
+    all_files = [f for flist in result["files"].values() for f in flist]
+    assert any("main.py" in f for f in all_files)
+    assert not any(".log" in f for f in all_files)
+    assert not any("secrets" in f for f in all_files)
+    assert result["graphifyignore_patterns"] >= 2  # at least one from each file
+
+
+def test_child_negation_overrides_parent_ignore(tmp_path):
+    """A child .gitignore can un-ignore files ignored by a parent."""
+    (tmp_path / ".gitignore").write_text("*.log\n")
+    sub = tmp_path / "project"
+    sub.mkdir()
+    (sub / ".gitignore").write_text("!important.log\n")
+    (sub / "important.log").write_text("keep this")
+    (sub / "debug.log").write_text("skip this")
+    (sub / "main.py").write_text("x = 1")
+
+    result = detect(tmp_path)
+    all_files = [f for flist in result["files"].values() for f in flist]
+    assert any("main.py" in f for f in all_files)
+    assert not any("debug.log" in f for f in all_files)
+    # important.log is un-ignored by the child — but it's not a code/doc/paper/image
+    # so it won't appear in classified files. Test via _IgnoreTree directly:
+    import os
+    tree = _IgnoreTree(tmp_path)
+    for dirpath, _, _ in os.walk(tmp_path):
+        tree.notify_enter_dir(Path(dirpath))
+    assert tree.is_ignored(sub / "debug.log") is True
+    assert tree.is_ignored(sub / "important.log") is False
+
+
+def test_multi_project_structure(tmp_path):
+    """Simulates main-folder/client/project structure with per-project .gitignore."""
+    (tmp_path / ".gitignore").write_text("*.log\n")
+
+    # Client A, Project 1
+    p1 = tmp_path / "client-a" / "project-1"
+    p1.mkdir(parents=True)
+    (p1 / ".gitignore").write_text("dist/\n*.pyc\n")
+    (p1 / "app.py").write_text("x = 1")
+    (p1 / "cache.pyc").write_text("x")
+    (p1 / "server.log").write_text("x")
+    (p1 / "dist").mkdir()
+    (p1 / "dist" / "bundle.js").write_text("x")
+
+    # Client A, Project 2
+    p2 = tmp_path / "client-a" / "project-2"
+    p2.mkdir(parents=True)
+    (p2 / ".gitignore").write_text("build/\n")
+    (p2 / ".graphifyignore").write_text("data/\n")
+    (p2 / "main.ts").write_text("const x = 1")
+    (p2 / "build").mkdir()
+    (p2 / "build" / "out.js").write_text("x")
+    (p2 / "data").mkdir()
+    (p2 / "data" / "dump.py").write_text("x")
+
+    # Client B, Project 3 — no local .gitignore
+    p3 = tmp_path / "client-b" / "project-3"
+    p3.mkdir(parents=True)
+    (p3 / "index.js").write_text("x")
+    (p3 / "access.log").write_text("x")
+
+    result = detect(tmp_path)
+    all_files = [f for flist in result["files"].values() for f in flist]
+
+    # Should be found
+    assert any("app.py" in f for f in all_files)
+    assert any("main.ts" in f for f in all_files)
+    assert any("index.js" in f for f in all_files)
+
+    # Should be excluded
+    assert not any("cache.pyc" in f for f in all_files), "project-1 .gitignore *.pyc"
+    assert not any("server.log" in f for f in all_files), "root .gitignore *.log"
+    assert not any("dist" in f for f in all_files), "project-1 .gitignore dist/"
+    assert not any("build" in f for f in all_files), "project-2 .gitignore build/"
+    assert not any("data" in f for f in all_files), "project-2 .graphifyignore data/"
+    assert not any("access.log" in f for f in all_files), "root .gitignore *.log cascades"
+
+
+def test_no_gitignore_no_graphifyignore(tmp_path):
+    """Works fine when neither .gitignore nor .graphifyignore exists."""
+    (tmp_path / "main.py").write_text("x = 1")
+    result = detect(tmp_path)
+    assert result["graphifyignore_patterns"] == 0
+    assert any("main.py" in f for f in result["files"]["code"])
+
+
+def test_gitignore_globstar_pattern(tmp_path):
+    """The ** globstar pattern works correctly via pathspec."""
+    (tmp_path / ".gitignore").write_text("**/test_*.py\n")
+    (tmp_path / "main.py").write_text("x = 1")
+    (tmp_path / "test_main.py").write_text("x = 1")
+    sub = tmp_path / "deep" / "nested"
+    sub.mkdir(parents=True)
+    (sub / "test_utils.py").write_text("x = 1")
+    (sub / "utils.py").write_text("x = 1")
+
+    result = detect(tmp_path)
+    code_files = result["files"]["code"]
+    assert any("main.py" in f for f in code_files)
+    assert any("utils.py" in f for f in code_files)
+    assert not any("test_main" in f for f in code_files)
+    assert not any("test_utils" in f for f in code_files)
