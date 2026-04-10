@@ -2,6 +2,7 @@
 from __future__ import annotations
 import importlib
 import json
+import logging
 import os
 import re
 import sys
@@ -9,6 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Any
 from .cache import load_cached, save_cached
+
+_log = logging.getLogger(__name__)
 
 
 def _make_id(*parts: str) -> str:
@@ -632,6 +635,14 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
         language = Language(lang_fn())
     except ImportError:
         return {"nodes": [], "edges": [], "error": f"{config.ts_module} not installed"}
+    except TypeError as e:
+        # tree-sitter version mismatch: old Language() expects (lib_path),
+        # new Language() expects (language_capsule, name).
+        hint = (
+            f"tree-sitter version mismatch for {config.ts_module}: {e}. "
+            "Try: pip install --upgrade tree-sitter tree-sitter-languages"
+        )
+        return {"nodes": [], "edges": [], "error": hint}
     except Exception as e:
         return {"nodes": [], "edges": [], "error": str(e)}
 
@@ -2625,23 +2636,39 @@ def extract(paths: list[Path]) -> dict:
     }
 
     total = len(paths)
-    _PROGRESS_INTERVAL = 100
+    extracted = 0
+    cached_count = 0
+    skipped = 0
+    errors = 0
+    # Log progress every N files (at least every 10%, minimum every 100 files)
+    progress_interval = max(100, total // 10) if total > 0 else 1
+
     for i, path in enumerate(paths):
-        if total >= _PROGRESS_INTERVAL and i % _PROGRESS_INTERVAL == 0 and i > 0:
-            print(f"  AST extraction: {i}/{total} files ({i * 100 // total}%)", flush=True)
         extractor = _DISPATCH.get(path.suffix)
         if extractor is None:
+            skipped += 1
             continue
         cached = load_cached(path, root)
         if cached is not None:
             per_file.append(cached)
-            continue
-        result = extractor(path)
-        if "error" not in result:
-            save_cached(path, result, root)
-        per_file.append(result)
-    if total >= _PROGRESS_INTERVAL:
-        print(f"  AST extraction: {total}/{total} files (100%)", flush=True)
+            cached_count += 1
+        else:
+            result = extractor(path)
+            if "error" not in result:
+                save_cached(path, result, root)
+            else:
+                errors += 1
+            per_file.append(result)
+            extracted += 1
+
+        # Periodic progress logging for large batches
+        processed = i + 1
+        if total >= 100 and (processed % progress_interval == 0 or processed == total):
+            _log.info(
+                "Extraction progress: %d/%d files (%.0f%%) — %d extracted, %d cached, %d skipped, %d errors",
+                processed, total, 100 * processed / total,
+                extracted, cached_count, skipped, errors,
+            )
 
     all_nodes: list[dict] = []
     all_edges: list[dict] = []
@@ -2657,8 +2684,7 @@ def extract(paths: list[Path]) -> dict:
             cross_file_edges = _resolve_cross_file_imports(py_results, py_paths)
             all_edges.extend(cross_file_edges)
         except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning("Cross-file import resolution failed, skipping: %s", exc)
+            _log.warning("Cross-file import resolution failed, skipping: %s", exc)
 
     return {
         "nodes": all_nodes,

@@ -17,6 +17,8 @@ COMMUNITY_COLORS = [
 ]
 
 MAX_NODES_FOR_VIZ = 5_000
+SAMPLE_NODES_PER_COMMUNITY = 50
+SAMPLE_MAX_COMMUNITIES = 20
 
 
 def _html_styles() -> str:
@@ -326,23 +328,64 @@ def to_cypher(G: nx.Graph, output_path: str) -> None:
         f.write("\n".join(lines))
 
 
+def sample_for_viz(
+    G: nx.Graph,
+    communities: dict[int, list[str]],
+    max_communities: int = SAMPLE_MAX_COMMUNITIES,
+    nodes_per_community: int = SAMPLE_NODES_PER_COMMUNITY,
+) -> tuple[nx.Graph, dict[int, list[str]]]:
+    """Sample the largest communities and highest-degree nodes for visualization.
+
+    Returns a subgraph and filtered communities dict that fits within
+    MAX_NODES_FOR_VIZ. Useful for large-scale projects where the full graph
+    would overwhelm the browser. (See issue #52, sub-issue 5.)
+    """
+    # Sort communities by size, keep the largest ones
+    sorted_cids = sorted(communities.keys(), key=lambda c: len(communities[c]), reverse=True)
+    top_cids = sorted_cids[:max_communities]
+
+    sampled_nodes: set[str] = set()
+    sampled_communities: dict[int, list[str]] = {}
+
+    for cid in top_cids:
+        members = communities[cid]
+        # Pick highest-degree nodes from this community
+        member_degrees = [(n, G.degree(n)) for n in members if n in G]
+        member_degrees.sort(key=lambda x: -x[1])
+        selected = [n for n, _ in member_degrees[:nodes_per_community]]
+        sampled_nodes.update(selected)
+        sampled_communities[cid] = selected
+
+    subgraph = G.subgraph(sampled_nodes).copy()
+    return subgraph, sampled_communities
+
+
 def to_html(
     G: nx.Graph,
     communities: dict[int, list[str]],
     output_path: str,
     community_labels: dict[int, str] | None = None,
+    sample: bool = False,
 ) -> None:
     """Generate an interactive vis.js HTML visualization of the graph.
 
     Features: node size by degree, click-to-inspect panel, search box,
     community filter, physics clustering by community, confidence-styled edges.
-    Raises ValueError if graph exceeds MAX_NODES_FOR_VIZ.
+
+    Args:
+        sample: If True and the graph exceeds MAX_NODES_FOR_VIZ, automatically
+            sample the top communities and highest-degree nodes instead of
+            raising ValueError. The HTML title will note it's a sampled view.
     """
     if G.number_of_nodes() > MAX_NODES_FOR_VIZ:
-        raise ValueError(
-            f"Graph has {G.number_of_nodes()} nodes - too large for HTML viz. "
-            f"Use --no-viz or reduce input size."
-        )
+        if sample:
+            original_count = G.number_of_nodes()
+            G, communities = sample_for_viz(G, communities)
+        else:
+            raise ValueError(
+                f"Graph has {G.number_of_nodes()} nodes - too large for HTML viz. "
+                f"Use --sample to visualize top communities, or --no-viz to skip."
+            )
 
     node_community = _node_community_map(communities)
     degree = dict(G.degree())
