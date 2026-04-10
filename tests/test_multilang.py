@@ -207,6 +207,141 @@ def test_cl_imports():
     assert "cl" in targets
     assert "alexandria" in targets
 
+def test_cl_finds_deftype():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    assert "port-number" in _labels(r)
+
+def test_cl_finds_defstruct():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    labels = _labels(r)
+    assert "request-stats" in labels
+    # defstruct with options form: (defstruct (name ...) ...)
+    assert "connection" in labels
+
+def test_cl_finds_defvar_defparameter_defconstant():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    labels = _labels(r)
+    assert "*active-connections*" in labels
+    assert "*default-port*" in labels
+    assert "+max-headers+" in labels
+
+def test_cl_finds_define_condition():
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    assert "server-error" in _labels(r)
+
+def test_cl_finds_custom_definer():
+    """The def-prefix heuristic should catch definline / definline-maybe."""
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    labels = _labels(r)
+    # definline-maybe and definline should produce function-style nodes
+    assert "header=()" in labels
+    assert "header<()" in labels
+
+def test_cl_custom_definer_in_call_graph():
+    """Functions defined via custom definers should appear in the call graph."""
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    calls = _call_pairs(r)
+    # compare-headers calls header= and header< (defined via definline-maybe / definline)
+    assert any("compare-headers" in src and "header=" in tgt for src, tgt in calls)
+    assert any("compare-headers" in src and "header<" in tgt for src, tgt in calls)
+
+def test_cl_operator_names_disambiguated():
+    """upi=, upi<, upi> must produce distinct ids (operator chars matter)."""
+    r = extract_commonlisp(FIXTURES / "sample.lisp")
+    # header= and header< must have different ids
+    eq_ids = [n["id"] for n in r["nodes"] if n["label"] == "header=()"]
+    lt_ids = [n["id"] for n in r["nodes"] if n["label"] == "header<()"]
+    assert len(eq_ids) == 1
+    assert len(lt_ids) == 1
+    assert eq_ids[0] != lt_ids[0]
+
+def test_cl_default_value_not_treated_as_definition():
+    """The def-prefix heuristic must not match denylisted symbols."""
+    import tempfile
+    code = "(in-package :cl-user)\n(default-value foo)\n"
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.lisp', delete=False) as f:
+        f.write(code)
+        path = Path(f.name)
+    try:
+        r = extract_commonlisp(path)
+        labels = _labels(r)
+        # default-value is denylisted, shouldn't create a "foo" node
+        assert "foo" not in labels
+        assert "foo()" not in labels
+    finally:
+        path.unlink()
+
+def test_cl_defs_inside_wrapper_macro():
+    """Definitions nested inside wrapper macros like (optimizing ...) or
+    (eval-when ...) must be extracted. Many CL codebases wrap hot-path
+    inline functions in application-specific macros."""
+    import tempfile
+    code = """(in-package :cl-user)
+(optimizing
+ (definline-maybe packet-type (p) (aref p 0))
+ (definline-maybe set-packet-type (p v) (setf (aref p 0) v)))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun helper () 42))
+(progn
+  (defun progn-def () 'ok))
+"""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.lisp', delete=False) as f:
+        f.write(code)
+        path = Path(f.name)
+    try:
+        r = extract_commonlisp(path)
+        labels = _labels(r)
+        assert "packet-type()" in labels
+        assert "set-packet-type()" in labels
+        assert "helper()" in labels
+        assert "progn-def()" in labels
+    finally:
+        path.unlink()
+
+def test_cl_defs_inside_reader_conditional():
+    """#+feature / #-feature reader conditionals wrap their guarded form
+    in an include_reader_macro AST node, which the walker must descend
+    into to find the nested definition."""
+    import tempfile
+    code = """(in-package :cl-user)
+#+little-endian
+(definline-maybe byte-hash= (a b) (eq a b))
+#-sbcl
+(defun only-on-non-sbcl () 1)
+"""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.lisp', delete=False) as f:
+        f.write(code)
+        path = Path(f.name)
+    try:
+        r = extract_commonlisp(path)
+        labels = _labels(r)
+        assert "byte-hash=()" in labels
+        assert "only-on-non-sbcl()" in labels
+    finally:
+        path.unlink()
+
+def test_cl_defparameter_string_value_not_docstring():
+    """For defvar/defparameter/defconstant, a string literal in the VALUE
+    position must not be wrongly captured as a docstring node."""
+    import tempfile
+    code = '''(in-package :cl-user)
+(defparameter *config-path* "/etc/app/config")
+(defvar *greeting* "hello world")
+'''
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.lisp', delete=False) as f:
+        f.write(code)
+        path = Path(f.name)
+    try:
+        r = extract_commonlisp(path)
+        labels = _labels(r)
+        assert "*config-path*" in labels
+        assert "*greeting*" in labels
+        # The string VALUES must not show up as rationale nodes
+        assert not any("/etc/app/config" in l for l in labels)
+        assert not any("hello world" in l for l in labels)
+    finally:
+        path.unlink()
+
 
 # ── extract() dispatch ────────────────────────────────────────────────────────
 

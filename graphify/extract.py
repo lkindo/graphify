@@ -2546,6 +2546,32 @@ def extract_elixir(path: Path) -> dict:
 
 # ── Common Lisp ──────────────────────────────────────────────────────────────
 
+# Standard CL definer forms that introduce data/type/variable bindings
+# (not callable, no body to walk for calls)
+_CL_DATA_DEFINERS = frozenset({
+    "defstruct", "deftype", "define-condition",
+    "defvar", "defparameter", "defconstant",
+    "define-symbol-macro",
+})
+
+# Subset of data definers that take a VALUE as their second argument, which
+# may itself be a string literal. For these, we must not mistake the value
+# for a docstring.
+_CL_VALUE_DEFINERS = frozenset({"defvar", "defparameter", "defconstant"})
+
+# Standard CL macro-style definers
+_CL_MACRO_DEFINERS = frozenset({
+    "define-modify-macro", "define-compiler-macro",
+    "define-setf-expander", "defsetf",
+})
+
+# Symbols that start with "def" but are NOT definitions (denylist for the
+# def-prefix heuristic that catches custom definers like definline-maybe)
+_CL_NOT_DEFINERS = frozenset({
+    "default", "default-value", "defaults", "define",
+    "defer", "deferred", "deflate", "deftest",
+})
+
 # CL special forms / macros that should not count as "calls" in the graph
 _CL_SPECIAL_FORMS = frozenset({
     "let", "let*", "flet", "labels", "macrolet",
@@ -2598,6 +2624,20 @@ def extract_commonlisp(path: Path) -> dict:
     def _text(node) -> str:
         return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
+    # CL symbols can contain operator chars like = < > ? ! + * / that the
+    # generic _make_id strips. Map them to readable suffixes so upi=, upi<,
+    # upi> become distinct ids.
+    _CL_CHAR_MAP = {
+        '=': '_eq', '<': '_lt', '>': '_gt', '?': '_p', '!': '_bang',
+        '+': '_plus', '*': '_star', '/': '_slash', '%': '_pct', '&': '_amp',
+    }
+
+    def _cl_id(*parts: str) -> str:
+        normalized = []
+        for p in parts:
+            normalized.append(''.join(_CL_CHAR_MAP.get(c, c) for c in p))
+        return _make_id(*normalized)
+
     def add_node(nid: str, label: str, line: int) -> None:
         if nid not in seen_ids:
             seen_ids.add(nid)
@@ -2621,7 +2661,7 @@ def extract_commonlisp(path: Path) -> dict:
             "weight": weight,
         })
 
-    file_nid = _make_id(stem)
+    file_nid = _cl_id(stem)
     add_node(file_nid, path.name, 1)
 
     def _first_sym(node) -> str | None:
@@ -2650,7 +2690,7 @@ def extract_commonlisp(path: Path) -> dict:
         if not pkg_name:
             return
         current_package = pkg_name
-        pkg_nid = _make_id(stem, pkg_name)
+        pkg_nid = _cl_id(stem, pkg_name)
         line = node.start_point[0] + 1
         add_node(pkg_nid, pkg_name, line)
         add_edge(file_nid, pkg_nid, "contains", line)
@@ -2667,7 +2707,7 @@ def extract_commonlisp(path: Path) -> dict:
                                 if uc.type == "kwd_lit" and uc != gc:
                                     mod_name = _kwd_text(uc)
                                     if mod_name != "use":
-                                        tgt_nid = _make_id(mod_name)
+                                        tgt_nid = _cl_id(mod_name)
                                         add_edge(pkg_nid, tgt_nid, "imports",
                                                  child.start_point[0] + 1)
                             break
@@ -2680,12 +2720,12 @@ def extract_commonlisp(path: Path) -> dict:
             return
         class_name = _text(sym_lits[1])
         line = node.start_point[0] + 1
-        class_nid = _make_id(stem, class_name)
+        class_nid = _cl_id(stem, class_name)
         add_node(class_nid, class_name, line)
 
         parent_nid = file_nid
         if current_package:
-            pkg_nid = _make_id(stem, current_package)
+            pkg_nid = _cl_id(stem, current_package)
             if pkg_nid in seen_ids:
                 parent_nid = pkg_nid
         add_edge(parent_nid, class_nid, "contains", line)
@@ -2697,7 +2737,7 @@ def extract_commonlisp(path: Path) -> dict:
             for sc in superclass_list.children:
                 if sc.type == "sym_lit":
                     sc_name = _text(sc)
-                    sc_nid = _make_id(stem, sc_name)
+                    sc_nid = _cl_id(stem, sc_name)
                     add_edge(class_nid, sc_nid, "inherits",
                              superclass_list.start_point[0] + 1)
 
@@ -2727,7 +2767,7 @@ def extract_commonlisp(path: Path) -> dict:
             return
 
         line = node.start_point[0] + 1
-        func_nid = _make_id(stem, func_name)
+        func_nid = _cl_id(stem, func_name)
 
         if keyword_type == "defmethod":
             label = f".{func_name}()"
@@ -2742,7 +2782,7 @@ def extract_commonlisp(path: Path) -> dict:
 
         parent_nid = file_nid
         if current_package:
-            pkg_nid = _make_id(stem, current_package)
+            pkg_nid = _cl_id(stem, current_package)
             if pkg_nid in seen_ids:
                 parent_nid = pkg_nid
         if keyword_type == "defmethod":
@@ -2760,7 +2800,7 @@ def extract_commonlisp(path: Path) -> dict:
                             syms = [c for c in param.children if c.type == "sym_lit"]
                             if len(syms) >= 2:
                                 specializer_name = _text(syms[1])
-                                spec_nid = _make_id(stem, specializer_name)
+                                spec_nid = _cl_id(stem, specializer_name)
                                 add_edge(func_nid, spec_nid, "specializes",
                                          param.start_point[0] + 1)
                     break
@@ -2770,7 +2810,7 @@ def extract_commonlisp(path: Path) -> dict:
             if child.type == "str_lit":
                 doc_text = _text(child).strip('"')
                 if doc_text:
-                    doc_nid = _make_id(func_nid, "rationale")
+                    doc_nid = _cl_id(func_nid, "rationale")
                     add_node(doc_nid, doc_text[:120], child.start_point[0] + 1)
                     add_edge(doc_nid, func_nid, "rationale_for",
                              child.start_point[0] + 1)
@@ -2782,30 +2822,124 @@ def extract_commonlisp(path: Path) -> dict:
         if body_nodes:
             function_bodies.append((func_nid, body_nodes))
 
-    # Walk top-level forms
-    for top in root.children:
-        if top.type != "list_lit":
-            continue
+    def _extract_def_name(node, def_keyword: str) -> str | None:
+        """Get the name being defined. May be a sym_lit or a list_lit whose
+        first sym_lit is the name (e.g. (defstruct (foo :conc-name "BAR-") ...))."""
+        seen_keyword = False
+        for child in node.children:
+            if not seen_keyword:
+                if child.type == "sym_lit" and _text(child).lower() == def_keyword:
+                    seen_keyword = True
+                continue
+            if child.type == "sym_lit":
+                return _text(child)
+            if child.type == "list_lit":
+                for gc in child.children:
+                    if gc.type == "sym_lit":
+                        return _text(gc)
+                return None
+        return None
+
+    def _collect_def_body(node, def_keyword: str) -> list:
+        """Collect body forms from (DEFKEYWORD name (params) [doc] body...).
+        Skips the def keyword, the name, the params list (if present), and
+        a leading docstring str_lit."""
+        children = [c for c in node.children if c.type not in ("(", ")")]
+        idx = 0
+        # Skip def keyword
+        if idx < len(children) and children[idx].type == "sym_lit" \
+           and _text(children[idx]).lower() == def_keyword:
+            idx += 1
+        # Skip name (sym_lit or list_lit)
+        if idx < len(children) and children[idx].type in ("sym_lit", "list_lit"):
+            idx += 1
+        # Skip params list (the next list_lit, if any)
+        if idx < len(children) and children[idx].type == "list_lit":
+            idx += 1
+        # Skip leading docstring
+        if idx < len(children) and children[idx].type == "str_lit":
+            idx += 1
+        return children[idx:]
+
+    def _handle_def_form(node, def_keyword: str) -> None:
+        """Handle a generic (DEFKEYWORD name ...) form. Covers standard CL
+        definers (defstruct, deftype, defvar, define-condition, etc.) and
+        custom def-prefixed macros (definline, definline-maybe, etc.)."""
+        name = _extract_def_name(node, def_keyword)
+        if not name:
+            return
+        line = node.start_point[0] + 1
+        nid = _cl_id(stem, name)
+
+        kw = def_keyword.lower()
+        if kw in _CL_DATA_DEFINERS:
+            label = name
+            is_callable = False
+        elif kw in _CL_MACRO_DEFINERS or "macro" in kw:
+            label = f"{name} (macro)"
+            is_callable = True
+        else:
+            # Custom def-prefixed: assume function-like
+            label = f"{name}()"
+            is_callable = True
+
+        add_node(nid, label, line)
+
+        parent_nid = file_nid
+        if current_package:
+            pkg_nid = _cl_id(stem, current_package)
+            if pkg_nid in seen_ids:
+                parent_nid = pkg_nid
+        add_edge(parent_nid, nid, "contains", line)
+
+        # Docstring. Skip for defvar/defparameter/defconstant — their second
+        # argument is a value (possibly a string literal) which would be
+        # wrongly captured as a docstring.
+        if kw not in _CL_VALUE_DEFINERS:
+            for child in node.children:
+                if child.type == "str_lit":
+                    doc_text = _text(child).strip('"')
+                    if doc_text:
+                        doc_nid = _cl_id(nid, "rationale")
+                        add_node(doc_nid, doc_text[:120], child.start_point[0] + 1)
+                        add_edge(doc_nid, nid, "rationale_for",
+                                 child.start_point[0] + 1)
+                    break
+
+        if is_callable:
+            body_nodes = _collect_def_body(node, def_keyword)
+            if body_nodes:
+                function_bodies.append((nid, body_nodes))
+
+    def _is_def_prefixed(sym: str) -> bool:
+        """Heuristic: does this symbol look like a definition macro?"""
+        if sym in _CL_NOT_DEFINERS:
+            return False
+        return sym.startswith("def") or sym.startswith("define-")
+
+    def _process_form(top) -> bool:
+        """Dispatch on a single list_lit form. Returns True if it was
+        recognized as a definition or package directive (caller must NOT
+        recurse into it). Returns False if unrecognized, so the caller can
+        recurse to find defs nested inside wrapper macros like
+        (optimizing ...), (eval-when ...), (progn ...), etc."""
+        nonlocal current_package
 
         # Check for defun node type inside list_lit
-        has_defun = False
         for child in top.children:
             if child.type == "defun":
                 _handle_defun_node(child)
-                has_defun = True
-                break
-        if has_defun:
-            continue
+                return True
 
-        # Plain list_lit forms: defpackage, in-package, defclass, require
         first = _first_sym(top)
         if not first:
-            continue
+            return False
         first_lower = first.lower()
 
         if first_lower == "defpackage":
             _handle_defpackage(top)
-        elif first_lower == "in-package":
+            return True
+        if first_lower == "in-package":
             for child in top.children:
                 if child.type == "kwd_lit":
                     current_package = _kwd_text(child)
@@ -2813,17 +2947,45 @@ def extract_commonlisp(path: Path) -> dict:
                 if child.type == "sym_lit" and _text(child) != "in-package":
                     current_package = _text(child)
                     break
-        elif first_lower == "defclass":
+            return True
+        if first_lower == "defclass":
             _handle_defclass(top)
-        elif first_lower in ("require", "ql:quickload"):
+            return True
+        if first_lower in ("require", "ql:quickload"):
             for child in top.children:
                 if child.type in ("kwd_lit", "str_lit"):
                     mod_name = _kwd_text(child) if child.type == "kwd_lit" else _text(child).strip('"')
                     if mod_name:
-                        tgt_nid = _make_id(mod_name)
+                        tgt_nid = _cl_id(mod_name)
                         add_edge(file_nid, tgt_nid, "imports",
                                  top.start_point[0] + 1)
                     break
+            return True
+        if first_lower in _CL_DATA_DEFINERS or first_lower in _CL_MACRO_DEFINERS:
+            _handle_def_form(top, first_lower)
+            return True
+        if _is_def_prefixed(first_lower):
+            # Custom definer (definline, definline-maybe, defcomponent, etc.)
+            _handle_def_form(top, first_lower)
+            return True
+
+        return False
+
+    def _walk_forms(parent) -> None:
+        """Walk list_lit children of `parent`, processing each. If a form
+        isn't recognized, recurse into it — many CL codebases wrap
+        definitions in macros like (optimizing ...), (eval-when ...), or
+        (progn ...) that aren't themselves definers but contain defs.
+        Also descends into reader conditionals (#+feature / #-feature),
+        which wrap their guarded form in an include_reader_macro node."""
+        for top in parent.children:
+            if top.type == "list_lit":
+                if not _process_form(top):
+                    _walk_forms(top)
+            elif top.type == "include_reader_macro":
+                _walk_forms(top)
+
+    _walk_forms(root)
 
     # Call extraction pass
     label_to_nid: dict[str, str] = {}
