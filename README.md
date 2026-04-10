@@ -209,6 +209,7 @@ When the user types `/graphify`, invoke the Skill tool with `skill: "graphify"` 
 /graphify ./raw --neo4j            # generate cypher.txt for Neo4j
 /graphify ./raw --neo4j-push bolt://localhost:7687    # push directly to a running Neo4j instance
 /graphify ./raw --mcp              # start MCP stdio server
+/graphify ./raw --mcp --workspace-dir /path/to/workspace  # MCP server with explicit workspace (for clients that execute from different CWD)
 
 # git hooks - platform-agnostic, rebuild graph on commit and branch switch
 graphify hook install

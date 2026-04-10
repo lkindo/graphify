@@ -151,3 +151,111 @@ def test_load_graph_missing_file(tmp_path):
     graphify_dir.mkdir()
     with pytest.raises(SystemExit):
         _load_graph(str(graphify_dir / "nonexistent.json"))
+
+
+# --- serve() with workspace_dir ---
+
+def test_serve_workspace_dir_changes_cwd(tmp_path, monkeypatch):
+    """Test that workspace_dir parameter changes working directory."""
+    import os
+    from graphify.serve import serve
+    
+    # Create workspace structure
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    graphify_out = workspace / "graphify-out"
+    graphify_out.mkdir()
+    
+    # Create minimal graph
+    G = _make_graph()
+    data = json_graph.node_link_data(G, edges="links")
+    graph_file = graphify_out / "graph.json"
+    graph_file.write_text(json.dumps(data))
+    
+    # Start from different directory
+    other_dir = tmp_path / "other"
+    other_dir.mkdir()
+    original_cwd = os.getcwd()
+    os.chdir(other_dir)
+    
+    try:
+        # Mock asyncio.run to prevent actual server start
+        def mock_run(coro):
+            return None
+        
+        import asyncio
+        monkeypatch.setattr(asyncio, "run", mock_run)
+        
+        # This should change to workspace and successfully load graph
+        serve("graphify-out/graph.json", workspace_dir=str(workspace))
+        
+        # Verify we changed to workspace directory
+        assert os.getcwd() == str(workspace)
+    finally:
+        os.chdir(original_cwd)
+
+
+def test_serve_workspace_dir_nonexistent_raises(tmp_path, monkeypatch):
+    """Test that nonexistent workspace_dir raises ValueError."""
+    from graphify.serve import serve
+    
+    nonexistent = tmp_path / "does_not_exist"
+    
+    def mock_run(coro):
+        return None
+    
+    import asyncio
+    monkeypatch.setattr(asyncio, "run", mock_run)
+    
+    with pytest.raises(ValueError, match="Workspace directory does not exist"):
+        serve("graphify-out/graph.json", workspace_dir=str(nonexistent))
+
+
+def test_serve_workspace_dir_file_not_directory_raises(tmp_path, monkeypatch):
+    """Test that workspace_dir pointing to a file raises ValueError."""
+    from graphify.serve import serve
+    
+    # Create a file instead of directory
+    not_a_dir = tmp_path / "file.txt"
+    not_a_dir.write_text("content")
+    
+    def mock_run(coro):
+        return None
+    
+    import asyncio
+    monkeypatch.setattr(asyncio, "run", mock_run)
+    
+    with pytest.raises(ValueError, match="not a directory"):
+        serve("graphify-out/graph.json", workspace_dir=str(not_a_dir))
+
+
+def test_serve_without_workspace_dir_uses_cwd(tmp_path, monkeypatch):
+    """Test that serve() without workspace_dir works from current directory."""
+    import os
+    from graphify.serve import serve
+    
+    # Create graph in tmp_path
+    graphify_out = tmp_path / "graphify-out"
+    graphify_out.mkdir()
+    G = _make_graph()
+    data = json_graph.node_link_data(G, edges="links")
+    graph_file = graphify_out / "graph.json"
+    graph_file.write_text(json.dumps(data))
+    
+    original_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    
+    try:
+        def mock_run(coro):
+            return None
+        
+        import asyncio
+        monkeypatch.setattr(asyncio, "run", mock_run)
+        
+        # Should work from current directory
+        serve("graphify-out/graph.json")
+        
+        # CWD should not have changed
+        assert os.getcwd() == str(tmp_path)
+    finally:
+        os.chdir(original_cwd)

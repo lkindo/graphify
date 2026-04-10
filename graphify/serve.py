@@ -108,14 +108,30 @@ def _find_node(G: nx.Graph, label: str) -> list[str]:
             if term in d.get("label", "").lower() or term == nid.lower()]
 
 
-def serve(graph_path: str = "graphify-out/graph.json") -> None:
-    """Start the MCP server. Requires pip install mcp."""
+def serve(graph_path: str = "graphify-out/graph.json", workspace_dir: str | None = None) -> None:
+    """Start the MCP server. Requires pip install mcp.
+    
+    Args:
+        graph_path: Path to graph.json file (relative to workspace_dir if provided)
+        workspace_dir: Optional workspace root directory. If provided, changes CWD before loading graph.
+                      This is useful when MCP clients execute from a different directory than the workspace.
+    """
     try:
         from mcp.server import Server
         from mcp.server.stdio import stdio_server
         from mcp import types
     except ImportError as e:
         raise ImportError("mcp not installed. Run: pip install mcp") from e
+
+    # Change to workspace directory if provided
+    if workspace_dir:
+        import os
+        workspace_path = Path(workspace_dir).resolve()
+        if not workspace_path.exists():
+            raise ValueError(f"Workspace directory does not exist: {workspace_path}")
+        if not workspace_path.is_dir():
+            raise ValueError(f"Workspace path is not a directory: {workspace_path}")
+        os.chdir(workspace_path)
 
     G = _load_graph(graph_path)
     communities = _communities_from_graph(G)
@@ -329,5 +345,10 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
 
 
 if __name__ == "__main__":
-    graph_path = sys.argv[1] if len(sys.argv) > 1 else "graphify-out/graph.json"
-    serve(graph_path)
+    import argparse
+    parser = argparse.ArgumentParser(description="Start Graphify MCP server")
+    parser.add_argument("graph_path", nargs="?", default="graphify-out/graph.json",
+                       help="Path to graph.json file (default: graphify-out/graph.json)")
+    parser.add_argument("--workspace-dir", "-w", help="Workspace root directory (changes CWD before loading graph)")
+    args = parser.parse_args()
+    serve(args.graph_path, workspace_dir=args.workspace_dir)
