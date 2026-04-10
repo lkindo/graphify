@@ -542,12 +542,12 @@ def _install_claude_hook(project_dir: Path) -> None:
     hooks = settings.setdefault("hooks", {})
     pre_tool = hooks.setdefault("PreToolUse", [])
 
-    # Check if already installed
-    if any(h.get("matcher") == "Glob|Grep" and "graphify" in str(h) for h in pre_tool):
-        print(f"  .claude/settings.json  ->  hook already registered (no change)")
-        return
+    # Remove any existing graphify hooks (handles upgrades from old versions)
+    filtered = [h for h in pre_tool if not (h.get("matcher") == "Glob|Grep" and "graphify" in str(h))]
+    settings["hooks"]["PreToolUse"] = filtered
 
-    pre_tool.append(_SETTINGS_HOOK)
+    # Install fresh hook
+    settings["hooks"]["PreToolUse"].append(_SETTINGS_HOOK)
     settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
     print(f"  .claude/settings.json  ->  PreToolUse hook registered")
 
