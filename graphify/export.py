@@ -295,7 +295,7 @@ def to_json(G: nx.Graph, communities: dict[int, list[str]], output_path: str) ->
             conf = link.get("confidence", "EXTRACTED")
             link["confidence_score"] = _CONFIDENCE_SCORE_DEFAULTS.get(conf, 1.0)
     data["hyperedges"] = getattr(G, "graph", {}).get("hyperedges", [])
-    with open(output_path, "w") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
 
@@ -322,7 +322,7 @@ def to_cypher(G: nx.Graph, output_path: str) -> None:
             f"MATCH (a {{id: '{u_esc}'}}), (b {{id: '{v_esc}'}}) "
             f"MERGE (a)-[:{rel} {{confidence: '{conf}'}}]->(b);"
         )
-    with open(output_path, "w") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
 
@@ -681,7 +681,7 @@ def to_obsidian(
             for cid, label in sorted((community_labels or {}).items())
         ]
     }
-    (obsidian_dir / "graph.json").write_text(json.dumps(graph_config, indent=2))
+    (obsidian_dir / "graph.json").write_text(json.dumps(graph_config, indent=2), encoding="utf-8")
 
     return G.number_of_nodes() + community_notes_written
 

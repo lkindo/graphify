@@ -195,7 +195,7 @@ def to_wiki(
     for cid, nodes in communities.items():
         label = labels.get(cid, f"Community {cid}")
         article = _community_article(G, cid, nodes, label, labels, cohesion.get(cid))
-        (out / f"{_safe_filename(label)}.md").write_text(article)
+        (out / f"{_safe_filename(label)}.md").write_text(article, encoding="utf-8")
         count += 1
 
     # God node articles
@@ -203,12 +203,13 @@ def to_wiki(
         nid = node_data.get("id")
         if nid and nid in G:
             article = _god_node_article(G, nid, labels)
-            (out / f"{_safe_filename(node_data['label'])}.md").write_text(article)
+            (out / f"{_safe_filename(node_data['label'])}.md").write_text(article, encoding="utf-8")
             count += 1
 
     # Index
     (out / "index.md").write_text(
-        _index_md(communities, labels, god_nodes_data, G.number_of_nodes(), G.number_of_edges())
+        _index_md(communities, labels, god_nodes_data, G.number_of_nodes(), G.number_of_edges()),
+        encoding="utf-8",
     )
 
     return count
