@@ -347,6 +347,8 @@ def to_html(
     node_community = _node_community_map(communities)
     degree = dict(G.degree())
     max_deg = max(degree.values()) if degree else 1
+    if max_deg == 0:
+        max_deg = 1  # avoid division by zero on graphs with no edges
 
     # Build nodes list for vis.js
     vis_nodes = []

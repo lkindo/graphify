@@ -42,6 +42,13 @@ def build_from_json(extraction: dict, *, directed: bool = False) -> nx.Graph:
         G.add_node(node["id"], **{k: v for k, v in node.items() if k != "id"})
     node_set = set(G.nodes())
     for edge in extraction.get("edges", []):
+        # Normalize alternate key names that LLM subagents sometimes produce
+        if "from" in edge and "source" not in edge:
+            edge["source"] = edge.pop("from")
+        if "to" in edge and "target" not in edge:
+            edge["target"] = edge.pop("to")
+        if "source" not in edge or "target" not in edge:
+            continue  # skip malformed edges
         src, tgt = edge["source"], edge["target"]
         if src not in node_set or tgt not in node_set:
             continue  # skip edges to external/stdlib nodes - expected, not an error
