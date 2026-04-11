@@ -8,7 +8,7 @@
 [![Sponsor](https://img.shields.io/badge/sponsor-safishamsi-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/safishamsi)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Safi%20Shamsi-0077B5?logo=linkedin)](https://www.linkedin.com/in/safi-shamsi)
 
-**An AI coding assistant skill.** Type `/graphify` in Claude Code, Codex, OpenCode, Cursor, Gemini CLI, GitHub Copilot CLI, Aider, OpenClaw, Factory Droid, Trae, Hermes, or Google Antigravity - it reads your files, builds a knowledge graph, and gives you back structure you didn't know was there. Understand a codebase faster. Find the "why" behind architectural decisions.
+**An AI coding assistant skill.** Type `/graphify` in Claude Code, Codex, OpenCode, Cursor, Gemini CLI, VS Code (GitHub Copilot Chat), GitHub Copilot CLI, Aider, OpenClaw, Factory Droid, Trae, Hermes, or Google Antigravity - it reads your files, builds a knowledge graph, and gives you back structure you didn't know was there. Understand a codebase faster. Find the "why" behind architectural decisions.
 
 Fully multimodal. Drop in code, PDFs, markdown, screenshots, diagrams, whiteboard photos, images in other languages, or video and audio files - graphify extracts concepts and relationships from all of it and connects them into one graph. Videos are transcribed with Whisper using a domain-aware prompt derived from your corpus. 23 languages supported via tree-sitter AST (Python, JS, TS, Go, Rust, Java, C, C++, Ruby, C#, Kotlin, Scala, PHP, Swift, Lua, Zig, PowerShell, Elixir, Objective-C, Julia, Vue, Svelte, Dart).
 
@@ -48,7 +48,7 @@ Every relationship is tagged `EXTRACTED` (found directly in source), `INFERRED` 
 
 ## Install
 
-**Requires:** Python 3.10+ and one of: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [Cursor](https://cursor.com), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli), [Aider](https://aider.chat), [OpenClaw](https://openclaw.ai), [Factory Droid](https://factory.ai), [Trae](https://trae.ai), Hermes, or [Google Antigravity](https://antigravity.google)
+**Requires:** Python 3.10+ and one of: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [Cursor](https://cursor.com), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [VS Code with GitHub Copilot](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot-chat), [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli), [Aider](https://aider.chat), [OpenClaw](https://openclaw.ai), [Factory Droid](https://factory.ai), [Trae](https://trae.ai), Hermes, or [Google Antigravity](https://antigravity.google)
 
 ```bash
 pip install graphifyy && graphify install
@@ -65,6 +65,7 @@ pip install graphifyy && graphify install
 | Codex | `graphify install --platform codex` |
 | OpenCode | `graphify install --platform opencode` |
 | GitHub Copilot CLI | `graphify install --platform copilot` |
+| VS Code (GitHub Copilot Chat) | `graphify install --platform vscode` |
 | Aider | `graphify install --platform aider` |
 | OpenClaw | `graphify install --platform claw` |
 | Factory Droid | `graphify install --platform droid` |
@@ -95,6 +96,7 @@ After building a graph, run this once in your project:
 | Codex | `graphify codex install` |
 | OpenCode | `graphify opencode install` |
 | GitHub Copilot CLI | `graphify copilot install` |
+| VS Code (GitHub Copilot Chat) | `graphify vscode install` |
 | Aider | `graphify aider install` |
 | OpenClaw | `graphify claw install` |
 | Factory Droid | `graphify droid install` |
@@ -120,6 +122,10 @@ After building a graph, run this once in your project:
 **Google Antigravity** writes `.agent/rules/graphify.md` (always-on rules) and `.agent/workflows/graphify.md` (registers `/graphify` as a slash command). No hook equivalent exists in Antigravity — rules are the always-on mechanism.
 
 **GitHub Copilot CLI** copies the skill to `~/.copilot/skills/graphify/SKILL.md`. Run `graphify copilot install` to set it up.
+
+**VS Code (GitHub Copilot Chat)** does two things: writes a graphify section to `.github/copilot-instructions.md` — VS Code reads this file automatically in every workspace chat session, so Copilot references the knowledge graph before answering architecture questions without any tool hook needed. Also installs a VS Code-optimized skill (`skill-vscode.md`) that uses **Python-only commands** (no bash syntax), making it fully compatible with Windows PowerShell, macOS, and Linux. Run `graphify vscode install` from your project root after building the graph.
+
+> **Copilot CLI vs VS Code Copilot Chat:** They are different products. `graphify copilot install` targets the terminal CLI (`gh copilot suggest`), which uses bash and doesn't need a project-level always-on file. `graphify vscode install` targets the chat panel in VS Code (GitHub Copilot Chat extension), which reads `.github/copilot-instructions.md` and runs commands in PowerShell on Windows. Use `vscode install` if you work primarily in the VS Code editor.
 
 Uninstall with the matching uninstall command (e.g. `graphify claude uninstall`).
 
@@ -242,6 +248,7 @@ graphify cursor uninstall
 graphify gemini install            # GEMINI.md + BeforeTool hook (Gemini CLI)
 graphify gemini uninstall
 graphify copilot install           # skill file (GitHub Copilot CLI)
+graphify vscode install            # skill + .github/copilot-instructions.md (VS Code Copilot Chat)
 graphify copilot uninstall
 graphify aider install             # AGENTS.md (Aider)
 graphify aider uninstall

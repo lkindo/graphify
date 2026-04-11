@@ -72,6 +72,11 @@ _PLATFORM_CONFIG: dict[str, dict] = {
         "skill_dst": Path(".copilot") / "skills" / "graphify" / "SKILL.md",
         "claude_md": False,
     },
+    "vscode": {
+        "skill_file": "skill-vscode.md",
+        "skill_dst": Path(".copilot") / "skills" / "graphify" / "SKILL.md",
+        "claude_md": False,
+    },
     "claw": {
         "skill_file": "skill-claw.md",
         "skill_dst": Path(".openclaw") / "skills" / "graphify" / "SKILL.md",
@@ -186,6 +191,21 @@ Rules:
 
 _AGENTS_MD_MARKER = "## graphify"
 
+# .github/copilot-instructions.md section for VS Code GitHub Copilot Chat.
+# VS Code reads this file automatically for every workspace chat session.
+_VSCODE_INSTRUCTIONS_SECTION = """\
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run: python -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))" to keep the graph current
+"""
+
+_VSCODE_INSTRUCTIONS_MARKER = "## graphify"
+
 _GEMINI_MD_SECTION = """\
 ## graphify
 
@@ -212,6 +232,94 @@ _GEMINI_HOOK = {
         }
     ],
 }
+
+
+def vscode_install(project_dir: Path | None = None) -> None:
+    """Set up graphify for VS Code GitHub Copilot Chat.
+
+    1. Copies skill-vscode.md to ~/.copilot/skills/graphify/SKILL.md
+       (cross-platform skill using Python-only commands, no bash required)
+    2. Writes a graphify section to .github/copilot-instructions.md
+       (always-on context — VS Code reads this automatically in every chat session)
+    """
+    # 1. Install the VS Code-optimized skill
+    skill_src = Path(__file__).parent / "skill-vscode.md"
+    if not skill_src.exists():
+        skill_src = Path(__file__).parent / "skill-copilot.md"  # fallback
+    skill_dst = Path.home() / ".copilot" / "skills" / "graphify" / "SKILL.md"
+    skill_dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(skill_src, skill_dst)
+    (skill_dst.parent / ".graphify_version").write_text(__version__, encoding="utf-8")
+    print(f"  skill installed  ->  {skill_dst}")
+
+    # 2. Write .github/copilot-instructions.md (project always-on context)
+    root = project_dir or Path(".")
+    target = root / ".github" / "copilot-instructions.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    if target.exists():
+        content = target.read_text(encoding="utf-8")
+        if _VSCODE_INSTRUCTIONS_MARKER in content:
+            print(f"  .github/copilot-instructions.md  ->  already configured (no change)")
+        else:
+            target.write_text(content.rstrip() + "\n\n" + _VSCODE_INSTRUCTIONS_SECTION, encoding="utf-8")
+            print(f"  .github/copilot-instructions.md  ->  graphify section added")
+    else:
+        target.write_text(_VSCODE_INSTRUCTIONS_SECTION, encoding="utf-8")
+        print(f"  .github/copilot-instructions.md  ->  created")
+
+    print()
+    print("VS Code GitHub Copilot Chat is configured.")
+    print()
+    print("Next steps:")
+    print("  1. Build the graph: type /graphify in Copilot Chat")
+    print("  2. Copilot will read GRAPH_REPORT.md before answering architecture questions")
+    print()
+    print("Note: this configures VS Code Copilot Chat (chat panel in editor).")
+    print("      For GitHub Copilot CLI (terminal), use: graphify copilot install")
+
+
+def vscode_uninstall(project_dir: Path | None = None) -> None:
+    """Remove graphify VS Code Copilot Chat setup.
+
+    1. Removes skill from ~/.copilot/skills/graphify/SKILL.md
+    2. Removes graphify section from .github/copilot-instructions.md
+    """
+    # 1. Remove skill
+    skill_dst = Path.home() / ".copilot" / "skills" / "graphify" / "SKILL.md"
+    if skill_dst.exists():
+        skill_dst.unlink()
+        print(f"  skill removed    ->  {skill_dst}")
+    version_file = skill_dst.parent / ".graphify_version"
+    if version_file.exists():
+        version_file.unlink()
+    for d in (skill_dst.parent, skill_dst.parent.parent, skill_dst.parent.parent.parent):
+        try:
+            d.rmdir()
+        except OSError:
+            break
+
+    # 2. Remove the graphify section from .github/copilot-instructions.md
+    target = (project_dir or Path(".")) / ".github" / "copilot-instructions.md"
+    if not target.exists():
+        print("  .github/copilot-instructions.md  ->  not found (nothing to do)")
+        return
+    content = target.read_text(encoding="utf-8")
+    if _VSCODE_INSTRUCTIONS_MARKER not in content:
+        print("  .github/copilot-instructions.md  ->  graphify section not found (nothing to do)")
+        return
+    cleaned = re.sub(
+        r"\n*## graphify\n.*?(?=\n## |\Z)",
+        "",
+        content,
+        flags=re.DOTALL,
+    ).rstrip()
+    if cleaned:
+        target.write_text(cleaned + "\n", encoding="utf-8")
+        print(f"  .github/copilot-instructions.md  ->  graphify section removed")
+    else:
+        target.unlink()
+        print(f"  .github/copilot-instructions.md  ->  deleted (empty after removal)")
 
 
 def gemini_install(project_dir: Path | None = None) -> None:
@@ -779,6 +887,8 @@ def main() -> None:
         print("  aider uninstall         remove graphify section from AGENTS.md")
         print("  copilot install         copy graphify skill to ~/.copilot/skills (GitHub Copilot CLI)")
         print("  copilot uninstall       remove graphify skill from ~/.copilot/skills")
+        print("  vscode install          VS Code Copilot Chat: skill + .github/copilot-instructions.md (always-on)")
+        print("  vscode uninstall        remove vscode install")
         print("  claw install            write graphify section to AGENTS.md (OpenClaw)")
         print("  claw uninstall          remove graphify section from AGENTS.md")
         print("  droid install           write graphify section to AGENTS.md (Factory Droid)")
@@ -857,6 +967,15 @@ def main() -> None:
             print("; ".join(removed) if removed else "nothing to remove")
         else:
             print("Usage: graphify copilot [install|uninstall]", file=sys.stderr)
+            sys.exit(1)
+    elif cmd == "vscode":
+        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
+        if subcmd == "install":
+            vscode_install()
+        elif subcmd == "uninstall":
+            vscode_uninstall()
+        else:
+            print("Usage: graphify vscode [install|uninstall]", file=sys.stderr)
             sys.exit(1)
     elif cmd in ("aider", "codex", "opencode", "claw", "droid", "trae", "trae-cn", "hermes"):
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
