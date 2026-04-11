@@ -39,3 +39,31 @@ def test_build_merges_multiple_extractions():
     G = build([ext1, ext2])
     assert G.number_of_nodes() == 2
     assert G.number_of_edges() == 1
+
+
+def test_build_from_json_with_links_key():
+    """NetworkX <= 3.1 used "links" as the edge key in node_link_data().
+    build_from_json() must accept "links" as a fallback for "edges" so that
+    data produced by older NetworkX versions (or any serialiser that uses
+    "links") is handled correctly."""
+    data = {
+        "directed": False, "multigraph": False, "graph": {},
+        "nodes": [{"id": "n1"}, {"id": "n2"}],
+        "links": [{"source": "n1", "target": "n2"}],  # old NetworkX key
+    }
+    built = build_from_json(data)
+    assert built.number_of_nodes() == 2
+    assert built.number_of_edges() == 1     # was 0 before the fix
+
+
+def test_build_from_json_with_edges_key():
+    """NetworkX >= 3.2 uses "edges" as the default key — must still work."""
+    import networkx as nx
+    G = nx.Graph()
+    G.add_node("n1", label="A")
+    G.add_node("n2", label="B")
+    G.add_edge("n1", "n2")
+    nx_data = nx.node_link_data(G)
+    built = build_from_json(nx_data)
+    assert built.number_of_nodes() == 2
+    assert built.number_of_edges() == 1

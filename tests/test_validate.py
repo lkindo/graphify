@@ -85,3 +85,32 @@ def test_assert_valid_raises_on_errors():
 
 def test_assert_valid_passes_silently():
     assert_valid(VALID)  # should not raise
+
+
+def test_links_key_accepted_as_edges():
+    """validate_extraction() must accept 'links' as a fallback for 'edges'
+    to support data produced by NetworkX node_link_data()."""
+    data = {
+        "nodes": [
+            {"id": "n1", "label": "Foo", "file_type": "code", "source_file": "foo.py"},
+            {"id": "n2", "label": "Bar", "file_type": "code", "source_file": "bar.py"},
+        ],
+        "links": [
+            {"source": "n1", "target": "n2", "relation": "calls",
+             "confidence": "EXTRACTED", "source_file": "foo.py", "weight": 1.0},
+        ],
+    }
+    errors = validate_extraction(data)
+    assert errors == [], f"Unexpected errors: {errors}"
+
+def test_edges_key_takes_priority_over_links():
+    """If both 'edges' and 'links' are present, 'edges' must be used."""
+    data = {
+        "nodes": [
+            {"id": "n1", "label": "Foo", "file_type": "code", "source_file": "foo.py"},
+        ],
+        "edges": [],          # empty — should be used
+        "links": "not-a-list",  # invalid — should be ignored
+    }
+    errors = validate_extraction(data)
+    assert errors == [], f"Unexpected errors: {errors}"
