@@ -628,10 +628,10 @@ def claude_uninstall(project_dir: Path | None = None) -> None:
 
 
 def main() -> None:
-    # Check all known skill install locations for a stale version stamp
-    for cfg in _PLATFORM_CONFIG.values():
-        skill_dst = Path.home() / cfg["skill_dst"]
-        _check_skill_version(skill_dst)
+    # Skip version check for setup commands
+    if not any(arg in ("install", "uninstall") for arg in sys.argv):
+        for skill_dst in {Path.home() / cfg["skill_dst"] for cfg in _PLATFORM_CONFIG.values()}:
+            _check_skill_version(skill_dst)
 
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print("Usage: graphify <command>")
