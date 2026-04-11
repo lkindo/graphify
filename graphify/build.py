@@ -23,6 +23,7 @@
 from __future__ import annotations
 import sys
 import networkx as nx
+from .align import align_nodes, canonical_label, canonicalize, merge_attributes
 from .validate import validate_extraction
 
 
@@ -38,11 +39,28 @@ def build_from_json(extraction: dict, *, directed: bool = False) -> nx.Graph:
     if real_errors:
         print(f"[graphify] Extraction warning ({len(real_errors)} issues): {real_errors[0]}", file=sys.stderr)
     G: nx.Graph = nx.DiGraph() if directed else nx.Graph()
+    id_map: dict[str, str] = {}
     for node in extraction.get("nodes", []):
-        G.add_node(node["id"], **{k: v for k, v in node.items() if k != "id"})
+        label = str(node.get("label") or node.get("id") or "")
+        identity_label = canonical_label(label)
+        canonical_id = node.get("canonical_id") or canonicalize(label)
+        if identity_label:
+            canonical_id = node.get("canonical_id") or canonicalize(identity_label)
+        if not canonical_id:
+            canonical_id = str(node["id"])
+        id_map[str(node["id"])] = canonical_id
+        node_attrs = {k: v for k, v in node.items() if k != "id"}
+        node_attrs["canonical_id"] = canonical_id
+        node_attrs["aliases"] = list(dict.fromkeys([*(node.get("aliases", []) or []), label]))
+        node_attrs["raw_ids"] = list(dict.fromkeys([*(node.get("raw_ids", []) or []), str(node["id"])]))
+        if canonical_id in G:
+            merge_attributes(G.nodes[canonical_id], {"id": node["id"], **node_attrs})
+        else:
+            G.add_node(canonical_id, **node_attrs)
     node_set = set(G.nodes())
     for edge in extraction.get("edges", []):
-        src, tgt = edge["source"], edge["target"]
+        src = id_map.get(str(edge["source"]))
+        tgt = id_map.get(str(edge["target"]))
         if src not in node_set or tgt not in node_set:
             continue  # skip edges to external/stdlib nodes - expected, not an error
         attrs = {k: v for k, v in edge.items() if k not in ("source", "target")}
@@ -53,7 +71,17 @@ def build_from_json(extraction: dict, *, directed: bool = False) -> nx.Graph:
         G.add_edge(src, tgt, **attrs)
     hyperedges = extraction.get("hyperedges", [])
     if hyperedges:
-        G.graph["hyperedges"] = hyperedges
+        remapped_hyperedges = []
+        for hyperedge in hyperedges:
+            remapped_hyperedge = dict(hyperedge)
+            remapped_hyperedge["nodes"] = [
+                id_map[node_id]
+                for node_id in hyperedge.get("nodes", [])
+                if str(node_id) in id_map
+            ]
+            remapped_hyperedges.append(remapped_hyperedge)
+        G.graph["hyperedges"] = remapped_hyperedges
+    align_nodes(G)
     return G
 
 

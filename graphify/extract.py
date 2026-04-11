@@ -8,6 +8,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Any
+from .align import canonical_label, canonicalize
 from .cache import load_cached, save_cached
 
 
@@ -650,16 +651,19 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
     seen_ids: set[str] = set()
     function_bodies: list[tuple[str, object]] = []
 
-    def add_node(nid: str, label: str, line: int) -> None:
+    def add_node(nid: str, label: str, line: int, entity_type: str | None = None) -> None:
         if nid not in seen_ids:
             seen_ids.add(nid)
-            nodes.append({
+            node_data = {
                 "id": nid,
                 "label": label,
                 "file_type": "code",
                 "source_file": str_path,
                 "source_location": f"L{line}",
-            })
+            }
+            if entity_type:
+                node_data["type"] = entity_type
+            nodes.append(node_data)
 
     def add_edge(src: str, tgt: str, relation: str, line: int,
                  confidence: str = "EXTRACTED", weight: float = 1.0) -> None:
@@ -699,7 +703,7 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
             class_name = _read_text(name_node, source)
             class_nid = _make_id(stem, class_name)
             line = node.start_point[0] + 1
-            add_node(class_nid, class_name, line)
+            add_node(class_nid, class_name, line, entity_type="class")
             add_edge(file_nid, class_nid, "contains", line)
 
             # Python-specific: inheritance
@@ -804,11 +808,11 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
             line = node.start_point[0] + 1
             if parent_class_nid:
                 func_nid = _make_id(parent_class_nid, func_name)
-                add_node(func_nid, f".{func_name}()", line)
+                add_node(func_nid, f".{func_name}()", line, entity_type="method")
                 add_edge(parent_class_nid, func_nid, "method", line)
             else:
                 func_nid = _make_id(stem, func_name)
-                add_node(func_nid, f"{func_name}()", line)
+                add_node(func_nid, f"{func_name}()", line, entity_type="function")
                 add_edge(file_nid, func_nid, "contains", line)
 
             body = _find_body(node, config)
@@ -2648,6 +2652,10 @@ def extract(paths: list[Path]) -> dict:
     for result in per_file:
         all_nodes.extend(result.get("nodes", []))
         all_edges.extend(result.get("edges", []))
+
+    for node in all_nodes:
+        label = str(node.get("label") or node.get("id") or "")
+        node["canonical_id"] = node.get("canonical_id") or canonicalize(canonical_label(label))
 
     # Add cross-file class-level edges (Python only - uses Python parser internally)
     py_paths = [p for p in paths if p.suffix == ".py"]
