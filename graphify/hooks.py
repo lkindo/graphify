@@ -32,8 +32,16 @@ fi
 
 _HOOK_SCRIPT = """\
 # graphify-hook-start
-# Auto-rebuilds the knowledge graph after each commit (code files only, no LLM needed).
+# Auto-rebuilds the knowledge graph after each commit (no LLM needed).
 # Installed by: graphify hook install
+#
+# Why no extension filter: _rebuild_code internally calls detect() which
+# rescans the project from scratch using the authoritative CODE_EXTENSIONS
+# set in graphify/detect.py. A hook-side filter would only gate WHETHER the
+# rebuild fires, not WHAT gets rebuilt — and any hardcoded copy here drifts
+# from the real allowlist (.tsx/.jsx/.lua/.ex/.jl/... were missed in the past).
+# The rebuild is cheap (~2s, no LLM), so just always run it. Output is
+# appended to graphify-out/.hook.log so silent failures stay visible.
 
 CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only HEAD 2>/dev/null)
 if [ -z "$CHANGED" ]; then
@@ -41,32 +49,21 @@ if [ -z "$CHANGED" ]; then
 fi
 
 """ + _PYTHON_DETECT + """
-export GRAPHIFY_CHANGED="$CHANGED"
-$GRAPHIFY_PYTHON -c "
-import os, sys
+mkdir -p graphify-out
+{
+    echo ''
+    echo '[graphify hook] '$(date '+%Y-%m-%dT%H:%M:%S')' - rebuilding...'
+    $GRAPHIFY_PYTHON -c '
+import sys
 from pathlib import Path
-
-CODE_EXTS = {
-    '.py', '.ts', '.js', '.go', '.rs', '.java', '.cpp', '.c', '.rb', '.swift',
-    '.kt', '.cs', '.scala', '.php', '.cc', '.cxx', '.hpp', '.h', '.kts',
-}
-
-changed_raw = os.environ.get('GRAPHIFY_CHANGED', '')
-changed = [Path(f.strip()) for f in changed_raw.strip().splitlines() if f.strip()]
-code_changed = [f for f in changed if f.suffix.lower() in CODE_EXTS and f.exists()]
-
-if not code_changed:
-    sys.exit(0)
-
-print(f'[graphify hook] {len(code_changed)} code file(s) changed - rebuilding graph...')
-
 try:
     from graphify.watch import _rebuild_code
-    _rebuild_code(Path('.'))
+    _rebuild_code(Path("."))
 except Exception as exc:
-    print(f'[graphify hook] Rebuild failed: {exc}')
+    print(f"[graphify hook] Rebuild failed: {exc}", file=sys.stderr)
     sys.exit(1)
-"
+'
+} >> graphify-out/.hook.log 2>&1
 # graphify-hook-end
 """
 
