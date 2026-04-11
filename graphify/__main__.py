@@ -92,6 +92,11 @@ _PLATFORM_CONFIG: dict[str, dict] = {
         "skill_dst": Path(".trae-cn") / "skills" / "graphify" / "SKILL.md",
         "claude_md": False,
     },
+    "windsurf": {
+        "skill_file": "skill-windsurf.md",
+        "skill_dst": Path(".codeium") / "windsurf" / "skills" / "graphify" / "SKILL.md",
+        "claude_md": False,
+    },
     "windows": {
         "skill_file": "skill-windows.md",
         "skill_dst": Path(".claude") / "skills" / "graphify" / "SKILL.md",
@@ -533,6 +538,92 @@ def _agents_uninstall(project_dir: Path) -> None:
     _uninstall_opencode_plugin(project_dir or Path("."))
 
 
+_WINDSURF_RULES_SECTION = """\
+
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+"""
+
+_WINDSURF_RULES_MARKER = "\n## graphify"
+
+_WINDSURF_WORKFLOW = """\
+---
+title: graphify
+description: Turn any folder of files into a navigable knowledge graph with community detection, an honest audit trail, and three outputs: interactive HTML, GraphRAG-ready JSON, and a plain-language GRAPH_REPORT.md.
+---
+
+Run the graphify knowledge-graph pipeline.
+
+1. Read the full step-by-step instructions from `~/.codeium/windsurf/skills/graphify/SKILL.md`.
+2. Execute those instructions on the path provided by the user (default: `.`).
+3. If `~/.codeium/windsurf/skills/graphify/SKILL.md` is not found, tell the user to run `graphify install --platform windsurf` first, then retry.
+"""
+
+
+def _windsurf_install(project_dir: Path) -> None:
+    """Write .windsurf/workflows/graphify.md and append to .windsurfrules."""
+    # 1. Workflow file — registers /graphify as a Cascade slash command
+    workflow_path = project_dir / ".windsurf" / "workflows" / "graphify.md"
+    workflow_path.parent.mkdir(parents=True, exist_ok=True)
+    if workflow_path.exists():
+        print(f"  .windsurf/workflows/graphify.md  ->  already exists (no change)")
+    else:
+        workflow_path.write_text(_WINDSURF_WORKFLOW, encoding="utf-8")
+        print(f"  .windsurf/workflows/graphify.md  ->  written (/graphify slash command registered)")
+
+    # 2. Always-on rules via .windsurfrules
+    rules_path = project_dir / ".windsurfrules"
+    if rules_path.exists():
+        content = rules_path.read_text(encoding="utf-8")
+        if _WINDSURF_RULES_MARKER in content:
+            print(f"  .windsurfrules  ->  graphify section already present (no change)")
+        else:
+            rules_path.write_text(content.rstrip() + _WINDSURF_RULES_SECTION, encoding="utf-8")
+            print(f"  .windsurfrules  ->  graphify section appended")
+    else:
+        rules_path.write_text(_WINDSURF_RULES_SECTION.lstrip(), encoding="utf-8")
+        print(f"  .windsurfrules  ->  created")
+
+    print()
+    print("Windsurf (Cascade) will now expose /graphify as a slash command.")
+    print("The knowledge graph rules are active in every session via .windsurfrules.")
+    print()
+    print("Also run: graphify install --platform windsurf")
+    print("  to copy the full skill logic to ~/.codeium/windsurf/skills/graphify/SKILL.md")
+
+
+def _windsurf_uninstall(project_dir: Path) -> None:
+    """Remove .windsurf/workflows/graphify.md and graphify section from .windsurfrules."""
+    # Remove workflow file
+    workflow_path = project_dir / ".windsurf" / "workflows" / "graphify.md"
+    if workflow_path.exists():
+        workflow_path.unlink()
+        print(f"  .windsurf/workflows/graphify.md  ->  removed")
+    else:
+        print("  .windsurf/workflows/graphify.md  ->  not found (nothing to remove)")
+
+    # Remove graphify section from .windsurfrules
+    rules_path = project_dir / ".windsurfrules"
+    if not rules_path.exists():
+        return
+    content = rules_path.read_text(encoding="utf-8")
+    if _WINDSURF_RULES_MARKER not in content:
+        return
+    cleaned = re.sub(r"\n*\n## graphify\n.*?(?=\n## |\Z)", "", content, flags=re.DOTALL).rstrip()
+    if cleaned:
+        rules_path.write_text(cleaned + "\n", encoding="utf-8")
+        print(f"  .windsurfrules  ->  graphify section removed")
+    else:
+        rules_path.unlink()
+        print(f"  .windsurfrules  ->  was empty after removal, deleted")
+
+
 def claude_install(project_dir: Path | None = None) -> None:
     """Write the graphify section to the local CLAUDE.md."""
     target = (project_dir or Path(".")) / "CLAUDE.md"
@@ -637,7 +728,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor|windsurf)")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -674,6 +765,8 @@ def main() -> None:
         print("  trae uninstall         remove graphify section from AGENTS.md")
         print("  trae-cn install         write graphify section to AGENTS.md (Trae CN)")
         print("  trae-cn uninstall      remove graphify section from AGENTS.md")
+        print("  windsurf install        write .windsurf/workflows/graphify.md + .windsurfrules section (Windsurf)")
+        print("  windsurf uninstall      remove workflow and .windsurfrules section")
         print()
         return
 
@@ -742,6 +835,15 @@ def main() -> None:
             print("; ".join(removed) if removed else "nothing to remove")
         else:
             print("Usage: graphify copilot [install|uninstall]", file=sys.stderr)
+            sys.exit(1)
+    elif cmd == "windsurf":
+        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
+        if subcmd == "install":
+            _windsurf_install(Path("."))
+        elif subcmd == "uninstall":
+            _windsurf_uninstall(Path("."))
+        else:
+            print("Usage: graphify windsurf [install|uninstall]", file=sys.stderr)
             sys.exit(1)
     elif cmd in ("aider", "codex", "opencode", "claw", "droid", "trae", "trae-cn"):
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
