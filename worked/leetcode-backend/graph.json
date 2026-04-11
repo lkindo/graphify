@@ -1,0 +1,2825 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {
+    "hyperedges": [
+      {
+        "id": "execution_pipeline",
+        "label": "Code Execution Pipeline",
+        "nodes": [
+          "executor_js",
+          "pool_js",
+          "rabbitmq_queue_system"
+        ],
+        "relation": "participate_in",
+        "confidence": "INFERRED",
+        "confidence_score": 0.8,
+        "source_file": "CONTAINER_POOL_ARCHITECTURE.md"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "label": "utils.js",
+      "file_type": "code",
+      "source_file": "CodeExecution/app/utils.js",
+      "source_location": "L1",
+      "id": "utils",
+      "community": 7
+    },
+    {
+      "label": "errorResponse()",
+      "file_type": "code",
+      "source_file": "server/utils.js",
+      "source_location": "L3",
+      "id": "utils_errorresponse",
+      "community": 7
+    },
+    {
+      "label": "successResponse()",
+      "file_type": "code",
+      "source_file": "server/utils.js",
+      "source_location": "L14",
+      "id": "utils_successresponse",
+      "community": 7
+    },
+    {
+      "label": "getFromRedis()",
+      "file_type": "code",
+      "source_file": "server/utils.js",
+      "source_location": "L21",
+      "id": "utils_getfromredis",
+      "community": 7
+    },
+    {
+      "label": "setInRedis()",
+      "file_type": "code",
+      "source_file": "server/utils.js",
+      "source_location": "L35",
+      "id": "utils_setinredis",
+      "community": 7
+    },
+    {
+      "label": "app.js",
+      "file_type": "code",
+      "source_file": "workers/app/app.js",
+      "source_location": "L1",
+      "id": "app",
+      "community": 0
+    },
+    {
+      "label": "broadcastResult()",
+      "file_type": "code",
+      "source_file": "server/app.js",
+      "source_location": "L36",
+      "id": "app_broadcastresult",
+      "community": 0
+    },
+    {
+      "label": "broadcastStatus()",
+      "file_type": "code",
+      "source_file": "server/app.js",
+      "source_location": "L56",
+      "id": "app_broadcaststatus",
+      "community": 0
+    },
+    {
+      "label": "groupTestcases()",
+      "file_type": "code",
+      "source_file": "server/app.js",
+      "source_location": "L137",
+      "id": "app_grouptestcases",
+      "community": 0
+    },
+    {
+      "label": "redis.js",
+      "file_type": "code",
+      "source_file": "workers/app/config/redis.js",
+      "source_location": "L1",
+      "id": "redis",
+      "community": 1
+    },
+    {
+      "label": "rabbitmq.js",
+      "file_type": "code",
+      "source_file": "workers/app/config/rabbitmq.js",
+      "source_location": "L1",
+      "id": "rabbitmq",
+      "community": 9
+    },
+    {
+      "label": "sendMessage()",
+      "file_type": "code",
+      "source_file": "server/config/rabbitmq.js",
+      "source_location": "L22",
+      "id": "rabbitmq_sendmessage",
+      "community": 9
+    },
+    {
+      "label": "Firebase.js",
+      "file_type": "code",
+      "source_file": "server/utils/Firebase.js",
+      "source_location": "L1",
+      "id": "firebase",
+      "community": 0
+    },
+    {
+      "label": "core.js",
+      "file_type": "code",
+      "source_file": "server/routes/core.js",
+      "source_location": "L1",
+      "id": "core",
+      "community": 11
+    },
+    {
+      "label": "run.py",
+      "file_type": "code",
+      "source_file": "CodeExecution/app/run.py",
+      "source_location": "L1",
+      "id": "run",
+      "community": 8
+    },
+    {
+      "label": "compile()",
+      "file_type": "code",
+      "source_file": "CodeExecution/app/run.py",
+      "source_location": "L9",
+      "id": "run_compile",
+      "community": 8
+    },
+    {
+      "label": "run()",
+      "file_type": "code",
+      "source_file": "CodeExecution/app/run.py",
+      "source_location": "L42",
+      "id": "run_run",
+      "community": 8
+    },
+    {
+      "label": "match()",
+      "file_type": "code",
+      "source_file": "CodeExecution/app/run.py",
+      "source_location": "L72",
+      "id": "run_match",
+      "community": 8
+    },
+    {
+      "label": "monitor.js",
+      "file_type": "code",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L1",
+      "id": "monitor",
+      "community": 4
+    },
+    {
+      "label": "PerformanceMonitor",
+      "file_type": "code",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L7",
+      "id": "monitor_performancemonitor",
+      "community": 4
+    },
+    {
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L8",
+      "id": "monitor_performancemonitor_constructor",
+      "community": 4
+    },
+    {
+      "label": ".startSubmission()",
+      "file_type": "code",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L32",
+      "id": "monitor_performancemonitor_startsubmission",
+      "community": 4
+    },
+    {
+      "label": ".startProcessing()",
+      "file_type": "code",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L42",
+      "id": "monitor_performancemonitor_startprocessing",
+      "community": 4
+    },
+    {
+      "label": ".recordCompilation()",
+      "file_type": "code",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L53",
+      "id": "monitor_performancemonitor_recordcompilation",
+      "community": 4
+    },
+    {
+      "label": ".recordExecution()",
+      "file_type": "code",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L65",
+      "id": "monitor_performancemonitor_recordexecution",
+      "community": 4
+    },
+    {
+      "label": ".completeSubmission()",
+      "file_type": "code",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L77",
+      "id": "monitor_performancemonitor_completesubmission",
+      "community": 4
+    },
+    {
+      "label": ".updateAverages()",
+      "file_type": "code",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L107",
+      "id": "monitor_performancemonitor_updateaverages",
+      "community": 4
+    },
+    {
+      "label": ".getJobMetrics()",
+      "file_type": "code",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L129",
+      "id": "monitor_performancemonitor_getjobmetrics",
+      "community": 4
+    },
+    {
+      "label": ".getMetrics()",
+      "file_type": "code",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L136",
+      "id": "monitor_performancemonitor_getmetrics",
+      "community": 4
+    },
+    {
+      "label": ".reset()",
+      "file_type": "code",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L154",
+      "id": "monitor_performancemonitor_reset",
+      "community": 4
+    },
+    {
+      "label": ".printMetrics()",
+      "file_type": "code",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L177",
+      "id": "monitor_performancemonitor_printmetrics",
+      "community": 4
+    },
+    {
+      "label": "pool.js",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L1",
+      "id": "pool",
+      "community": 1
+    },
+    {
+      "label": "RedisPool",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L12",
+      "id": "pool_redispool",
+      "community": 6
+    },
+    {
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L13",
+      "id": "pool_redispool_constructor",
+      "community": 6
+    },
+    {
+      "label": ".initialize()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L22",
+      "id": "pool_redispool_initialize",
+      "community": 6
+    },
+    {
+      "label": ".acquire()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L42",
+      "id": "pool_redispool_acquire",
+      "community": 6
+    },
+    {
+      "label": ".release()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L67",
+      "id": "pool_redispool_release",
+      "community": 6
+    },
+    {
+      "label": ".set()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L76",
+      "id": "pool_redispool_set",
+      "community": 6
+    },
+    {
+      "label": ".get()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L97",
+      "id": "pool_redispool_get",
+      "community": 6
+    },
+    {
+      "label": ".close()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L111",
+      "id": "pool_redispool_close",
+      "community": 6
+    },
+    {
+      "label": "RabbitMQPool",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L121",
+      "id": "pool_rabbitmqpool",
+      "community": 1
+    },
+    {
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L122",
+      "id": "pool_rabbitmqpool_constructor",
+      "community": 1
+    },
+    {
+      "label": ".initialize()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L129",
+      "id": "pool_rabbitmqpool_initialize",
+      "community": 1
+    },
+    {
+      "label": ".sendMessage()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L150",
+      "id": "pool_rabbitmqpool_sendmessage",
+      "community": 1
+    },
+    {
+      "label": ".consume()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L154",
+      "id": "pool_rabbitmqpool_consume",
+      "community": 1
+    },
+    {
+      "label": ".close()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L167",
+      "id": "pool_rabbitmqpool_close",
+      "community": 1
+    },
+    {
+      "label": "DockerPool",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L176",
+      "id": "pool_dockerpool",
+      "community": 1
+    },
+    {
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L177",
+      "id": "pool_dockerpool_constructor",
+      "community": 1
+    },
+    {
+      "label": ".initialize()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L182",
+      "id": "pool_dockerpool_initialize",
+      "community": 1
+    },
+    {
+      "label": ".getDocker()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L189",
+      "id": "pool_dockerpool_getdocker",
+      "community": 1
+    },
+    {
+      "label": ".close()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L193",
+      "id": "pool_dockerpool_close",
+      "community": 1
+    },
+    {
+      "label": "initializePools()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L204",
+      "id": "pool_initializepools",
+      "community": 1
+    },
+    {
+      "label": "getRedisPool()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L217",
+      "id": "pool_getredispool",
+      "community": 1
+    },
+    {
+      "label": "getRabbitMQPool()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L222",
+      "id": "pool_getrabbitmqpool",
+      "community": 1
+    },
+    {
+      "label": "getDockerPool()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L227",
+      "id": "pool_getdockerpool",
+      "community": 1
+    },
+    {
+      "label": "closePools()",
+      "file_type": "code",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L232",
+      "id": "pool_closepools",
+      "community": 1
+    },
+    {
+      "label": "executor.js",
+      "file_type": "code",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L1",
+      "id": "executor",
+      "community": 5
+    },
+    {
+      "label": "getCacheKey()",
+      "file_type": "code",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L72",
+      "id": "executor_getcachekey",
+      "community": 5
+    },
+    {
+      "label": "cacheBinary()",
+      "file_type": "code",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L80",
+      "id": "executor_cachebinary",
+      "community": 5
+    },
+    {
+      "label": "getCachedBinary()",
+      "file_type": "code",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L91",
+      "id": "executor_getcachedbinary",
+      "community": 5
+    },
+    {
+      "label": "spawnWithTimeout()",
+      "file_type": "code",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L106",
+      "id": "executor_spawnwithtimeout",
+      "community": 5
+    },
+    {
+      "label": "compile()",
+      "file_type": "code",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L177",
+      "id": "executor_compile",
+      "community": 5
+    },
+    {
+      "label": "executeTestCase()",
+      "file_type": "code",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L242",
+      "id": "executor_executetestcase",
+      "community": 5
+    },
+    {
+      "label": "executeAllTestCases()",
+      "file_type": "code",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L267",
+      "id": "executor_executealltestcases",
+      "community": 5
+    },
+    {
+      "label": "executeCode()",
+      "file_type": "code",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L287",
+      "id": "executor_executecode",
+      "community": 5
+    },
+    {
+      "label": "getExecutorStats()",
+      "file_type": "code",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L345",
+      "id": "executor_getexecutorstats",
+      "community": 5
+    },
+    {
+      "label": "clearCache()",
+      "file_type": "code",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L358",
+      "id": "executor_clearcache",
+      "community": 5
+    },
+    {
+      "label": "containerPool.js",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L1",
+      "id": "containerpool",
+      "community": 2
+    },
+    {
+      "label": "ContainerPool",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L13",
+      "id": "containerpool_containerpool",
+      "community": 2
+    },
+    {
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L14",
+      "id": "containerpool_containerpool_constructor",
+      "community": 2
+    },
+    {
+      "label": ".reuseExistingContainers()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L27",
+      "id": "containerpool_containerpool_reuseexistingcontainers",
+      "community": 2
+    },
+    {
+      "label": ".initialize()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L86",
+      "id": "containerpool_containerpool_initialize",
+      "community": 2
+    },
+    {
+      "label": ".createContainer()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L127",
+      "id": "containerpool_containerpool_createcontainer",
+      "community": 2
+    },
+    {
+      "label": ".ensureImage()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L169",
+      "id": "containerpool_containerpool_ensureimage",
+      "community": 2
+    },
+    {
+      "label": ".acquire()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L200",
+      "id": "containerpool_containerpool_acquire",
+      "community": 2
+    },
+    {
+      "label": ".release()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L230",
+      "id": "containerpool_containerpool_release",
+      "community": 2
+    },
+    {
+      "label": ".checkContainerHealth()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L265",
+      "id": "containerpool_containerpool_checkcontainerhealth",
+      "community": 2
+    },
+    {
+      "label": ".cleanupContainer()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L277",
+      "id": "containerpool_containerpool_cleanupcontainer",
+      "community": 2
+    },
+    {
+      "label": ".destroyContainer()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L294",
+      "id": "containerpool_containerpool_destroycontainer",
+      "community": 2
+    },
+    {
+      "label": ".startHealthChecks()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L306",
+      "id": "containerpool_containerpool_starthealthchecks",
+      "community": 2
+    },
+    {
+      "label": ".getStats()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L341",
+      "id": "containerpool_containerpool_getstats",
+      "community": 2
+    },
+    {
+      "label": ".shutdown()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L353",
+      "id": "containerpool_containerpool_shutdown",
+      "community": 2
+    },
+    {
+      "label": "initializePool()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L377",
+      "id": "containerpool_initializepool",
+      "community": 2
+    },
+    {
+      "label": "getPool()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L386",
+      "id": "containerpool_getpool",
+      "community": 2
+    },
+    {
+      "label": "shutdownPool()",
+      "file_type": "code",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L393",
+      "id": "containerpool_shutdownpool",
+      "community": 2
+    },
+    {
+      "label": "deleteFolder()",
+      "file_type": "code",
+      "source_file": "CodeExecution/app/utils.js",
+      "source_location": "L4",
+      "id": "utils_deletefolder",
+      "community": 7
+    },
+    {
+      "label": "execute()",
+      "file_type": "code",
+      "source_file": "CodeExecution/app/utils.js",
+      "source_location": "L19",
+      "id": "utils_execute",
+      "community": 7
+    },
+    {
+      "label": "sandboxExecutor.js",
+      "file_type": "code",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L1",
+      "id": "sandboxexecutor",
+      "community": 3
+    },
+    {
+      "label": "getContainerMemoryUsage()",
+      "file_type": "code",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L51",
+      "id": "sandboxexecutor_getcontainermemoryusage",
+      "community": 3
+    },
+    {
+      "label": "getCacheKey()",
+      "file_type": "code",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L70",
+      "id": "sandboxexecutor_getcachekey",
+      "community": 3
+    },
+    {
+      "label": "getCachedBinary()",
+      "file_type": "code",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L81",
+      "id": "sandboxexecutor_getcachedbinary",
+      "community": 3
+    },
+    {
+      "label": "extractMarkedOutput()",
+      "file_type": "code",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L100",
+      "id": "sandboxexecutor_extractmarkedoutput",
+      "community": 3
+    },
+    {
+      "label": "splitOutput()",
+      "file_type": "code",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L120",
+      "id": "sandboxexecutor_splitoutput",
+      "community": 3
+    },
+    {
+      "label": "cacheBinary()",
+      "file_type": "code",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L149",
+      "id": "sandboxexecutor_cachebinary",
+      "community": 3
+    },
+    {
+      "label": "extractFirstError()",
+      "file_type": "code",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L158",
+      "id": "sandboxexecutor_extractfirsterror",
+      "community": 3
+    },
+    {
+      "label": "executeInContainer()",
+      "file_type": "code",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L177",
+      "id": "sandboxexecutor_executeincontainer",
+      "community": 3
+    },
+    {
+      "label": "normalizeOutput()",
+      "file_type": "code",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L240",
+      "id": "sandboxexecutor_normalizeoutput",
+      "community": 3
+    },
+    {
+      "label": "executeCode()",
+      "file_type": "code",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L252",
+      "id": "sandboxexecutor_executecode",
+      "community": 3
+    },
+    {
+      "label": "executeExpectedCode()",
+      "file_type": "code",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L784",
+      "id": "sandboxexecutor_executeexpectedcode",
+      "community": 3
+    },
+    {
+      "label": "getCacheStats()",
+      "file_type": "code",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L889",
+      "id": "sandboxexecutor_getcachestats",
+      "community": 3
+    },
+    {
+      "label": "clearCache()",
+      "file_type": "code",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L902",
+      "id": "sandboxexecutor_clearcache",
+      "community": 3
+    },
+    {
+      "label": "updateSubmissionResult()",
+      "file_type": "code",
+      "source_file": "workers/app/app.js",
+      "source_location": "L21",
+      "id": "app_updatesubmissionresult",
+      "community": 0
+    },
+    {
+      "label": "processSubmission()",
+      "file_type": "code",
+      "source_file": "workers/app/app.js",
+      "source_location": "L33",
+      "id": "app_processsubmission",
+      "community": 0
+    },
+    {
+      "label": "executeAdminCode()",
+      "file_type": "code",
+      "source_file": "workers/app/app.js",
+      "source_location": "L97",
+      "id": "app_executeadmincode",
+      "community": 0
+    },
+    {
+      "label": "handleMessage()",
+      "file_type": "code",
+      "source_file": "workers/app/app.js",
+      "source_location": "L203",
+      "id": "app_handlemessage",
+      "community": 0
+    },
+    {
+      "label": "startWorker()",
+      "file_type": "code",
+      "source_file": "workers/app/app.js",
+      "source_location": "L221",
+      "id": "app_startworker",
+      "community": 0
+    },
+    {
+      "label": "onMessage()",
+      "file_type": "code",
+      "source_file": "workers/app/config/rabbitmq.js",
+      "source_location": "L15",
+      "id": "rabbitmq_onmessage",
+      "community": 9
+    },
+    {
+      "label": "node.js",
+      "file_type": "code",
+      "source_file": "CodeExecution/app/node.js",
+      "source_location": "L1",
+      "id": "node",
+      "community": 10
+    },
+    {
+      "label": "runcommand()",
+      "file_type": "code",
+      "source_file": "CodeExecution/app/node.js",
+      "source_location": "L20",
+      "id": "node_runcommand",
+      "community": 10
+    },
+    {
+      "label": "processTestCases()",
+      "file_type": "code",
+      "source_file": "CodeExecution/app/node.js",
+      "source_location": "L90",
+      "id": "node_processtestcases",
+      "community": 10
+    },
+    {
+      "label": "Judger 1-like Architecture Upgrade",
+      "file_type": "document",
+      "source_file": "JUDGER_UPGRADE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "judger_upgrade_architecture",
+      "community": 0
+    },
+    {
+      "label": "Container Pool Architecture",
+      "file_type": "document",
+      "source_file": "CONTAINER_POOL_ARCHITECTURE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "container_pool_architecture",
+      "community": 0
+    },
+    {
+      "label": "Direct In-Process Execution Engine",
+      "file_type": "document",
+      "source_file": "JUDGER_UPGRADE.md",
+      "id": "direct_inprocess_execution",
+      "community": 0
+    },
+    {
+      "label": "executor.js Module",
+      "file_type": "document",
+      "source_file": "JUDGER_UPGRADE.md",
+      "id": "executor_js",
+      "community": 0
+    },
+    {
+      "label": "pool.js Module",
+      "file_type": "document",
+      "source_file": "JUDGER_UPGRADE.md",
+      "id": "pool_js",
+      "community": 0
+    },
+    {
+      "label": "monitor.js Module",
+      "file_type": "document",
+      "source_file": "JUDGER_UPGRADE.md",
+      "id": "monitor_js",
+      "community": 0
+    },
+    {
+      "label": "Sandbox Executor Module",
+      "file_type": "document",
+      "source_file": "CONTAINER_POOL_ARCHITECTURE.md",
+      "id": "sandbox_executor",
+      "community": 0
+    },
+    {
+      "label": "RabbitMQ Queue System",
+      "file_type": "document",
+      "source_file": "CONTAINER_POOL_ARCHITECTURE.md",
+      "id": "rabbitmq_queue_system",
+      "community": 0
+    },
+    {
+      "label": "Redis Cache System",
+      "file_type": "document",
+      "source_file": "CONTAINER_POOL_ARCHITECTURE.md",
+      "id": "redis_cache",
+      "community": 0
+    }
+  ],
+  "links": [
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "server/utils.js",
+      "source_location": "L3",
+      "weight": 1.0,
+      "_src": "utils",
+      "_tgt": "utils_errorresponse",
+      "source": "utils",
+      "target": "utils_errorresponse",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "server/utils.js",
+      "source_location": "L14",
+      "weight": 1.0,
+      "_src": "utils",
+      "_tgt": "utils_successresponse",
+      "source": "utils",
+      "target": "utils_successresponse",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "server/utils.js",
+      "source_location": "L21",
+      "weight": 1.0,
+      "_src": "utils",
+      "_tgt": "utils_getfromredis",
+      "source": "utils",
+      "target": "utils_getfromredis",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "server/utils.js",
+      "source_location": "L35",
+      "weight": 1.0,
+      "_src": "utils",
+      "_tgt": "utils_setinredis",
+      "source": "utils",
+      "target": "utils_setinredis",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CodeExecution/app/utils.js",
+      "source_location": "L4",
+      "weight": 1.0,
+      "_src": "utils",
+      "_tgt": "utils_deletefolder",
+      "source": "utils",
+      "target": "utils_deletefolder",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CodeExecution/app/utils.js",
+      "source_location": "L19",
+      "weight": 1.0,
+      "_src": "utils",
+      "_tgt": "utils_execute",
+      "source": "utils",
+      "target": "utils_execute",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "server/app.js",
+      "source_location": "L36",
+      "weight": 1.0,
+      "_src": "app",
+      "_tgt": "app_broadcastresult",
+      "source": "app",
+      "target": "app_broadcastresult",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "server/app.js",
+      "source_location": "L56",
+      "weight": 1.0,
+      "_src": "app",
+      "_tgt": "app_broadcaststatus",
+      "source": "app",
+      "target": "app_broadcaststatus",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "server/app.js",
+      "source_location": "L137",
+      "weight": 1.0,
+      "_src": "app",
+      "_tgt": "app_grouptestcases",
+      "source": "app",
+      "target": "app_grouptestcases",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "server/utils/Firebase.js",
+      "source_location": "L2",
+      "weight": 1.0,
+      "_src": "firebase",
+      "_tgt": "app",
+      "source": "app",
+      "target": "firebase",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/app.js",
+      "source_location": "L8",
+      "weight": 1.0,
+      "_src": "app",
+      "_tgt": "pool_js",
+      "source": "app",
+      "target": "pool_js",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/app.js",
+      "source_location": "L9",
+      "weight": 1.0,
+      "_src": "app",
+      "_tgt": "monitor_js",
+      "source": "app",
+      "target": "monitor_js",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/app.js",
+      "source_location": "L21",
+      "weight": 1.0,
+      "_src": "app",
+      "_tgt": "app_updatesubmissionresult",
+      "source": "app",
+      "target": "app_updatesubmissionresult",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/app.js",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_src": "app",
+      "_tgt": "app_processsubmission",
+      "source": "app",
+      "target": "app_processsubmission",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/app.js",
+      "source_location": "L97",
+      "weight": 1.0,
+      "_src": "app",
+      "_tgt": "app_executeadmincode",
+      "source": "app",
+      "target": "app_executeadmincode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/app.js",
+      "source_location": "L203",
+      "weight": 1.0,
+      "_src": "app",
+      "_tgt": "app_handlemessage",
+      "source": "app",
+      "target": "app_handlemessage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/app.js",
+      "source_location": "L221",
+      "weight": 1.0,
+      "_src": "app",
+      "_tgt": "app_startworker",
+      "source": "app",
+      "target": "app_startworker",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/config/redis.js",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_src": "redis",
+      "_tgt": "redis",
+      "source": "redis",
+      "target": "redis",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L7",
+      "weight": 1.0,
+      "_src": "pool",
+      "_tgt": "redis",
+      "source": "redis",
+      "target": "pool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "server/config/rabbitmq.js",
+      "source_location": "L22",
+      "weight": 1.0,
+      "_src": "rabbitmq",
+      "_tgt": "rabbitmq_sendmessage",
+      "source": "rabbitmq",
+      "target": "rabbitmq_sendmessage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/config/rabbitmq.js",
+      "source_location": "L15",
+      "weight": 1.0,
+      "_src": "rabbitmq",
+      "_tgt": "rabbitmq_onmessage",
+      "source": "rabbitmq",
+      "target": "rabbitmq_onmessage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CodeExecution/app/run.py",
+      "source_location": "L9",
+      "weight": 1.0,
+      "_src": "run",
+      "_tgt": "run_compile",
+      "source": "run",
+      "target": "run_compile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CodeExecution/app/run.py",
+      "source_location": "L42",
+      "weight": 1.0,
+      "_src": "run",
+      "_tgt": "run_run",
+      "source": "run",
+      "target": "run_run",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CodeExecution/app/run.py",
+      "source_location": "L72",
+      "weight": 1.0,
+      "_src": "run",
+      "_tgt": "run_match",
+      "source": "run",
+      "target": "run_match",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "CodeExecution/app/run.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "_src": "run_compile",
+      "_tgt": "run_run",
+      "source": "run_compile",
+      "target": "run_run",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L7",
+      "weight": 1.0,
+      "_src": "monitor",
+      "_tgt": "monitor_performancemonitor",
+      "source": "monitor",
+      "target": "monitor_performancemonitor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L8",
+      "weight": 1.0,
+      "_src": "monitor_performancemonitor",
+      "_tgt": "monitor_performancemonitor_constructor",
+      "source": "monitor_performancemonitor",
+      "target": "monitor_performancemonitor_constructor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L32",
+      "weight": 1.0,
+      "_src": "monitor_performancemonitor",
+      "_tgt": "monitor_performancemonitor_startsubmission",
+      "source": "monitor_performancemonitor",
+      "target": "monitor_performancemonitor_startsubmission",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L42",
+      "weight": 1.0,
+      "_src": "monitor_performancemonitor",
+      "_tgt": "monitor_performancemonitor_startprocessing",
+      "source": "monitor_performancemonitor",
+      "target": "monitor_performancemonitor_startprocessing",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L53",
+      "weight": 1.0,
+      "_src": "monitor_performancemonitor",
+      "_tgt": "monitor_performancemonitor_recordcompilation",
+      "source": "monitor_performancemonitor",
+      "target": "monitor_performancemonitor_recordcompilation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L65",
+      "weight": 1.0,
+      "_src": "monitor_performancemonitor",
+      "_tgt": "monitor_performancemonitor_recordexecution",
+      "source": "monitor_performancemonitor",
+      "target": "monitor_performancemonitor_recordexecution",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L77",
+      "weight": 1.0,
+      "_src": "monitor_performancemonitor",
+      "_tgt": "monitor_performancemonitor_completesubmission",
+      "source": "monitor_performancemonitor",
+      "target": "monitor_performancemonitor_completesubmission",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L107",
+      "weight": 1.0,
+      "_src": "monitor_performancemonitor",
+      "_tgt": "monitor_performancemonitor_updateaverages",
+      "source": "monitor_performancemonitor",
+      "target": "monitor_performancemonitor_updateaverages",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L129",
+      "weight": 1.0,
+      "_src": "monitor_performancemonitor",
+      "_tgt": "monitor_performancemonitor_getjobmetrics",
+      "source": "monitor_performancemonitor",
+      "target": "monitor_performancemonitor_getjobmetrics",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L136",
+      "weight": 1.0,
+      "_src": "monitor_performancemonitor",
+      "_tgt": "monitor_performancemonitor_getmetrics",
+      "source": "monitor_performancemonitor",
+      "target": "monitor_performancemonitor_getmetrics",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L154",
+      "weight": 1.0,
+      "_src": "monitor_performancemonitor",
+      "_tgt": "monitor_performancemonitor_reset",
+      "source": "monitor_performancemonitor",
+      "target": "monitor_performancemonitor_reset",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L177",
+      "weight": 1.0,
+      "_src": "monitor_performancemonitor",
+      "_tgt": "monitor_performancemonitor_printmetrics",
+      "source": "monitor_performancemonitor",
+      "target": "monitor_performancemonitor_printmetrics",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L95",
+      "weight": 1.0,
+      "_src": "monitor_performancemonitor_completesubmission",
+      "_tgt": "monitor_performancemonitor_updateaverages",
+      "source": "monitor_performancemonitor_completesubmission",
+      "target": "monitor_performancemonitor_updateaverages",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/monitor.js",
+      "source_location": "L178",
+      "weight": 1.0,
+      "_src": "monitor_performancemonitor_printmetrics",
+      "_tgt": "monitor_performancemonitor_getmetrics",
+      "source": "monitor_performancemonitor_getmetrics",
+      "target": "monitor_performancemonitor_printmetrics",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L12",
+      "weight": 1.0,
+      "_src": "pool",
+      "_tgt": "pool_redispool",
+      "source": "pool",
+      "target": "pool_redispool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L121",
+      "weight": 1.0,
+      "_src": "pool",
+      "_tgt": "pool_rabbitmqpool",
+      "source": "pool",
+      "target": "pool_rabbitmqpool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L176",
+      "weight": 1.0,
+      "_src": "pool",
+      "_tgt": "pool_dockerpool",
+      "source": "pool",
+      "target": "pool_dockerpool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L204",
+      "weight": 1.0,
+      "_src": "pool",
+      "_tgt": "pool_initializepools",
+      "source": "pool",
+      "target": "pool_initializepools",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L217",
+      "weight": 1.0,
+      "_src": "pool",
+      "_tgt": "pool_getredispool",
+      "source": "pool",
+      "target": "pool_getredispool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L222",
+      "weight": 1.0,
+      "_src": "pool",
+      "_tgt": "pool_getrabbitmqpool",
+      "source": "pool",
+      "target": "pool_getrabbitmqpool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L227",
+      "weight": 1.0,
+      "_src": "pool",
+      "_tgt": "pool_getdockerpool",
+      "source": "pool",
+      "target": "pool_getdockerpool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L232",
+      "weight": 1.0,
+      "_src": "pool",
+      "_tgt": "pool_closepools",
+      "source": "pool",
+      "target": "pool_closepools",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L13",
+      "weight": 1.0,
+      "_src": "pool_redispool",
+      "_tgt": "pool_redispool_constructor",
+      "source": "pool_redispool",
+      "target": "pool_redispool_constructor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L22",
+      "weight": 1.0,
+      "_src": "pool_redispool",
+      "_tgt": "pool_redispool_initialize",
+      "source": "pool_redispool",
+      "target": "pool_redispool_initialize",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L42",
+      "weight": 1.0,
+      "_src": "pool_redispool",
+      "_tgt": "pool_redispool_acquire",
+      "source": "pool_redispool",
+      "target": "pool_redispool_acquire",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L67",
+      "weight": 1.0,
+      "_src": "pool_redispool",
+      "_tgt": "pool_redispool_release",
+      "source": "pool_redispool",
+      "target": "pool_redispool_release",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L76",
+      "weight": 1.0,
+      "_src": "pool_redispool",
+      "_tgt": "pool_redispool_set",
+      "source": "pool_redispool",
+      "target": "pool_redispool_set",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L97",
+      "weight": 1.0,
+      "_src": "pool_redispool",
+      "_tgt": "pool_redispool_get",
+      "source": "pool_redispool",
+      "target": "pool_redispool_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L111",
+      "weight": 1.0,
+      "_src": "pool_redispool",
+      "_tgt": "pool_redispool_close",
+      "source": "pool_redispool",
+      "target": "pool_redispool_close",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L77",
+      "weight": 1.0,
+      "_src": "pool_redispool_set",
+      "_tgt": "pool_redispool_acquire",
+      "source": "pool_redispool_acquire",
+      "target": "pool_redispool_set",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L98",
+      "weight": 1.0,
+      "_src": "pool_redispool_get",
+      "_tgt": "pool_redispool_acquire",
+      "source": "pool_redispool_acquire",
+      "target": "pool_redispool_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L93",
+      "weight": 1.0,
+      "_src": "pool_redispool_set",
+      "_tgt": "pool_redispool_release",
+      "source": "pool_redispool_release",
+      "target": "pool_redispool_set",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L107",
+      "weight": 1.0,
+      "_src": "pool_redispool_get",
+      "_tgt": "pool_redispool_release",
+      "source": "pool_redispool_release",
+      "target": "pool_redispool_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L122",
+      "weight": 1.0,
+      "_src": "pool_rabbitmqpool",
+      "_tgt": "pool_rabbitmqpool_constructor",
+      "source": "pool_rabbitmqpool",
+      "target": "pool_rabbitmqpool_constructor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L129",
+      "weight": 1.0,
+      "_src": "pool_rabbitmqpool",
+      "_tgt": "pool_rabbitmqpool_initialize",
+      "source": "pool_rabbitmqpool",
+      "target": "pool_rabbitmqpool_initialize",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L150",
+      "weight": 1.0,
+      "_src": "pool_rabbitmqpool",
+      "_tgt": "pool_rabbitmqpool_sendmessage",
+      "source": "pool_rabbitmqpool",
+      "target": "pool_rabbitmqpool_sendmessage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L154",
+      "weight": 1.0,
+      "_src": "pool_rabbitmqpool",
+      "_tgt": "pool_rabbitmqpool_consume",
+      "source": "pool_rabbitmqpool",
+      "target": "pool_rabbitmqpool_consume",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L167",
+      "weight": 1.0,
+      "_src": "pool_rabbitmqpool",
+      "_tgt": "pool_rabbitmqpool_close",
+      "source": "pool_rabbitmqpool",
+      "target": "pool_rabbitmqpool_close",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L169",
+      "weight": 1.0,
+      "_src": "pool_rabbitmqpool_close",
+      "_tgt": "pool_dockerpool_close",
+      "source": "pool_rabbitmqpool_close",
+      "target": "pool_dockerpool_close",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L177",
+      "weight": 1.0,
+      "_src": "pool_dockerpool",
+      "_tgt": "pool_dockerpool_constructor",
+      "source": "pool_dockerpool",
+      "target": "pool_dockerpool_constructor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L182",
+      "weight": 1.0,
+      "_src": "pool_dockerpool",
+      "_tgt": "pool_dockerpool_initialize",
+      "source": "pool_dockerpool",
+      "target": "pool_dockerpool_initialize",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L189",
+      "weight": 1.0,
+      "_src": "pool_dockerpool",
+      "_tgt": "pool_dockerpool_getdocker",
+      "source": "pool_dockerpool",
+      "target": "pool_dockerpool_getdocker",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L193",
+      "weight": 1.0,
+      "_src": "pool_dockerpool",
+      "_tgt": "pool_dockerpool_close",
+      "source": "pool_dockerpool",
+      "target": "pool_dockerpool_close",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L206",
+      "weight": 1.0,
+      "_src": "pool_initializepools",
+      "_tgt": "pool_dockerpool_initialize",
+      "source": "pool_dockerpool_initialize",
+      "target": "pool_initializepools",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/pool.js",
+      "source_location": "L233",
+      "weight": 1.0,
+      "_src": "pool_closepools",
+      "_tgt": "pool_dockerpool_close",
+      "source": "pool_dockerpool_close",
+      "target": "pool_closepools",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L72",
+      "weight": 1.0,
+      "_src": "executor",
+      "_tgt": "executor_getcachekey",
+      "source": "executor",
+      "target": "executor_getcachekey",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L80",
+      "weight": 1.0,
+      "_src": "executor",
+      "_tgt": "executor_cachebinary",
+      "source": "executor",
+      "target": "executor_cachebinary",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L91",
+      "weight": 1.0,
+      "_src": "executor",
+      "_tgt": "executor_getcachedbinary",
+      "source": "executor",
+      "target": "executor_getcachedbinary",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L106",
+      "weight": 1.0,
+      "_src": "executor",
+      "_tgt": "executor_spawnwithtimeout",
+      "source": "executor",
+      "target": "executor_spawnwithtimeout",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L177",
+      "weight": 1.0,
+      "_src": "executor",
+      "_tgt": "executor_compile",
+      "source": "executor",
+      "target": "executor_compile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L242",
+      "weight": 1.0,
+      "_src": "executor",
+      "_tgt": "executor_executetestcase",
+      "source": "executor",
+      "target": "executor_executetestcase",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L267",
+      "weight": 1.0,
+      "_src": "executor",
+      "_tgt": "executor_executealltestcases",
+      "source": "executor",
+      "target": "executor_executealltestcases",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L287",
+      "weight": 1.0,
+      "_src": "executor",
+      "_tgt": "executor_executecode",
+      "source": "executor",
+      "target": "executor_executecode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L345",
+      "weight": 1.0,
+      "_src": "executor",
+      "_tgt": "executor_getexecutorstats",
+      "source": "executor",
+      "target": "executor_getexecutorstats",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L358",
+      "weight": 1.0,
+      "_src": "executor",
+      "_tgt": "executor_clearcache",
+      "source": "executor",
+      "target": "executor_clearcache",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L182",
+      "weight": 1.0,
+      "_src": "executor_compile",
+      "_tgt": "executor_getcachekey",
+      "source": "executor_getcachekey",
+      "target": "executor_compile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L228",
+      "weight": 1.0,
+      "_src": "executor_compile",
+      "_tgt": "executor_cachebinary",
+      "source": "executor_cachebinary",
+      "target": "executor_compile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L184",
+      "weight": 1.0,
+      "_src": "executor_compile",
+      "_tgt": "executor_getcachedbinary",
+      "source": "executor_getcachedbinary",
+      "target": "executor_compile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L210",
+      "weight": 1.0,
+      "_src": "executor_compile",
+      "_tgt": "executor_spawnwithtimeout",
+      "source": "executor_spawnwithtimeout",
+      "target": "executor_compile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L247",
+      "weight": 1.0,
+      "_src": "executor_executetestcase",
+      "_tgt": "executor_spawnwithtimeout",
+      "source": "executor_spawnwithtimeout",
+      "target": "executor_executetestcase",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L304",
+      "weight": 1.0,
+      "_src": "executor_executecode",
+      "_tgt": "executor_compile",
+      "source": "executor_compile",
+      "target": "executor_executecode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/executor.js",
+      "source_location": "L320",
+      "weight": 1.0,
+      "_src": "executor_executecode",
+      "_tgt": "executor_executealltestcases",
+      "source": "executor_executealltestcases",
+      "target": "executor_executecode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L13",
+      "weight": 1.0,
+      "_src": "containerpool",
+      "_tgt": "containerpool_containerpool",
+      "source": "containerpool",
+      "target": "containerpool_containerpool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L377",
+      "weight": 1.0,
+      "_src": "containerpool",
+      "_tgt": "containerpool_initializepool",
+      "source": "containerpool",
+      "target": "containerpool_initializepool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L386",
+      "weight": 1.0,
+      "_src": "containerpool",
+      "_tgt": "containerpool_getpool",
+      "source": "containerpool",
+      "target": "containerpool_getpool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L393",
+      "weight": 1.0,
+      "_src": "containerpool",
+      "_tgt": "containerpool_shutdownpool",
+      "source": "containerpool",
+      "target": "containerpool_shutdownpool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L14",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool",
+      "_tgt": "containerpool_containerpool_constructor",
+      "source": "containerpool_containerpool",
+      "target": "containerpool_containerpool_constructor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L27",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool",
+      "_tgt": "containerpool_containerpool_reuseexistingcontainers",
+      "source": "containerpool_containerpool",
+      "target": "containerpool_containerpool_reuseexistingcontainers",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L86",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool",
+      "_tgt": "containerpool_containerpool_initialize",
+      "source": "containerpool_containerpool",
+      "target": "containerpool_containerpool_initialize",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L127",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool",
+      "_tgt": "containerpool_containerpool_createcontainer",
+      "source": "containerpool_containerpool",
+      "target": "containerpool_containerpool_createcontainer",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L169",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool",
+      "_tgt": "containerpool_containerpool_ensureimage",
+      "source": "containerpool_containerpool",
+      "target": "containerpool_containerpool_ensureimage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L200",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool",
+      "_tgt": "containerpool_containerpool_acquire",
+      "source": "containerpool_containerpool",
+      "target": "containerpool_containerpool_acquire",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L230",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool",
+      "_tgt": "containerpool_containerpool_release",
+      "source": "containerpool_containerpool",
+      "target": "containerpool_containerpool_release",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L265",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool",
+      "_tgt": "containerpool_containerpool_checkcontainerhealth",
+      "source": "containerpool_containerpool",
+      "target": "containerpool_containerpool_checkcontainerhealth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L277",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool",
+      "_tgt": "containerpool_containerpool_cleanupcontainer",
+      "source": "containerpool_containerpool",
+      "target": "containerpool_containerpool_cleanupcontainer",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L294",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool",
+      "_tgt": "containerpool_containerpool_destroycontainer",
+      "source": "containerpool_containerpool",
+      "target": "containerpool_containerpool_destroycontainer",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L306",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool",
+      "_tgt": "containerpool_containerpool_starthealthchecks",
+      "source": "containerpool_containerpool",
+      "target": "containerpool_containerpool_starthealthchecks",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L341",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool",
+      "_tgt": "containerpool_containerpool_getstats",
+      "source": "containerpool_containerpool",
+      "target": "containerpool_containerpool_getstats",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L353",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool",
+      "_tgt": "containerpool_containerpool_shutdown",
+      "source": "containerpool_containerpool",
+      "target": "containerpool_containerpool_shutdown",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L58",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool_reuseexistingcontainers",
+      "_tgt": "containerpool_containerpool_checkcontainerhealth",
+      "source": "containerpool_containerpool_reuseexistingcontainers",
+      "target": "containerpool_containerpool_checkcontainerhealth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L91",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool_initialize",
+      "_tgt": "containerpool_containerpool_reuseexistingcontainers",
+      "source": "containerpool_containerpool_reuseexistingcontainers",
+      "target": "containerpool_containerpool_initialize",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L94",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool_initialize",
+      "_tgt": "containerpool_containerpool_ensureimage",
+      "source": "containerpool_containerpool_initialize",
+      "target": "containerpool_containerpool_ensureimage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L102",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool_initialize",
+      "_tgt": "containerpool_containerpool_createcontainer",
+      "source": "containerpool_containerpool_initialize",
+      "target": "containerpool_containerpool_createcontainer",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L113",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool_initialize",
+      "_tgt": "containerpool_containerpool_starthealthchecks",
+      "source": "containerpool_containerpool_initialize",
+      "target": "containerpool_containerpool_starthealthchecks",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L381",
+      "weight": 1.0,
+      "_src": "containerpool_initializepool",
+      "_tgt": "containerpool_containerpool_initialize",
+      "source": "containerpool_containerpool_initialize",
+      "target": "containerpool_initializepool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L253",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool_release",
+      "_tgt": "containerpool_containerpool_createcontainer",
+      "source": "containerpool_containerpool_createcontainer",
+      "target": "containerpool_containerpool_release",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L206",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool_acquire",
+      "_tgt": "containerpool_containerpool_checkcontainerhealth",
+      "source": "containerpool_containerpool_acquire",
+      "target": "containerpool_containerpool_checkcontainerhealth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L212",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool_acquire",
+      "_tgt": "containerpool_containerpool_destroycontainer",
+      "source": "containerpool_containerpool_acquire",
+      "target": "containerpool_containerpool_destroycontainer",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L232",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool_release",
+      "_tgt": "containerpool_containerpool_checkcontainerhealth",
+      "source": "containerpool_containerpool_release",
+      "target": "containerpool_containerpool_checkcontainerhealth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L237",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool_release",
+      "_tgt": "containerpool_containerpool_cleanupcontainer",
+      "source": "containerpool_containerpool_release",
+      "target": "containerpool_containerpool_cleanupcontainer",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L252",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool_release",
+      "_tgt": "containerpool_containerpool_destroycontainer",
+      "source": "containerpool_containerpool_release",
+      "target": "containerpool_containerpool_destroycontainer",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L360",
+      "weight": 1.0,
+      "_src": "containerpool_containerpool_shutdown",
+      "_tgt": "containerpool_containerpool_destroycontainer",
+      "source": "containerpool_containerpool_destroycontainer",
+      "target": "containerpool_containerpool_shutdown",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/containerPool.js",
+      "source_location": "L395",
+      "weight": 1.0,
+      "_src": "containerpool_shutdownpool",
+      "_tgt": "containerpool_containerpool_shutdown",
+      "source": "containerpool_containerpool_shutdown",
+      "target": "containerpool_shutdownpool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L51",
+      "weight": 1.0,
+      "_src": "sandboxexecutor",
+      "_tgt": "sandboxexecutor_getcontainermemoryusage",
+      "source": "sandboxexecutor",
+      "target": "sandboxexecutor_getcontainermemoryusage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L70",
+      "weight": 1.0,
+      "_src": "sandboxexecutor",
+      "_tgt": "sandboxexecutor_getcachekey",
+      "source": "sandboxexecutor",
+      "target": "sandboxexecutor_getcachekey",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L81",
+      "weight": 1.0,
+      "_src": "sandboxexecutor",
+      "_tgt": "sandboxexecutor_getcachedbinary",
+      "source": "sandboxexecutor",
+      "target": "sandboxexecutor_getcachedbinary",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L100",
+      "weight": 1.0,
+      "_src": "sandboxexecutor",
+      "_tgt": "sandboxexecutor_extractmarkedoutput",
+      "source": "sandboxexecutor",
+      "target": "sandboxexecutor_extractmarkedoutput",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L120",
+      "weight": 1.0,
+      "_src": "sandboxexecutor",
+      "_tgt": "sandboxexecutor_splitoutput",
+      "source": "sandboxexecutor",
+      "target": "sandboxexecutor_splitoutput",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L149",
+      "weight": 1.0,
+      "_src": "sandboxexecutor",
+      "_tgt": "sandboxexecutor_cachebinary",
+      "source": "sandboxexecutor",
+      "target": "sandboxexecutor_cachebinary",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L158",
+      "weight": 1.0,
+      "_src": "sandboxexecutor",
+      "_tgt": "sandboxexecutor_extractfirsterror",
+      "source": "sandboxexecutor",
+      "target": "sandboxexecutor_extractfirsterror",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L177",
+      "weight": 1.0,
+      "_src": "sandboxexecutor",
+      "_tgt": "sandboxexecutor_executeincontainer",
+      "source": "sandboxexecutor",
+      "target": "sandboxexecutor_executeincontainer",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L240",
+      "weight": 1.0,
+      "_src": "sandboxexecutor",
+      "_tgt": "sandboxexecutor_normalizeoutput",
+      "source": "sandboxexecutor",
+      "target": "sandboxexecutor_normalizeoutput",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L252",
+      "weight": 1.0,
+      "_src": "sandboxexecutor",
+      "_tgt": "sandboxexecutor_executecode",
+      "source": "sandboxexecutor",
+      "target": "sandboxexecutor_executecode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L784",
+      "weight": 1.0,
+      "_src": "sandboxexecutor",
+      "_tgt": "sandboxexecutor_executeexpectedcode",
+      "source": "sandboxexecutor",
+      "target": "sandboxexecutor_executeexpectedcode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L889",
+      "weight": 1.0,
+      "_src": "sandboxexecutor",
+      "_tgt": "sandboxexecutor_getcachestats",
+      "source": "sandboxexecutor",
+      "target": "sandboxexecutor_getcachestats",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L902",
+      "weight": 1.0,
+      "_src": "sandboxexecutor",
+      "_tgt": "sandboxexecutor_clearcache",
+      "source": "sandboxexecutor",
+      "target": "sandboxexecutor_clearcache",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L669",
+      "weight": 1.0,
+      "_src": "sandboxexecutor_executecode",
+      "_tgt": "sandboxexecutor_getcontainermemoryusage",
+      "source": "sandboxexecutor_getcontainermemoryusage",
+      "target": "sandboxexecutor_executecode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L270",
+      "weight": 1.0,
+      "_src": "sandboxexecutor_executecode",
+      "_tgt": "sandboxexecutor_getcachekey",
+      "source": "sandboxexecutor_getcachekey",
+      "target": "sandboxexecutor_executecode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L360",
+      "weight": 1.0,
+      "_src": "sandboxexecutor_executecode",
+      "_tgt": "sandboxexecutor_getcachedbinary",
+      "source": "sandboxexecutor_getcachedbinary",
+      "target": "sandboxexecutor_executecode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L528",
+      "weight": 1.0,
+      "_src": "sandboxexecutor_executecode",
+      "_tgt": "sandboxexecutor_splitoutput",
+      "source": "sandboxexecutor_splitoutput",
+      "target": "sandboxexecutor_executecode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L422",
+      "weight": 1.0,
+      "_src": "sandboxexecutor_executecode",
+      "_tgt": "sandboxexecutor_cachebinary",
+      "source": "sandboxexecutor_cachebinary",
+      "target": "sandboxexecutor_executecode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L390",
+      "weight": 1.0,
+      "_src": "sandboxexecutor_executecode",
+      "_tgt": "sandboxexecutor_extractfirsterror",
+      "source": "sandboxexecutor_extractfirsterror",
+      "target": "sandboxexecutor_executecode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L298",
+      "weight": 1.0,
+      "_src": "sandboxexecutor_executecode",
+      "_tgt": "sandboxexecutor_executeincontainer",
+      "source": "sandboxexecutor_executeincontainer",
+      "target": "sandboxexecutor_executecode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L832",
+      "weight": 1.0,
+      "_src": "sandboxexecutor_executeexpectedcode",
+      "_tgt": "sandboxexecutor_executeincontainer",
+      "source": "sandboxexecutor_executeincontainer",
+      "target": "sandboxexecutor_executeexpectedcode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L319",
+      "weight": 1.0,
+      "_src": "sandboxexecutor_executecode",
+      "_tgt": "sandboxexecutor_normalizeoutput",
+      "source": "sandboxexecutor_normalizeoutput",
+      "target": "sandboxexecutor_executecode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/sandboxExecutor.js",
+      "source_location": "L853",
+      "weight": 1.0,
+      "_src": "sandboxexecutor_executeexpectedcode",
+      "_tgt": "sandboxexecutor_normalizeoutput",
+      "source": "sandboxexecutor_normalizeoutput",
+      "target": "sandboxexecutor_executeexpectedcode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/app.js",
+      "source_location": "L58",
+      "weight": 1.0,
+      "_src": "app_processsubmission",
+      "_tgt": "app_updatesubmissionresult",
+      "source": "app_updatesubmissionresult",
+      "target": "app_processsubmission",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/app.js",
+      "source_location": "L214",
+      "weight": 1.0,
+      "_src": "app_handlemessage",
+      "_tgt": "app_processsubmission",
+      "source": "app_processsubmission",
+      "target": "app_handlemessage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workers/app/app.js",
+      "source_location": "L210",
+      "weight": 1.0,
+      "_src": "app_handlemessage",
+      "_tgt": "app_executeadmincode",
+      "source": "app_executeadmincode",
+      "target": "app_handlemessage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CodeExecution/app/node.js",
+      "source_location": "L20",
+      "weight": 1.0,
+      "_src": "node",
+      "_tgt": "node_runcommand",
+      "source": "node",
+      "target": "node_runcommand",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CodeExecution/app/node.js",
+      "source_location": "L90",
+      "weight": 1.0,
+      "_src": "node",
+      "_tgt": "node_processtestcases",
+      "source": "node",
+      "target": "node_processtestcases",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "JUDGER_UPGRADE.md",
+      "_src": "judger_upgrade_architecture",
+      "_tgt": "direct_inprocess_execution",
+      "source": "judger_upgrade_architecture",
+      "target": "direct_inprocess_execution"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "JUDGER_UPGRADE.md",
+      "_src": "judger_upgrade_architecture",
+      "_tgt": "container_pool_architecture",
+      "source": "judger_upgrade_architecture",
+      "target": "container_pool_architecture"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CONTAINER_POOL_ARCHITECTURE.md",
+      "_src": "container_pool_architecture",
+      "_tgt": "executor_js",
+      "source": "container_pool_architecture",
+      "target": "executor_js"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CONTAINER_POOL_ARCHITECTURE.md",
+      "_src": "container_pool_architecture",
+      "_tgt": "pool_js",
+      "source": "container_pool_architecture",
+      "target": "pool_js"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CONTAINER_POOL_ARCHITECTURE.md",
+      "_src": "container_pool_architecture",
+      "_tgt": "monitor_js",
+      "source": "container_pool_architecture",
+      "target": "monitor_js"
+    },
+    {
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CONTAINER_POOL_ARCHITECTURE.md",
+      "_src": "container_pool_architecture",
+      "_tgt": "rabbitmq_queue_system",
+      "source": "container_pool_architecture",
+      "target": "rabbitmq_queue_system"
+    },
+    {
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CONTAINER_POOL_ARCHITECTURE.md",
+      "_src": "container_pool_architecture",
+      "_tgt": "redis_cache",
+      "source": "container_pool_architecture",
+      "target": "redis_cache"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "JUDGER_UPGRADE.md",
+      "_src": "executor_js",
+      "_tgt": "sandbox_executor",
+      "source": "executor_js",
+      "target": "sandbox_executor"
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "execution_pipeline",
+      "label": "Code Execution Pipeline",
+      "nodes": [
+        "executor_js",
+        "pool_js",
+        "rabbitmq_queue_system"
+      ],
+      "relation": "participate_in",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "CONTAINER_POOL_ARCHITECTURE.md"
+    }
+  ]
+}
