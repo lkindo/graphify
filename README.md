@@ -71,8 +71,9 @@ pip install graphifyy && graphify install
 | Trae CN | `graphify install --platform trae-cn` |
 | Gemini CLI | `graphify install --platform gemini` |
 | Cursor | `graphify cursor install` |
+| Google Antigravity | `graphify install --platform antigravity` |
 
-Codex users also need `multi_agent = true` under `[features]` in `~/.codex/config.toml` for parallel extraction. Factory Droid uses the `Task` tool for parallel subagent dispatch. OpenClaw and Aider use sequential extraction (parallel agent support is still early on those platforms). Trae uses the Agent tool for parallel subagent dispatch and does **not** support PreToolUse hooks — AGENTS.md is the always-on mechanism.
+Codex users also need `multi_agent = true` under `[features]` in `~/.codex/config.toml` for parallel extraction. Factory Droid uses the `Task` tool for parallel subagent dispatch. OpenClaw, Aider, and Antigravity use sequential extraction (Antigravity's Manager View dispatches agents from the human side, not programmatically within an agent session). Trae uses the Agent tool for parallel subagent dispatch and does **not** support PreToolUse hooks — AGENTS.md is the always-on mechanism.
 
 Then open your AI coding assistant and type:
 
@@ -99,6 +100,7 @@ After building a graph, run this once in your project:
 | Trae CN | `graphify trae-cn install` |
 | Cursor | `graphify cursor install` |
 | Gemini CLI | `graphify gemini install` |
+| Google Antigravity | `graphify antigravity install` |
 
 **Claude Code** does two things: writes a `CLAUDE.md` section telling Claude to read `graphify-out/GRAPH_REPORT.md` before answering architecture questions, and installs a **PreToolUse hook** (`settings.json`) that fires before every Glob and Grep call. If a knowledge graph exists, Claude sees: _"graphify: Knowledge graph exists. Read GRAPH_REPORT.md for god nodes and community structure before searching raw files."_ — so Claude navigates via the graph instead of grepping through every file.
 
@@ -110,7 +112,9 @@ After building a graph, run this once in your project:
 
 **Gemini CLI** copies the skill to `~/.gemini/skills/graphify/SKILL.md`, writes a `GEMINI.md` section, and installs a `BeforeTool` hook in `.gemini/settings.json` that fires before file-read tool calls — same always-on mechanism as Claude Code.
 
-**Aider and OpenClaw, Factory Droid, Trae** write the same rules to `AGENTS.md` in your project root. These platforms don't support tool hooks, so AGENTS.md is the always-on mechanism.
+**Aider, OpenClaw, Factory Droid, and Trae** write the same rules to `AGENTS.md` in your project root. These platforms don't support tool hooks, so AGENTS.md is the always-on mechanism.
+
+**Google Antigravity** uses its own `.agent/` directory structure. `graphify antigravity install` writes `.agent/rules/graphify.md` (always-on context) and `.agent/workflows/graphify.md` (registers `/graphify` as a slash command). Run `graphify install --platform antigravity` separately to copy the full skill logic to `~/.gemini/antigravity/skills/graphify/SKILL.md`.
 
 **GitHub Copilot CLI** copies the skill to `~/.copilot/skills/graphify/SKILL.md`. Run `graphify copilot install` to set it up.
 
