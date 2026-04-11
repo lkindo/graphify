@@ -1,7 +1,24 @@
 # generate GRAPH_REPORT.md - the human-readable audit trail
 from __future__ import annotations
+import re
 from datetime import date
 import networkx as nx
+
+
+def _safe_community_name(label: str) -> str:
+    """Mirror of export.safe_name so community hub filenames and report wikilinks match.
+
+    Strips Obsidian-unsafe filename chars and trailing Markdown extensions so a
+    community labelled e.g. "CLAUDE.md" produces the same hub filename in both
+    the Obsidian vault export and the report's [[_COMMUNITY_*]] navigation links.
+    """
+    cleaned = re.sub(
+        r'[\\/*?:"<>|#^[\]]',
+        "",
+        label.replace("\r\n", " ").replace("\r", " ").replace("\n", " "),
+    ).strip()
+    cleaned = re.sub(r"\.(md|mdx|markdown)$", "", cleaned, flags=re.IGNORECASE)
+    return cleaned or "unnamed"
 
 
 def generate(
@@ -48,6 +65,20 @@ def generate(
         f"- Extraction: {ext_pct}% EXTRACTED · {inf_pct}% INFERRED · {amb_pct}% AMBIGUOUS"
         + (f" · INFERRED: {len(inf_edges)} edges (avg confidence: {inf_avg})" if inf_avg is not None else ""),
         f"- Token cost: {token_cost.get('input', 0):,} input · {token_cost.get('output', 0):,} output",
+    ]
+
+    # Navigation block — emit [[_COMMUNITY_<safe>|<label>]] for every community
+    # so the report is never a dead-end when dropped into an Obsidian vault.
+    # Without these links the whole community subgraph is unreachable from the
+    # graph-report and forms a disconnected component in the vault graph.
+    if communities:
+        lines += ["", "## Community Hubs (Navigation)"]
+        for cid in communities:
+            label = community_labels.get(cid, f"Community {cid}")
+            safe = _safe_community_name(label)
+            lines.append(f"- [[_COMMUNITY_{safe}|{label}]]")
+
+    lines += [
         "",
         "## God Nodes (most connected - your core abstractions)",
     ]
@@ -89,13 +120,14 @@ def generate(
     for cid, nodes in communities.items():
         label = community_labels.get(cid, f"Community {cid}")
         score = cohesion_scores.get(cid, 0.0)
+        safe = _safe_community_name(label)
         # Filter method/function stubs from display - they're structural noise
         real_nodes = [n for n in nodes if not _ifn(G, n)]
         display = [G.nodes[n].get("label", n) for n in real_nodes[:8]]
         suffix = f" (+{len(real_nodes)-8} more)" if len(real_nodes) > 8 else ""
         lines += [
             "",
-            f"### Community {cid} - \"{label}\"",
+            f"### Community {cid} - [[_COMMUNITY_{safe}|{label}]]",
             f"Cohesion: {score}",
             f"Nodes ({len(real_nodes)}): {', '.join(display)}{suffix}",
         ]

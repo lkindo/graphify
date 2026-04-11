@@ -467,7 +467,15 @@ def to_obsidian(
     # Map node_id → safe filename so wikilinks stay consistent.
     # Deduplicate: if two nodes produce the same filename, append a numeric suffix.
     def safe_name(label: str) -> str:
-        return re.sub(r'[\\/*?:"<>|#^[\]]', "", label.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")).strip() or "unnamed"
+        cleaned = re.sub(
+            r'[\\/*?:"<>|#^[\]]',
+            "",
+            label.replace("\r\n", " ").replace("\r", " ").replace("\n", " "),
+        ).strip()
+        # Strip trailing Markdown extensions so filenames don't collide as foo.md.md
+        # when the node label is itself a markdown filename (e.g. "CLAUDE.md").
+        cleaned = re.sub(r"\.(md|mdx|markdown)$", "", cleaned, flags=re.IGNORECASE)
+        return cleaned or "unnamed"
 
     node_filename: dict[str, str] = {}
     seen_names: dict[str, int] = {}
@@ -703,7 +711,14 @@ def to_canvas(
     CANVAS_COLORS = ["1", "2", "3", "4", "5", "6"]  # red, orange, yellow, green, cyan, purple
 
     def safe_name(label: str) -> str:
-        return re.sub(r'[\\/*?:"<>|#^[\]]', "", label.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")).strip() or "unnamed"
+        cleaned = re.sub(
+            r'[\\/*?:"<>|#^[\]]',
+            "",
+            label.replace("\r\n", " ").replace("\r", " ").replace("\n", " "),
+        ).strip()
+        # Strip trailing Markdown extensions so filenames don't collide as foo.md.md.
+        cleaned = re.sub(r"\.(md|mdx|markdown)$", "", cleaned, flags=re.IGNORECASE)
+        return cleaned or "unnamed"
 
     # Build node_filenames if not provided (same dedup logic as to_obsidian)
     if node_filenames is None:
