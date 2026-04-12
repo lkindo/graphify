@@ -600,6 +600,48 @@ def _import_swift(node, source: bytes, file_nid: str, stem: str, edges: list, st
             break
 
 
+def _import_dart(node, source: bytes, file_nid: str, stem: str, edges: list, str_path: str) -> None:
+    """Extract imports from Dart import_or_export nodes."""
+    for child in node.children:
+        if child.type == "library_import":
+            for sub in child.children:
+                if sub.type == "import_specification":
+                    for part in sub.children:
+                        if part.type == "configurable_uri":
+                            raw = _read_text(part, source).strip("'\"")
+                            # 'package:flutter/material.dart' → material
+                            # 'dart:async' → async
+                            segment = raw.rsplit("/", 1)[-1]
+                            if segment.endswith(".dart"):
+                                segment = segment[:-5]
+                            module_name = segment.split(":")[-1]
+                            if module_name:
+                                tgt_nid = _make_id(module_name)
+                                edges.append({
+                                    "source": file_nid,
+                                    "target": tgt_nid,
+                                    "relation": "imports",
+                                    "confidence": "EXTRACTED",
+                                    "source_file": str_path,
+                                    "source_location": f"L{node.start_point[0] + 1}",
+                                    "weight": 1.0,
+                                })
+                            return
+
+
+_DART_CONFIG = LanguageConfig(
+    ts_module="tree_sitter_dart_orchard",
+    class_types=frozenset({"class_definition", "mixin_declaration", "enum_declaration", "extension_declaration"}),
+    function_types=frozenset({"function_signature"}),
+    import_types=frozenset({"import_or_export"}),
+    call_types=frozenset(),
+    name_fallback_child_types=("identifier",),
+    body_fallback_child_types=("class_body", "enum_body", "extension_body"),
+    function_boundary_types=frozenset({"function_signature"}),
+    import_handler=_import_dart,
+)
+
+
 _SWIFT_CONFIG = LanguageConfig(
     ts_module="tree_sitter_swift",
     class_types=frozenset({"class_declaration", "protocol_declaration"}),
@@ -836,8 +878,10 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
                 return
 
         # Default: recurse
+        # Dart: method_signature wraps function_signature — propagate class context
+        propagate_class = parent_class_nid if t == "method_signature" else None
         for child in node.children:
-            walk(child, parent_class_nid=None)
+            walk(child, parent_class_nid=propagate_class)
 
     walk(root)
 
@@ -1144,6 +1188,11 @@ def extract_php(path: Path) -> dict:
 def extract_lua(path: Path) -> dict:
     """Extract functions, methods, require() imports, and calls from a .lua file."""
     return _extract_generic(path, _LUA_CONFIG)
+
+
+def extract_dart(path: Path) -> dict:
+    """Extract classes, mixins, enums, extensions, functions, and imports from a .dart file."""
+    return _extract_generic(path, _DART_CONFIG)
 
 
 def extract_swift(path: Path) -> dict:
@@ -2612,6 +2661,7 @@ def extract(paths: list[Path]) -> dict:
         ".kts": extract_kotlin,
         ".scala": extract_scala,
         ".php": extract_php,
+        ".dart": extract_dart,
         ".swift": extract_swift,
         ".lua": extract_lua,
         ".toc": extract_lua,
