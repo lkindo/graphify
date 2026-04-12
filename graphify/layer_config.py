@@ -219,3 +219,5 @@ class LayerRegistry:
     def get_children(self, parent_id: str) -> list[LayerConfig]:
         """Return child layers of the given parent (empty list if none)."""
         return self._children.get(parent_id, [])
+    
+
