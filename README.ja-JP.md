@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/graphifyy)](https://pypi.org/project/graphifyy/)
 [![Sponsor](https://img.shields.io/badge/sponsor-safishamsi-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/safishamsi)
 
-**AIコーディングアシスタント向けのスキル。** Claude Code、Codex、OpenCode、OpenClaw、Factory Droid で `/graphify` と入力するだけで、ファイルを読み込んでナレッジグラフを構築し、あなたが気づいていなかった構造を返します。コードベースをより速く理解し、アーキテクチャ上の意思決定の「なぜ」を見つけ出します。
+**AIコーディングアシスタント向けのスキル。** Claude Code、Codex、OpenCode、OpenClaw、Hermes、Factory Droid で `/graphify` と入力するだけで、ファイルを読み込んでナレッジグラフを構築し、あなたが気づいていなかった構造を返します。コードベースをより速く理解し、アーキテクチャ上の意思決定の「なぜ」を見つけ出します。
 
 完全にマルチモーダル対応。コード、PDF、Markdown、スクリーンショット、図、ホワイトボード写真、他言語の画像まで――graphify は Claude Vision を使ってそれらすべてから概念と関係性を抽出し、1 つのグラフに接続します。tree-sitter AST により 19 言語をサポート（Python、JS、TS、Go、Rust、Java、C、C++、Ruby、C#、Kotlin、Scala、PHP、Swift、Lua、Zig、PowerShell、Elixir、Objective-C）。
 
@@ -46,7 +46,7 @@ graphify は 2 パスで動作します。まず、決定論的な AST パスが
 
 ## インストール
 
-**必要なもの:** Python 3.10+ および以下のいずれか： [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [OpenClaw](https://openclaw.ai), または [Factory Droid](https://factory.ai)
+**必要なもの:** Python 3.10+ および以下のいずれか： [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [OpenClaw](https://openclaw.ai), [Hermes](https://github.com/NousResearch/hermes-agent), または [Factory Droid](https://factory.ai)
 
 ```bash
 pip install graphifyy && graphify install
@@ -63,9 +63,10 @@ pip install graphifyy && graphify install
 | Codex | `graphify install --platform codex` |
 | OpenCode | `graphify install --platform opencode` |
 | OpenClaw | `graphify install --platform claw` |
+| Hermes | `graphify install --platform hermes` |
 | Factory Droid | `graphify install --platform droid` |
 
-Codex ユーザーは並列抽出のために `~/.codex/config.toml` の `[features]` の下に `multi_agent = true` も必要です。Factory Droid は並列サブエージェントディスパッチに `Task` ツールを使用します。OpenClaw は逐次抽出を使用します（並列エージェントサポートはこのプラットフォームではまだ初期段階です）。
+Codex ユーザーは並列抽出のために `~/.codex/config.toml` の `[features]` の下に `multi_agent = true` も必要です。Factory Droid は並列サブエージェントディスパッチに `Task` ツールを使用します。OpenClaw と Hermes は逐次抽出を使用します（並列エージェントサポートはこれらのプラットフォームではまだ初期段階です）。
 
 次に、AI コーディングアシスタントを開いて入力します：
 
@@ -85,11 +86,12 @@ Codex ユーザーは並列抽出のために `~/.codex/config.toml` の `[featu
 | Codex | `graphify codex install` |
 | OpenCode | `graphify opencode install` |
 | OpenClaw | `graphify claw install` |
+| Hermes | `graphify hermes install` |
 | Factory Droid | `graphify droid install` |
 
 **Claude Code** は 2 つのことを行います：Claude にアーキテクチャの質問に答える前に `graphify-out/GRAPH_REPORT.md` を読むように指示する `CLAUDE.md` セクションを書き込み、すべての Glob と Grep 呼び出しの前に発火する **PreToolUse フック**（`settings.json`）をインストールします。ナレッジグラフが存在する場合、Claude は次のメッセージを見ます：_"graphify: Knowledge graph exists. Read GRAPH_REPORT.md for god nodes and community structure before searching raw files."_ ――これにより Claude はすべてのファイルを grep するのではなく、グラフを介してナビゲートします。
 
-**Codex、OpenCode、OpenClaw、Factory Droid** は同じルールをプロジェクトルートの `AGENTS.md` に書き込みます。これらのプラットフォームは PreToolUse フックをサポートしていないため、AGENTS.md が常時有効のメカニズムとなります。
+**Codex、OpenCode、OpenClaw、Hermes、Factory Droid** は同じルールをプロジェクトルートの `AGENTS.md` に書き込みます。これらのプラットフォームは PreToolUse フックをサポートしていないため、AGENTS.md が常時有効のメカニズムとなります。
 
 アンインストールは対応するアンインストールコマンドで行います（例：`graphify claude uninstall`）。
 

@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/graphifyy)](https://pypi.org/project/graphifyy/)
 [![Sponsor](https://img.shields.io/badge/sponsor-safishamsi-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/safishamsi)
 
-**AI 코딩 어시스턴트를 위한 스킬.** Claude Code, Codex, OpenCode, OpenClaw, Factory Droid, 또는 Trae에서 `/graphify`를 입력하면 파일을 읽고 지식 그래프를 구축하여, 미처 몰랐던 구조를 보여줍니다. 코드베이스를 더 빠르게 이해하고, 아키텍처 결정의 "이유"를 찾아보세요.
+**AI 코딩 어시스턴트를 위한 스킬.** Claude Code, Codex, OpenCode, OpenClaw, Hermes, Factory Droid, 또는 Trae에서 `/graphify`를 입력하면 파일을 읽고 지식 그래프를 구축하여, 미처 몰랐던 구조를 보여줍니다. 코드베이스를 더 빠르게 이해하고, 아키텍처 결정의 "이유"를 찾아보세요.
 
 완전한 멀티모달 지원. 코드, PDF, 마크다운, 스크린샷, 다이어그램, 화이트보드 사진, 심지어 다른 언어로 된 이미지까지 — graphify는 Claude Vision을 사용하여 이 모든 것에서 개념과 관계를 추출하고 하나의 그래프로 연결합니다. tree-sitter AST를 통해 20개 언어를 지원합니다(Python, JS, TS, Go, Rust, Java, C, C++, Ruby, C#, Kotlin, Scala, PHP, Swift, Lua, Zig, PowerShell, Elixir, Objective-C, Julia).
 
@@ -46,7 +46,7 @@ graphify는 두 번의 패스로 실행됩니다. 첫 번째는 결정론적 AST
 
 ## 설치
 
-**필수 요구사항:** Python 3.10+ 및 다음 중 하나: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [OpenClaw](https://openclaw.ai), [Factory Droid](https://factory.ai), 또는 [Trae](https://trae.ai)
+**필수 요구사항:** Python 3.10+ 및 다음 중 하나: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [OpenClaw](https://openclaw.ai), [Hermes](https://github.com/NousResearch/hermes-agent), [Factory Droid](https://factory.ai), 또는 [Trae](https://trae.ai)
 
 ```bash
 pip install graphifyy && graphify install
@@ -63,11 +63,12 @@ pip install graphifyy && graphify install
 | Codex | `graphify install --platform codex` |
 | OpenCode | `graphify install --platform opencode` |
 | OpenClaw | `graphify install --platform claw` |
+| Hermes | `graphify install --platform hermes` |
 | Factory Droid | `graphify install --platform droid` |
 | Trae | `graphify install --platform trae` |
 | Trae CN | `graphify install --platform trae-cn` |
 
-Codex 사용자는 병렬 추출을 위해 `~/.codex/config.toml`의 `[features]` 아래에 `multi_agent = true`도 필요합니다. Factory Droid는 병렬 서브에이전트 디스패치에 `Task` 도구를 사용합니다. OpenClaw는 순차 추출을 사용합니다(해당 플랫폼의 병렬 에이전트 지원은 아직 초기 단계입니다). Trae는 병렬 서브에이전트 디스패치에 Agent 도구를 사용하며 PreToolUse 훅을 **지원하지 않습니다** — AGENTS.md가 상시 작동 메커니즘입니다.
+Codex 사용자는 병렬 추출을 위해 `~/.codex/config.toml`의 `[features]` 아래에 `multi_agent = true`도 필요합니다. Factory Droid는 병렬 서브에이전트 디스패치에 `Task` 도구를 사용합니다. OpenClaw와 Hermes는 순차 추출을 사용합니다(해당 플랫폼의 병렬 에이전트 지원은 아직 초기 단계입니다). Trae는 병렬 서브에이전트 디스패치에 Agent 도구를 사용하며 PreToolUse 훅을 **지원하지 않습니다** — AGENTS.md가 상시 작동 메커니즘입니다.
 
 그런 다음 AI 코딩 어시스턴트를 열고 입력하세요:
 
@@ -87,6 +88,7 @@ Codex 사용자는 병렬 추출을 위해 `~/.codex/config.toml`의 `[features]
 | Codex | `graphify codex install` |
 | OpenCode | `graphify opencode install` |
 | OpenClaw | `graphify claw install` |
+| Hermes | `graphify hermes install` |
 | Factory Droid | `graphify droid install` |
 | Trae | `graphify trae install` |
 | Trae CN | `graphify trae-cn install` |
@@ -95,7 +97,7 @@ Codex 사용자는 병렬 추출을 위해 `~/.codex/config.toml`의 `[features]
 
 **Codex**는 `AGENTS.md`에 작성하고 Bash 도구 호출 전에 실행되는 **PreToolUse 훅**을 `.codex/hooks.json`에 설치합니다 — Claude Code와 동일한 상시 작동 메커니즘입니다.
 
-**OpenCode, OpenClaw, Factory Droid, Trae**는 프로젝트 루트의 `AGENTS.md`에 동일한 규칙을 작성합니다. 이 플랫폼들은 PreToolUse 훅을 지원하지 않으므로 AGENTS.md가 상시 작동 메커니즘입니다.
+**OpenCode, OpenClaw, Hermes, Factory Droid, Trae**는 프로젝트 루트의 `AGENTS.md`에 동일한 규칙을 작성합니다. 이 플랫폼들은 PreToolUse 훅을 지원하지 않으므로 AGENTS.md가 상시 작동 메커니즘입니다.
 
 제거는 대응하는 uninstall 명령으로 수행합니다(예: `graphify claude uninstall`).
 

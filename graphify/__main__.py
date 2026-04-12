@@ -77,6 +77,11 @@ _PLATFORM_CONFIG: dict[str, dict] = {
         "skill_dst": Path(".claw") / "skills" / "graphify" / "SKILL.md",
         "claude_md": False,
     },
+    "hermes": {
+        "skill_file": "skill-hermes.md",
+        "skill_dst": Path(".hermes") / "skills" / "graphify" / "SKILL.md",
+        "claude_md": False,
+    },
     "droid": {
         "skill_file": "skill-droid.md",
         "skill_dst": Path(".factory") / "skills" / "graphify" / "SKILL.md",
@@ -639,7 +644,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|hermes|droid|trae|trae-cn|gemini|cursor)")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -745,7 +750,7 @@ def main() -> None:
         else:
             print("Usage: graphify copilot [install|uninstall]", file=sys.stderr)
             sys.exit(1)
-    elif cmd in ("aider", "codex", "opencode", "claw", "droid", "trae", "trae-cn"):
+    elif cmd in ("aider", "codex", "opencode", "claw", "hermes", "droid", "trae", "trae-cn"):
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
         if subcmd == "install":
             _agents_install(Path("."), cmd)
