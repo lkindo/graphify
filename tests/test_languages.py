@@ -234,6 +234,19 @@ def test_php_finds_imports():
     r = extract_php(FIXTURES / "sample.php")
     assert "imports" in _relations(r)
 
+def test_php_finds_config_helper_call():
+    r = extract_php(FIXTURES / "sample_php_config.php")
+    assert "uses_config" in _relations(r)
+
+def test_php_config_helper_target_matches_first_segment():
+    r = extract_php(FIXTURES / "sample_php_config.php")
+    node_by_id = {n["id"]: n["label"] for n in r["nodes"]}
+    uses_cfg = [
+        (node_by_id.get(e["source"], e["source"]), node_by_id.get(e["target"], e["target"]))
+        for e in r["edges"] if e["relation"] == "uses_config"
+    ]
+    assert any("Throttle" in tgt for _, tgt in uses_cfg)
+
 
 # ── Swift ────────────────────────────────────────────────────────────────────
 

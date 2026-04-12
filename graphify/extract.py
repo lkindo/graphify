@@ -29,6 +29,7 @@ class LanguageConfig:
     function_types: frozenset = frozenset()
     import_types: frozenset = frozenset()
     call_types: frozenset = frozenset()
+    helper_fn_names: frozenset = frozenset()
 
     # Name extraction
     name_field: str = "name"
@@ -536,6 +537,7 @@ _PHP_CONFIG = LanguageConfig(
     function_types=frozenset({"function_definition", "method_declaration"}),
     import_types=frozenset({"namespace_use_clause"}),
     call_types=frozenset({"function_call_expression", "member_call_expression"}),
+    helper_fn_names=frozenset({"config"}),
     call_function_field="function",
     call_accessor_node_types=frozenset({"member_call_expression"}),
     call_accessor_field="name",
@@ -849,6 +851,7 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
         label_to_nid[normalised.lower()] = n["id"]
 
     seen_call_pairs: set[tuple[str, str]] = set()
+    seen_helper_ref_pairs: set[tuple[str, str, str]] = set()
 
     def walk_calls(node, caller_nid: str) -> None:
         if node.type in config.function_boundary_types:
@@ -961,6 +964,44 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
                             "source_location": f"L{line}",
                             "weight": 1.0,
                         })
+
+            # Helper function calls: config('foo.bar') -> edge to "foo"
+            if (node.type == "function_call_expression"
+                    and callee_name and callee_name in config.helper_fn_names):
+                args_node = node.child_by_field_name("arguments")
+                first_key: str | None = None
+                if args_node:
+                    for arg in args_node.children:
+                        if arg.type != "argument":
+                            continue
+                        for inner in arg.children:
+                            if inner.type == "string":
+                                for sc in inner.children:
+                                    if sc.type == "string_content":
+                                        first_key = _read_text(sc, source)
+                                        break
+                                break
+                        if first_key:
+                            break
+                if first_key:
+                    segment = first_key.split(".")[0]
+                    tgt_nid = (label_to_nid.get(segment.lower())
+                               or label_to_nid.get(f"{segment}.php".lower()))
+                    if tgt_nid and tgt_nid != caller_nid:
+                        relation = f"uses_{callee_name}"
+                        pair = (caller_nid, tgt_nid, relation)
+                        if pair not in seen_helper_ref_pairs:
+                            seen_helper_ref_pairs.add(pair)
+                            line = node.start_point[0] + 1
+                            edges.append({
+                                "source": caller_nid,
+                                "target": tgt_nid,
+                                "relation": relation,
+                                "confidence": "EXTRACTED",
+                                "source_file": str_path,
+                                "source_location": f"L{line}",
+                                "weight": 1.0,
+                            })
 
         for child in node.children:
             walk_calls(child, caller_nid)
