@@ -108,6 +108,19 @@ def _find_node(G: nx.Graph, label: str) -> list[str]:
             if term in d.get("label", "").lower() or term == nid.lower()]
 
 
+def _ensure_noninteractive_stdio(in_stream=None, out_stream=None) -> None:
+    """Fail fast when launched from an interactive terminal instead of an MCP client."""
+    in_stream = in_stream or sys.stdin
+    out_stream = out_stream or sys.stdout
+    if in_stream.isatty() or out_stream.isatty():
+        print(
+            "error: graphify.serve is an MCP stdio server and must be launched by an MCP client, "
+            "not directly from an interactive terminal.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+
 def serve(graph_path: str = "graphify-out/graph.json") -> None:
     """Start the MCP server. Requires pip install mcp."""
     try:
@@ -117,6 +130,7 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
     except ImportError as e:
         raise ImportError("mcp not installed. Run: pip install mcp") from e
 
+    _ensure_noninteractive_stdio()
     G = _load_graph(graph_path)
     communities = _communities_from_graph(G)
 
