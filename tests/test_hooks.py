@@ -2,7 +2,7 @@
 import subprocess
 from pathlib import Path
 import pytest
-from graphify.hooks import install, uninstall, status, _HOOK_MARKER, _CHECKOUT_MARKER
+from graphify.hooks import install, uninstall, status, _HOOK_MARKER, _CHECKOUT_MARKER, _PYTHON_DETECT
 
 
 def _make_git_repo(tmp_path: Path) -> Path:
@@ -110,3 +110,16 @@ def test_status_shows_both_hooks(tmp_path):
     assert "post-commit" in result
     assert "post-checkout" in result
     assert result.count("installed") >= 2
+
+
+def test_python_detect_cross_platform_fallback():
+    """Hook must try 'python' as a fallback so it works on Windows (no python3 shim)."""
+    # The cross-platform fallback chain must be present
+    assert 'command -v python3' in _PYTHON_DETECT
+    assert 'command -v python' in _PYTHON_DETECT
+    # The fallback must appear *after* the python3 attempt (elif / else branch)
+    idx_py3 = _PYTHON_DETECT.index('command -v python3')
+    idx_py = _PYTHON_DETECT.index('command -v python >')
+    assert idx_py > idx_py3, "Windows 'python' fallback must come after python3 attempt"
+    # There must be a silent-exit path so the hook is a no-op rather than noisy on failure
+    assert 'exit 0' in _PYTHON_DETECT
