@@ -74,7 +74,12 @@ _PLATFORM_CONFIG: dict[str, dict] = {
     },
     "claw": {
         "skill_file": "skill-claw.md",
-        "skill_dst": Path(".claw") / "skills" / "graphify" / "SKILL.md",
+        "skill_dst": Path(".openclaw") / "skills" / "graphify" / "SKILL.md",
+        "claude_md": False,
+    },
+    "claw-windows": {
+        "skill_file": "skill-claw-windows.md",
+        "skill_dst": Path(".openclaw") / "skills" / "graphify" / "SKILL.md",
         "claude_md": False,
     },
     "droid": {
@@ -639,7 +644,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|claw-windows|droid|trae|trae-cn|gemini|cursor)")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -670,6 +675,8 @@ def main() -> None:
         print("  copilot uninstall       remove graphify skill from ~/.copilot/skills")
         print("  claw install            write graphify section to AGENTS.md (OpenClaw)")
         print("  claw uninstall          remove graphify section from AGENTS.md")
+        print("  claw-windows install    write graphify section to AGENTS.md (OpenClaw Windows)")
+        print("  claw-windows uninstall  remove graphify section from AGENTS.md")
         print("  droid install           write graphify section to AGENTS.md (Factory Droid)")
         print("  droid uninstall        remove graphify section from AGENTS.md")
         print("  trae install            write graphify section to AGENTS.md (Trae)")
@@ -745,7 +752,7 @@ def main() -> None:
         else:
             print("Usage: graphify copilot [install|uninstall]", file=sys.stderr)
             sys.exit(1)
-    elif cmd in ("aider", "codex", "opencode", "claw", "droid", "trae", "trae-cn"):
+    elif cmd in ("aider", "codex", "opencode", "claw", "claw-windows", "droid", "trae", "trae-cn"):
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
         if subcmd == "install":
             _agents_install(Path("."), cmd)
