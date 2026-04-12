@@ -5,7 +5,7 @@ import pytest
 from graphify.extract import (
     extract_java, extract_c, extract_cpp, extract_ruby,
     extract_csharp, extract_kotlin, extract_scala, extract_php,
-    extract_swift, extract_go, extract_julia,
+    extract_blade, extract_swift, extract_go, extract_julia,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -233,6 +233,33 @@ def test_php_finds_function():
 def test_php_finds_imports():
     r = extract_php(FIXTURES / "sample.php")
     assert "imports" in _relations(r)
+
+
+# ── Blade ────────────────────────────────────────────────────────────────────
+
+def test_blade_no_error():
+    r = extract_blade(FIXTURES / "sample.blade.php")
+    assert "error" not in r
+
+def test_blade_finds_include():
+    r = extract_blade(FIXTURES / "sample.blade.php")
+    assert "includes" in _relations(r)
+    targets = {n["label"] for n in r["nodes"]}
+    assert "partials.footer" in targets
+    assert "panel.components.pagination" in targets
+
+def test_blade_finds_livewire_component():
+    r = extract_blade(FIXTURES / "sample.blade.php")
+    assert "uses_component" in _relations(r)
+    targets = {n["label"] for n in r["nodes"]}
+    assert "panel.listings" in targets
+
+def test_blade_finds_wire_click():
+    r = extract_blade(FIXTURES / "sample.blade.php")
+    assert "wire_click" in _relations(r)
+    targets = {n["label"] for n in r["nodes"]}
+    assert "bulkActivate" in targets
+    assert "bulkDelete" in targets
 
 
 # ── Swift ────────────────────────────────────────────────────────────────────

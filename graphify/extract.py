@@ -1141,6 +1141,76 @@ def extract_php(path: Path) -> dict:
     return _extract_generic(path, _PHP_CONFIG)
 
 
+# Blade directive patterns. Conservative on purpose: only the three forms that
+# carry the most graph signal, not the full Blade syntax.
+_BLADE_INCLUDE_RE = re.compile(r"""@include\s*\(\s*['"]([^'"]+)['"]""")
+_BLADE_LIVEWIRE_RE = re.compile(r"<livewire:([\w\-\.]+)")
+_BLADE_WIRE_CLICK_RE = re.compile(r"""wire:click\s*=\s*["'](\w+)""")
+
+
+def extract_blade(path: Path) -> dict:
+    """Extract basic Blade template references: @include, <livewire:*>, wire:click.
+
+    Blade has no mature tree-sitter grammar, so this uses regex on three common
+    forms. Every match becomes an edge from the template file to a placeholder
+    node that carries the raw target name. Downstream passes can resolve those
+    names against real nodes; if nothing resolves, the placeholder still keeps
+    the template from looking isolated in the graph.
+    """
+    try:
+        source = path.read_text(encoding="utf-8", errors="replace")
+    except Exception as e:  # noqa: BLE001
+        return {"nodes": [], "edges": [], "error": str(e)}
+
+    str_path = str(path)
+    file_nid = _make_id(str(path))
+    stem = path.name
+
+    nodes: list[dict] = [{
+        "id": file_nid,
+        "label": stem,
+        "file_type": "code",
+        "source_file": str_path,
+        "source_location": "L1",
+    }]
+    edges: list[dict] = []
+    seen_targets: set[tuple[str, str]] = set()
+
+    def _line_for(offset: int) -> int:
+        return source.count("\n", 0, offset) + 1
+
+    def _add(target_label: str, relation: str, offset: int) -> None:
+        target_id = _make_id("blade", target_label)
+        key = (target_id, relation)
+        if key not in seen_targets:
+            seen_targets.add(key)
+            nodes.append({
+                "id": target_id,
+                "label": target_label,
+                "file_type": "code",
+                "source_file": "",
+                "source_location": "",
+            })
+        edges.append({
+            "source": file_nid,
+            "target": target_id,
+            "relation": relation,
+            "confidence": "EXTRACTED",
+            "source_file": str_path,
+            "source_location": f"L{_line_for(offset)}",
+            "weight": 1.0,
+        })
+
+    for m in _BLADE_INCLUDE_RE.finditer(source):
+        _add(m.group(1), "includes", m.start())
+    for m in _BLADE_LIVEWIRE_RE.finditer(source):
+        _add(m.group(1), "uses_component", m.start())
+    for m in _BLADE_WIRE_CLICK_RE.finditer(source):
+        _add(m.group(1), "wire_click", m.start())
+
+    return {"nodes": nodes, "edges": edges}
+
+
 def extract_lua(path: Path) -> dict:
     """Extract functions, methods, require() imports, and calls from a .lua file."""
     return _extract_generic(path, _LUA_CONFIG)
@@ -2629,7 +2699,13 @@ def extract(paths: list[Path]) -> dict:
     for i, path in enumerate(paths):
         if total >= _PROGRESS_INTERVAL and i % _PROGRESS_INTERVAL == 0 and i > 0:
             print(f"  AST extraction: {i}/{total} files ({i * 100 // total}%)", flush=True)
-        extractor = _DISPATCH.get(path.suffix)
+        # .blade.php has to be checked before the suffix lookup because
+        # Path.suffix only returns '.php' for foo.blade.php and we do not
+        # want blade templates to go through the PHP tree-sitter parser.
+        if path.name.endswith(".blade.php"):
+            extractor = extract_blade
+        else:
+            extractor = _DISPATCH.get(path.suffix)
         if extractor is None:
             continue
         cached = load_cached(path, root)
