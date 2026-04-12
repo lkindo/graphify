@@ -314,6 +314,7 @@ This project has a graphify knowledge graph at graphify-out/.
 Rules:
 - Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- If the graphify MCP server is active, utilize tools like `query_graph`, `get_node`, and `shortest_path` for precise architecture navigation instead of falling back to `grep`
 - After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
 """
 
@@ -333,6 +334,14 @@ def _antigravity_install(project_dir: Path) -> None:
     """Install graphify for Google Antigravity: skill + .agent/rules + .agent/workflows."""
     # 1. Copy skill file to ~/.agent/skills/graphify/SKILL.md
     install(platform="antigravity")
+
+    # 1.5 Inject YAML frontmatter for native Antigravity tool discovery
+    skill_dst = Path.home() / _PLATFORM_CONFIG["antigravity"]["skill_dst"]
+    if skill_dst.exists():
+        content = skill_dst.read_text(encoding="utf-8")
+        if not content.startswith("---\n"):
+            frontmatter = "---\nname: graphify-manager\ndescription: Rebuild the code graph or perform manual CLI queries when MCP server is offline.\n---\n\n"
+            skill_dst.write_text(frontmatter + content, encoding="utf-8")
 
     # 2. Write .agent/rules/graphify.md
     rules_path = project_dir / _ANTIGRAVITY_RULES_PATH
@@ -355,6 +364,12 @@ def _antigravity_install(project_dir: Path) -> None:
     print()
     print("Antigravity will now check the knowledge graph before answering")
     print("codebase questions. Run /graphify first to build the graph.")
+    print()
+    print("To enable full MCP architecture navigation, add this to ~/.gemini/antigravity/mcp_config.json:")
+    print('  "graphify": {')
+    print('    "command": "uv",')
+    print('    "args": ["run", "--with", "graphifyy", "--with", "mcp", "-m", "graphify.serve", "${workspace.path}/graphify-out/graph.json"]')
+    print('  }')
 
 
 def _antigravity_uninstall(project_dir: Path) -> None:
