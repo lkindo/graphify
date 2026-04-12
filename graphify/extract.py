@@ -29,6 +29,7 @@ class LanguageConfig:
     function_types: frozenset = frozenset()
     import_types: frozenset = frozenset()
     call_types: frozenset = frozenset()
+    static_call_types: frozenset = frozenset()
 
     # Name extraction
     name_field: str = "name"
@@ -536,6 +537,7 @@ _PHP_CONFIG = LanguageConfig(
     function_types=frozenset({"function_definition", "method_declaration"}),
     import_types=frozenset({"namespace_use_clause"}),
     call_types=frozenset({"function_call_expression", "member_call_expression"}),
+    static_call_types=frozenset({"scoped_call_expression"}),
     call_function_field="function",
     call_accessor_node_types=frozenset({"member_call_expression"}),
     call_accessor_field="name",
@@ -849,6 +851,7 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
         label_to_nid[normalised.lower()] = n["id"]
 
     seen_call_pairs: set[tuple[str, str]] = set()
+    seen_static_ref_pairs: set[tuple[str, str, str]] = set()
 
     def walk_calls(node, caller_nid: str) -> None:
         if node.type in config.function_boundary_types:
@@ -956,6 +959,32 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
                             "source": caller_nid,
                             "target": tgt_nid,
                             "relation": "calls",
+                            "confidence": "EXTRACTED",
+                            "source_file": str_path,
+                            "source_location": f"L{line}",
+                            "weight": 1.0,
+                        })
+
+        # Static method calls: Foo::bar(), Foo::make()
+        if node.type in config.static_call_types:
+            scope_node = node.child_by_field_name("scope")
+            if scope_node is None:
+                for child in node.children:
+                    if child.is_named and child.type in ("name", "qualified_name", "identifier"):
+                        scope_node = child
+                        break
+            if scope_node is not None:
+                class_name = _read_text(scope_node, source)
+                tgt_nid = label_to_nid.get(class_name.lower())
+                if tgt_nid and tgt_nid != caller_nid:
+                    pair = (caller_nid, tgt_nid, "uses_static")
+                    if pair not in seen_static_ref_pairs:
+                        seen_static_ref_pairs.add(pair)
+                        line = node.start_point[0] + 1
+                        edges.append({
+                            "source": caller_nid,
+                            "target": tgt_nid,
+                            "relation": "uses_static",
                             "confidence": "EXTRACTED",
                             "source_file": str_path,
                             "source_location": f"L{line}",
