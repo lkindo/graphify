@@ -29,6 +29,7 @@ class LanguageConfig:
     function_types: frozenset = frozenset()
     import_types: frozenset = frozenset()
     call_types: frozenset = frozenset()
+    event_listener_properties: frozenset = frozenset()
 
     # Name extraction
     name_field: str = "name"
@@ -536,6 +537,7 @@ _PHP_CONFIG = LanguageConfig(
     function_types=frozenset({"function_definition", "method_declaration"}),
     import_types=frozenset({"namespace_use_clause"}),
     call_types=frozenset({"function_call_expression", "member_call_expression"}),
+    event_listener_properties=frozenset({"listen", "subscribe"}),
     call_function_field="function",
     call_accessor_node_types=frozenset({"member_call_expression"}),
     call_accessor_field="name",
@@ -649,6 +651,7 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
     edges: list[dict] = []
     seen_ids: set[str] = set()
     function_bodies: list[tuple[str, object]] = []
+    pending_listen_edges: list[tuple[str, str, int]] = []
 
     def add_node(nid: str, label: str, line: int) -> None:
         if nid not in seen_ids:
@@ -774,6 +777,57 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
             if body:
                 for child in body.children:
                     walk(child, parent_class_nid=class_nid)
+            return
+
+        # Event listener property array: protected $listen = [Event::class => [Listener::class, ...]]
+        if (t == "property_declaration"
+                and parent_class_nid
+                and config.event_listener_properties):
+            for element in node.children:
+                if element.type != "property_element":
+                    continue
+                prop_name: str | None = None
+                array_node = None
+                for c in element.children:
+                    if c.type == "variable_name":
+                        for sc in c.children:
+                            if sc.type == "name":
+                                prop_name = _read_text(sc, source)
+                                break
+                    elif c.type == "array_creation_expression":
+                        array_node = c
+                if (prop_name is None
+                        or prop_name not in config.event_listener_properties
+                        or array_node is None):
+                    continue
+                for entry in array_node.children:
+                    if entry.type != "array_element_initializer":
+                        continue
+                    event_cls: str | None = None
+                    listener_arr = None
+                    for sub in entry.children:
+                        if sub.type == "class_constant_access_expression" and event_cls is None:
+                            for sc in sub.children:
+                                if sc.is_named and sc.type in ("name", "qualified_name"):
+                                    event_cls = _read_text(sc, source)
+                                    break
+                        elif sub.type == "array_creation_expression":
+                            listener_arr = sub
+                    if not event_cls or listener_arr is None:
+                        continue
+                    for listener_entry in listener_arr.children:
+                        if listener_entry.type != "array_element_initializer":
+                            continue
+                        for item in listener_entry.children:
+                            if item.type != "class_constant_access_expression":
+                                continue
+                            for sc in item.children:
+                                if sc.is_named and sc.type in ("name", "qualified_name"):
+                                    listener_cls = _read_text(sc, source)
+                                    line = item.start_point[0] + 1
+                                    pending_listen_edges.append((event_cls, listener_cls, line))
+                                    break
+                            break
             return
 
         # Function types
@@ -967,6 +1021,27 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
 
     for caller_nid, body_node in function_bodies:
         walk_calls(body_node, caller_nid)
+
+    # ── Event listener pass ──────────────────────────────────────────────────
+    seen_listen_pairs: set[tuple[str, str]] = set()
+    for event_name, listener_name, line in pending_listen_edges:
+        event_nid = label_to_nid.get(event_name.lower())
+        listener_nid = label_to_nid.get(listener_name.lower())
+        if not event_nid or not listener_nid or event_nid == listener_nid:
+            continue
+        pair = (event_nid, listener_nid)
+        if pair in seen_listen_pairs:
+            continue
+        seen_listen_pairs.add(pair)
+        edges.append({
+            "source": event_nid,
+            "target": listener_nid,
+            "relation": "listened_by",
+            "confidence": "EXTRACTED",
+            "source_file": str_path,
+            "source_location": f"L{line}",
+            "weight": 1.0,
+        })
 
     # ── Clean edges ───────────────────────────────────────────────────────────
     valid_ids = seen_ids

@@ -234,6 +234,21 @@ def test_php_finds_imports():
     r = extract_php(FIXTURES / "sample.php")
     assert "imports" in _relations(r)
 
+def test_php_finds_listen_array_mapping():
+    r = extract_php(FIXTURES / "sample_php_listen.php")
+    assert "listened_by" in _relations(r)
+
+def test_php_listen_array_covers_all_listeners():
+    r = extract_php(FIXTURES / "sample_php_listen.php")
+    node_by_id = {n["id"]: n["label"] for n in r["nodes"]}
+    pairs = {
+        (node_by_id.get(e["source"], e["source"]), node_by_id.get(e["target"], e["target"]))
+        for e in r["edges"] if e["relation"] == "listened_by"
+    }
+    assert ("UserRegistered", "SendWelcomeEmail") in pairs
+    assert ("UserRegistered", "NotifyAdmins") in pairs
+    assert ("OrderPlaced", "ShipOrder") in pairs
+
 
 # ── Swift ────────────────────────────────────────────────────────────────────
 
