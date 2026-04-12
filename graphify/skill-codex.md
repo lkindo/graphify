@@ -1220,7 +1220,7 @@ Run once per project to make graphify always-on in Codex sessions:
 graphify codex install
 ```
 
-This writes a `## graphify` section to the local `AGETNTS.md` that instructs Codex to check the graph before answering codebase questions and rebuild it after code changes. No manual `/graphify` needed in future sessions.
+This writes a `## graphify` section to the local `AGENTS.md` that instructs Codex to check the graph before answering codebase questions and rebuild it after code changes. No manual `/graphify` needed in future sessions.
 
 ```bash
 graphify codex uninstall  # remove the section
