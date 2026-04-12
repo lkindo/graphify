@@ -1,9 +1,9 @@
 """Tests for hooks.py - git hook install/uninstall."""
+import os
 import subprocess
 from pathlib import Path
 import pytest
 from graphify.hooks import install, uninstall, status, _HOOK_MARKER, _CHECKOUT_MARKER
-
 
 def _make_git_repo(tmp_path: Path) -> Path:
     subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
@@ -23,7 +23,10 @@ def test_install_is_executable(tmp_path):
     repo = _make_git_repo(tmp_path)
     install(repo)
     hook = repo / ".git" / "hooks" / "post-commit"
-    assert hook.stat().st_mode & 0o111  # executable bit set
+    if os.name == "nt":
+        assert hook.read_text(encoding="utf-8").startswith("#!/bin/sh\n")
+    else:
+        assert hook.stat().st_mode & 0o111  # executable bit set
 
 
 def test_install_idempotent(tmp_path):
@@ -92,7 +95,10 @@ def test_install_post_checkout_is_executable(tmp_path):
     repo = _make_git_repo(tmp_path)
     install(repo)
     hook = repo / ".git" / "hooks" / "post-checkout"
-    assert hook.stat().st_mode & 0o111
+    if os.name == "nt":
+        assert hook.read_text(encoding="utf-8").startswith("#!/bin/sh\n")
+    else:
+        assert hook.stat().st_mode & 0o111
 
 
 def test_uninstall_removes_post_checkout_hook(tmp_path):
