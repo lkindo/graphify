@@ -1,4 +1,5 @@
 """Tests for graphify install --platform routing."""
+import json
 from pathlib import Path
 from unittest.mock import patch
 import pytest
@@ -116,9 +117,9 @@ def _agents_install(tmp_path, platform):
     _install_fn(tmp_path, platform)
 
 
-def _agents_uninstall(tmp_path):
+def _agents_uninstall(tmp_path, platform):
     from graphify.__main__ import _agents_uninstall as _uninstall_fn
-    _uninstall_fn(tmp_path)
+    _uninstall_fn(tmp_path, platform)
 
 
 def test_codex_agents_install_writes_agents_md(tmp_path):
@@ -159,7 +160,7 @@ def test_agents_install_appends_to_existing(tmp_path):
 
 def test_agents_uninstall_removes_section(tmp_path):
     _agents_install(tmp_path, "codex")
-    _agents_uninstall(tmp_path)
+    _agents_uninstall(tmp_path, "codex")
     agents_md = tmp_path / "AGENTS.md"
     # File deleted when it only contained graphify section
     assert not agents_md.exists()
@@ -170,7 +171,7 @@ def test_agents_uninstall_preserves_other_content(tmp_path):
     agents_md = tmp_path / "AGENTS.md"
     agents_md.write_text("# Existing rules\n\nDo not break things.\n")
     _agents_install(tmp_path, "codex")
-    _agents_uninstall(tmp_path)
+    _agents_uninstall(tmp_path, "codex")
     assert agents_md.exists()
     content = agents_md.read_text()
     assert "Do not break things." in content
@@ -178,9 +179,33 @@ def test_agents_uninstall_preserves_other_content(tmp_path):
 
 
 def test_agents_uninstall_no_op_when_not_installed(tmp_path, capsys):
-    _agents_uninstall(tmp_path)
+    _agents_uninstall(tmp_path, "codex")
     out = capsys.readouterr().out
     assert "nothing to do" in out
+
+
+@pytest.mark.parametrize("platform", ["codex", "aider", "claw", "droid", "trae", "trae-cn"])
+def test_non_opencode_agents_uninstall_preserves_opencode_plugin(tmp_path, platform):
+    """Only opencode uninstall should remove opencode plugin state."""
+    _agents_install(tmp_path, "opencode")
+    _agents_uninstall(tmp_path, platform)
+
+    plugin = tmp_path / ".opencode" / "plugins" / "graphify.js"
+    assert plugin.exists()
+
+    config_file = tmp_path / "opencode.json"
+    config = json.loads(config_file.read_text())
+    assert any("graphify.js" in p for p in config.get("plugin", []))
+
+
+def test_codex_agents_uninstall_removes_codex_hook(tmp_path):
+    """codex uninstall removes the PreToolUse hook it owns."""
+    _agents_install(tmp_path, "codex")
+    _agents_uninstall(tmp_path, "codex")
+
+    hooks_file = tmp_path / ".codex" / "hooks.json"
+    hooks = json.loads(hooks_file.read_text())
+    assert not any("graphify" in str(h) for h in hooks.get("hooks", {}).get("PreToolUse", []))
 
 
 # --- OpenCode plugin tests ---
@@ -198,32 +223,50 @@ def test_opencode_agents_install_registers_plugin_in_config(tmp_path):
     _agents_install(tmp_path, "opencode")
     config_file = tmp_path / "opencode.json"
     assert config_file.exists()
-    import json as _json
-    config = _json.loads(config_file.read_text())
+    config = json.loads(config_file.read_text())
     assert any("graphify.js" in p for p in config.get("plugin", []))
 
 
 def test_opencode_agents_install_merges_existing_config(tmp_path):
     """opencode install preserves existing opencode.json keys."""
-    import json as _json
     config_file = tmp_path / "opencode.json"
-    config_file.write_text(_json.dumps({"model": "claude-opus-4-5", "plugin": []}))
+    config_file.write_text(json.dumps({"model": "claude-opus-4-5", "plugin": []}))
     _agents_install(tmp_path, "opencode")
-    config = _json.loads(config_file.read_text())
+    config = json.loads(config_file.read_text())
     assert config["model"] == "claude-opus-4-5"
     assert any("graphify.js" in p for p in config["plugin"])
 
 
 def test_opencode_agents_uninstall_removes_plugin(tmp_path):
     """opencode uninstall removes the plugin file and deregisters from opencode.json."""
-    import json as _json
     _agents_install(tmp_path, "opencode")
-    _agents_uninstall(tmp_path)
+    _agents_uninstall(tmp_path, "opencode")
     plugin = tmp_path / ".opencode" / "plugins" / "graphify.js"
     assert not plugin.exists()
     config_file = tmp_path / "opencode.json"
     if config_file.exists():
-        config = _json.loads(config_file.read_text())
+        config = json.loads(config_file.read_text())
+        assert not any("graphify.js" in p for p in config.get("plugin", []))
+
+
+@pytest.mark.parametrize("agents_state", ["missing", "no_marker"])
+def test_opencode_agents_uninstall_cleans_plugin_without_graphify_section(tmp_path, agents_state):
+    """opencode uninstall still removes plugin state without a graphify AGENTS.md section."""
+    _agents_install(tmp_path, "opencode")
+    agents_md = tmp_path / "AGENTS.md"
+    if agents_state == "missing":
+        agents_md.unlink()
+    else:
+        agents_md.write_text("# Existing rules\n", encoding="utf-8")
+
+    _agents_uninstall(tmp_path, "opencode")
+
+    plugin = tmp_path / ".opencode" / "plugins" / "graphify.js"
+    assert not plugin.exists()
+
+    config_file = tmp_path / "opencode.json"
+    if config_file.exists():
+        config = json.loads(config_file.read_text())
         assert not any("graphify.js" in p for p in config.get("plugin", []))
 
 

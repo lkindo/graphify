@@ -566,7 +566,7 @@ def _uninstall_codex_hook(project_dir: Path) -> None:
 
 
 def _agents_install(project_dir: Path, platform: str) -> None:
-    """Write the graphify section to the local AGENTS.md (Codex/OpenCode/OpenClaw)."""
+    """Write the graphify section to the local AGENTS.md for AGENTS-based platforms."""
     target = (project_dir or Path(".")) / "AGENTS.md"
 
     if target.exists():
@@ -594,33 +594,35 @@ def _agents_install(project_dir: Path, platform: str) -> None:
         print(f"{platform.capitalize()} — the AGENTS.md rules are the always-on mechanism.")
 
 
-def _agents_uninstall(project_dir: Path) -> None:
-    """Remove the graphify section from the local AGENTS.md."""
-    target = (project_dir or Path(".")) / "AGENTS.md"
+def _agents_uninstall(project_dir: Path, platform: str) -> None:
+    """Remove the graphify section from AGENTS.md and any platform-owned state."""
+    base_dir = project_dir or Path(".")
+    target = base_dir / "AGENTS.md"
 
     if not target.exists():
         print("No AGENTS.md found in current directory - nothing to do")
-        return
-
-    content = target.read_text(encoding="utf-8")
-    if _AGENTS_MD_MARKER not in content:
-        print("graphify section not found in AGENTS.md - nothing to do")
-        return
-
-    cleaned = re.sub(
-        r"\n*## graphify\n.*?(?=\n## |\Z)",
-        "",
-        content,
-        flags=re.DOTALL,
-    ).rstrip()
-    if cleaned:
-        target.write_text(cleaned + "\n", encoding="utf-8")
-        print(f"graphify section removed from {target.resolve()}")
     else:
-        target.unlink()
-        print(f"AGENTS.md was empty after removal - deleted {target.resolve()}")
+        content = target.read_text(encoding="utf-8")
+        if _AGENTS_MD_MARKER not in content:
+            print("graphify section not found in AGENTS.md - nothing to do")
+        else:
+            cleaned = re.sub(
+                r"\n*## graphify\n.*?(?=\n## |\Z)",
+                "",
+                content,
+                flags=re.DOTALL,
+            ).rstrip()
+            if cleaned:
+                target.write_text(cleaned + "\n", encoding="utf-8")
+                print(f"graphify section removed from {target.resolve()}")
+            else:
+                target.unlink()
+                print(f"AGENTS.md was empty after removal - deleted {target.resolve()}")
 
-    _uninstall_opencode_plugin(project_dir or Path("."))
+    if platform == "opencode":
+        _uninstall_opencode_plugin(base_dir)
+    elif platform == "codex":
+        _uninstall_codex_hook(base_dir)
 
 
 def claude_install(project_dir: Path | None = None) -> None:
@@ -842,9 +844,7 @@ def main() -> None:
         if subcmd == "install":
             _agents_install(Path("."), cmd)
         elif subcmd == "uninstall":
-            _agents_uninstall(Path("."))
-            if cmd == "codex":
-                _uninstall_codex_hook(Path("."))
+            _agents_uninstall(Path("."), cmd)
         else:
             print(f"Usage: graphify {cmd} [install|uninstall]", file=sys.stderr)
             sys.exit(1)
