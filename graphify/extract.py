@@ -29,6 +29,7 @@ class LanguageConfig:
     function_types: frozenset = frozenset()
     import_types: frozenset = frozenset()
     call_types: frozenset = frozenset()
+    container_bind_methods: frozenset = frozenset()
 
     # Name extraction
     name_field: str = "name"
@@ -536,6 +537,7 @@ _PHP_CONFIG = LanguageConfig(
     function_types=frozenset({"function_definition", "method_declaration"}),
     import_types=frozenset({"namespace_use_clause"}),
     call_types=frozenset({"function_call_expression", "member_call_expression"}),
+    container_bind_methods=frozenset({"bind", "singleton", "scoped", "instance"}),
     call_function_field="function",
     call_accessor_node_types=frozenset({"member_call_expression"}),
     call_accessor_field="name",
@@ -849,6 +851,18 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
         label_to_nid[normalised.lower()] = n["id"]
 
     seen_call_pairs: set[tuple[str, str]] = set()
+    seen_bind_pairs: set[tuple[str, str, str]] = set()
+
+    def _php_class_const_scope(n) -> str | None:
+        scope = n.child_by_field_name("scope")
+        if scope is None:
+            for c in n.children:
+                if c.is_named and c.type in ("name", "qualified_name", "identifier"):
+                    scope = c
+                    break
+        if scope is None:
+            return None
+        return _read_text(scope, source)
 
     def walk_calls(node, caller_nid: str) -> None:
         if node.type in config.function_boundary_types:
@@ -961,6 +975,43 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
                             "source_location": f"L{line}",
                             "weight": 1.0,
                         })
+
+            # Service container bindings: $this->app->bind(Foo::class, Bar::class)
+            if (node.type == "member_call_expression"
+                    and callee_name
+                    and callee_name in config.container_bind_methods):
+                args_node = node.child_by_field_name("arguments")
+                class_args: list[str] = []
+                if args_node:
+                    for arg in args_node.children:
+                        if arg.type != "argument":
+                            continue
+                        for inner in arg.children:
+                            if inner.type == "class_constant_access_expression":
+                                cls = _php_class_const_scope(inner)
+                                if cls:
+                                    class_args.append(cls)
+                                break
+                        if len(class_args) >= 2:
+                            break
+                if len(class_args) == 2:
+                    contract_name, impl_name = class_args
+                    contract_nid = label_to_nid.get(contract_name.lower())
+                    impl_nid = label_to_nid.get(impl_name.lower())
+                    if contract_nid and impl_nid and contract_nid != impl_nid:
+                        pair = (contract_nid, impl_nid, "bound_to")
+                        if pair not in seen_bind_pairs:
+                            seen_bind_pairs.add(pair)
+                            line = node.start_point[0] + 1
+                            edges.append({
+                                "source": contract_nid,
+                                "target": impl_nid,
+                                "relation": "bound_to",
+                                "confidence": "EXTRACTED",
+                                "source_file": str_path,
+                                "source_location": f"L{line}",
+                                "weight": 1.0,
+                            })
 
         for child in node.children:
             walk_calls(child, caller_nid)

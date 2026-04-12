@@ -234,6 +234,21 @@ def test_php_finds_imports():
     r = extract_php(FIXTURES / "sample.php")
     assert "imports" in _relations(r)
 
+def test_php_finds_container_bind():
+    r = extract_php(FIXTURES / "sample_php_container.php")
+    assert "bound_to" in _relations(r)
+
+def test_php_container_bind_links_contract_to_implementation():
+    r = extract_php(FIXTURES / "sample_php_container.php")
+    node_by_id = {n["id"]: n["label"] for n in r["nodes"]}
+    bound = [
+        (node_by_id.get(e["source"], e["source"]), node_by_id.get(e["target"], e["target"]))
+        for e in r["edges"] if e["relation"] == "bound_to"
+    ]
+    pairs = {pair for pair in bound}
+    assert ("PaymentGateway", "StripeGateway") in pairs
+    assert ("CashierGateway", "StripeGateway") in pairs
+
 
 # ── Swift ────────────────────────────────────────────────────────────────────
 
