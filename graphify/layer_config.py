@@ -49,8 +49,8 @@ def load_layers(config_path: Path) -> list[LayerConfig]:
         import yaml
     except ImportError:
         raise ImportError(
-            "pyyaml is required for layer configuration. "
-            "Install it with: pip install graphifyy[layers]"
+            "pyyaml is a required dependency but could not be imported. "
+            "Your installation may be corrupted; please reinstall graphify."
         )
 
     if not config_path.exists():
