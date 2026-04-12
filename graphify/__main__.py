@@ -733,14 +733,14 @@ def main() -> None:
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
-        print("    --graph <path>          path to graph.json (default graphify-out/graph.json)")
+        print("    --graph <path>          path to graph.json inside graphify-out/ (default graphify-out/graph.json)")
         print("  save-result             save a Q&A result to graphify-out/memory/ for graph feedback loop")
         print("    --question Q            the question asked")
         print("    --answer A              the answer to save")
         print("    --type T                query type: query|path_query|explain (default: query)")
         print("    --nodes N1 N2 ...       source node labels cited in the answer")
         print("    --memory-dir DIR        memory directory (default: graphify-out/memory)")
-        print("  benchmark [graph.json]  measure token reduction vs naive full-corpus approach")
+        print("  benchmark [graphify-out/graph.json]  measure token reduction vs naive full-corpus approach")
         print("  hook install            install post-commit/post-checkout git hooks (all platforms)")
         print("  hook uninstall          remove git hooks")
         print("  hook status             check if git hooks are installed")
@@ -873,9 +873,7 @@ def main() -> None:
         if len(sys.argv) < 3:
             print("Usage: graphify query \"<question>\" [--dfs] [--budget N] [--graph path]", file=sys.stderr)
             sys.exit(1)
-        from graphify.serve import _score_nodes, _bfs, _dfs, _subgraph_to_text
-        from graphify.security import sanitize_label
-        from networkx.readwrite import json_graph
+        from graphify.serve import _score_nodes, _bfs, _dfs, _subgraph_to_text, _load_graph
         question = sys.argv[2]
         use_dfs = "--dfs" in sys.argv
         budget = 2000
@@ -901,26 +899,7 @@ def main() -> None:
                 graph_path = args[i + 1]; i += 2
             else:
                 i += 1
-        # Load graph directly — validate_graph_path restricts to graphify-out/
-        # so for custom --graph paths we resolve and load directly after existence check
-        gp = Path(graph_path).resolve()
-        if not gp.exists():
-            print(f"error: graph file not found: {gp}", file=sys.stderr)
-            sys.exit(1)
-        if not gp.suffix == ".json":
-            print(f"error: graph file must be a .json file", file=sys.stderr)
-            sys.exit(1)
-        try:
-            import json as _json
-            import networkx as _nx
-            _raw = _json.loads(gp.read_text(encoding="utf-8"))
-            try:
-                G = json_graph.node_link_graph(_raw, edges="links")
-            except TypeError:
-                G = json_graph.node_link_graph(_raw)
-        except Exception as exc:
-            print(f"error: could not load graph: {exc}", file=sys.stderr)
-            sys.exit(1)
+        G = _load_graph(graph_path)
         terms = [t.lower() for t in question.split() if len(t) > 2]
         scored = _score_nodes(G, terms)
         if not scored:
@@ -950,7 +929,16 @@ def main() -> None:
         print(f"Saved to {out}")
     elif cmd == "benchmark":
         from graphify.benchmark import run_benchmark, print_benchmark
+        from graphify.security import validate_graph_path
         graph_path = sys.argv[2] if len(sys.argv) > 2 else "graphify-out/graph.json"
+        if Path(graph_path).suffix != ".json":
+            print(f"error: graph path must be a .json file, got: {graph_path!r}", file=sys.stderr)
+            sys.exit(1)
+        try:
+            graph_path = str(validate_graph_path(graph_path))
+        except (ValueError, FileNotFoundError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            sys.exit(1)
         # Try to load corpus_words from detect output
         corpus_words = None
         detect_path = Path(".graphify_detect.json")
