@@ -27,6 +27,12 @@ def _make_graph() -> nx.Graph:
     return G
 
 
+def _write_graph(path) -> None:
+    data = json_graph.node_link_data(_make_graph(), edges="links")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
 # --- _communities_from_graph ---
 
 def test_communities_from_graph_basic():
@@ -137,17 +143,33 @@ def test_subgraph_to_text_edge_included():
 
 # --- _load_graph ---
 
-def test_load_graph_roundtrip(tmp_path):
-    G = _make_graph()
-    data = json_graph.node_link_data(G, edges="links")
-    p = tmp_path / "graph.json"
-    p.write_text(json.dumps(data))
-    G2 = _load_graph(str(p))
-    assert G2.number_of_nodes() == G.number_of_nodes()
-    assert G2.number_of_edges() == G.number_of_edges()
+def test_load_graph_roundtrip(tmp_path, monkeypatch):
+    graph_path = tmp_path / "graphify-out" / "graph.json"
+    _write_graph(graph_path)
+    monkeypatch.chdir(tmp_path)
 
-def test_load_graph_missing_file(tmp_path):
+    G2 = _load_graph(str(graph_path))
+
+    assert G2.number_of_nodes() == _make_graph().number_of_nodes()
+    assert G2.number_of_edges() == _make_graph().number_of_edges()
+
+def test_load_graph_missing_file(tmp_path, monkeypatch):
     graphify_dir = tmp_path / "graphify-out"
     graphify_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+
     with pytest.raises(SystemExit):
         _load_graph(str(graphify_dir / "nonexistent.json"))
+
+
+def test_load_graph_rejects_path_outside_graphify_out(tmp_path, monkeypatch, capsys):
+    (tmp_path / "graphify-out").mkdir()
+    outside_path = tmp_path / "outside.json"
+    _write_graph(outside_path)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit):
+        _load_graph(str(outside_path))
+
+    err = capsys.readouterr().err
+    assert "Only paths inside graphify-out/" in err
