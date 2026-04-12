@@ -192,7 +192,7 @@ else:
 
 **Fast path:** If detection found zero docs, papers, and images (code-only corpus), skip Part B entirely and go straight to Part C. AST handles code - there is nothing for semantic subagents to do.
 
-**MANDATORY: You MUST use the Agent tool here. Reading files yourself one-by-one is forbidden - it is 5-10x slower. If you do not use the Agent tool you are doing this wrong.**
+**MANDATORY: You MUST use Codex subagents here via `spawn_agent`. Reading files yourself one-by-one is forbidden - it is 5-10x slower. If you do not use `spawn_agent` you are doing this wrong.**
 
 Before dispatching subagents, print a timing estimate:
 - Load `total_words` and file counts from `.graphify_detect.json`
@@ -230,7 +230,7 @@ Load files from `.graphify_uncached.txt`. Split into chunks of 20-25 files each.
 
 **Step B2 - Dispatch ALL subagents in a single message (Codex)**
 
-> **Codex platform:** Uses `spawn_agent` + `wait` + `close_agent` instead of the Agent tool.
+> **Codex platform:** Uses `spawn_agent` + `wait_agent` + `close_agent`.
 > Requires `multi_agent = true` under `[features]` in `~/.codex/config.toml`.
 > If `spawn_agent` is unavailable, tell the user to add that config and restart Codex.
 
@@ -242,7 +242,7 @@ spawn_agent(agent_type="worker", message="Your task is to perform the following.
 
 After all agents are dispatched, collect results sequentially:
 ```
-result = wait(handle); close_agent(handle)   # repeat per handle
+result = wait_agent(targets=[handle]); close_agent(target=handle)   # repeat per handle
 ```
 
 Parse each result as JSON. Accumulate nodes/edges/hyperedges across all results and write to `.graphify_semantic_new.json`.
@@ -628,18 +628,13 @@ print('graph.graphml written - open in Gephi, yEd, or any GraphML tool')
 python3 -m graphify.serve graphify-out/graph.json
 ```
 
-This starts a stdio MCP server that exposes tools: `query_graph`, `get_node`, `get_neighbors`, `get_community`, `god_nodes`, `graph_stats`, `shortest_path`. Add to Claude Desktop or any MCP-compatible agent orchestrator so other agents can query the graph live.
+This starts a stdio MCP server that exposes tools: `query_graph`, `get_node`, `get_neighbors`, `get_community`, `god_nodes`, `graph_stats`, `shortest_path`. Add to Codex or any MCP-compatible agent orchestrator so other agents can query the graph live.
 
-To configure in Claude Desktop, add to `claude_desktop_config.json`:
-```json
-{
-  "mcpServers": {
-    "graphify": {
-      "command": "python3",
-      "args": ["-m", "graphify.serve", "/absolute/path/to/graphify-out/graph.json"]
-    }
-  }
-}
+To configure in Codex, add this local MCP server to `~/.codex/config.toml`:
+```toml
+[mcp_servers.graphify]
+command = "python3"
+args = ["-m", "graphify.serve", "/absolute/path/to/graphify-out/graph.json"]
 ```
 
 ### Step 8 - Token reduction benchmark (only if total_words > 5000)
@@ -1217,18 +1212,18 @@ If a post-commit hook already exists, graphify appends to it rather than replaci
 
 ---
 
-## For native CLAUDE.md integration
+## For native AGENTS.md integration
 
-Run once per project to make graphify always-on in Claude Code sessions:
+Run once per project to make graphify always-on in Codex sessions:
 
 ```bash
-graphify claude install
+graphify codex install
 ```
 
-This writes a `## graphify` section to the local `CLAUDE.md` that instructs Claude to check the graph before answering codebase questions and rebuild it after code changes. No manual `/graphify` needed in future sessions.
+This writes a `## graphify` section to the local `AGETNTS.md` that instructs Codex to check the graph before answering codebase questions and rebuild it after code changes. No manual `/graphify` needed in future sessions.
 
 ```bash
-graphify claude uninstall  # remove the section
+graphify codex uninstall  # remove the section
 ```
 
 ---
