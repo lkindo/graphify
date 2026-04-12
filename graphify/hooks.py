@@ -40,11 +40,27 @@ if [ -z "$CHANGED" ]; then
     exit 0
 fi
 
+# Force UTF-8 for Python I/O so Unicode characters in graph output (e.g. the
+# arrows, checkmarks, and math symbols that appear in generated reports) do
+# not crash the encoder on Windows, where stdio and file I/O default to
+# cp1252 when not attached to a TTY. Git hooks always run detached.
+export PYTHONIOENCODING=utf-8
+export PYTHONUTF8=1
+
 """ + _PYTHON_DETECT + """
 export GRAPHIFY_CHANGED="$CHANGED"
 $GRAPHIFY_PYTHON -c "
 import os, sys
 from pathlib import Path
+
+# Belt and suspenders: even if the env vars above get dropped by some exotic
+# shell wrapper, reconfigure stdio to UTF-8 with a 'replace' fallback so a
+# stray non-Latin-1 character never crashes the hook.
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
 
 changed_raw = os.environ.get('GRAPHIFY_CHANGED', '')
 changed = [Path(f.strip()) for f in changed_raw.strip().splitlines() if f.strip()]
@@ -84,12 +100,22 @@ if [ ! -d "graphify-out" ]; then
     exit 0
 fi
 
+# Force UTF-8 for Python I/O (see post-commit hook for the same rationale).
+export PYTHONIOENCODING=utf-8
+export PYTHONUTF8=1
+
 """ + _PYTHON_DETECT + """
 echo "[graphify] Branch switched - rebuilding knowledge graph (code files)..."
 $GRAPHIFY_PYTHON -c "
+import sys
+# Belt and suspenders stdio reconfigure in case env vars get dropped.
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
 from graphify.watch import _rebuild_code
 from pathlib import Path
-import sys
 try:
     _rebuild_code(Path('.'))
 except Exception as exc:
