@@ -110,7 +110,7 @@ def install(platform: str = "claude") -> None:
         gemini_install()
         return
     if platform == "cursor":
-        _cursor_install()
+        _cursor_global_install()
         return
     if platform not in _PLATFORM_CONFIG:
         print(
@@ -401,6 +401,30 @@ This project has a graphify knowledge graph at graphify-out/.
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
 - After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
 """
+
+
+_CURSOR_USER_RULES = """\
+This workspace uses a graphify knowledge graph at graphify-out/.
+
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+"""
+
+
+def _cursor_global_install() -> None:
+    """Print guided global Cursor User Rules install steps."""
+    print("Cursor global setup uses User Rules in Settings, not a global .mdc file.")
+    print("These rules apply to Cursor Agent Chat across projects.")
+    print()
+    print("Open Cursor Settings > Rules > User Rules and paste this:")
+    print()
+    print(_CURSOR_USER_RULES.rstrip())
+    print()
+    print("For a project-local always-on rule in the current repo instead, run:")
+    print()
+    print("  graphify cursor install")
+    print()
 
 
 def _cursor_install(project_dir: Path) -> None:
@@ -729,7 +753,8 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor|antigravity)")
+        print("  install [--platform P]  install platform skill/global integration")
+        print("                           (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor|antigravity)")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -746,8 +771,8 @@ def main() -> None:
         print("  hook status             check if git hooks are installed")
         print("  gemini install          write GEMINI.md section + BeforeTool hook (Gemini CLI)")
         print("  gemini uninstall        remove GEMINI.md section + BeforeTool hook")
-        print("  cursor install          write .cursor/rules/graphify.mdc (Cursor)")
-        print("  cursor uninstall        remove .cursor/rules/graphify.mdc")
+        print("  cursor install          write project .cursor/rules/graphify.mdc (Cursor)")
+        print("  cursor uninstall        remove project .cursor/rules/graphify.mdc")
         print("  claude install          write graphify section to CLAUDE.md + PreToolUse hook (Claude Code)")
         print("  claude uninstall        remove graphify section from CLAUDE.md + PreToolUse hook")
         print("  codex install           write graphify section to AGENTS.md (Codex)")

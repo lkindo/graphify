@@ -71,10 +71,12 @@ pip install graphifyy && graphify install
 | Trae | `graphify install --platform trae` |
 | Trae CN | `graphify install --platform trae-cn` |
 | Gemini CLI | `graphify install --platform gemini` |
-| Cursor | `graphify cursor install` |
+| Cursor | `graphify install --platform cursor` |
 | Google Antigravity | `graphify antigravity install` |
 
 Codex users also need `multi_agent = true` under `[features]` in `~/.codex/config.toml` for parallel extraction. Factory Droid uses the `Task` tool for parallel subagent dispatch. OpenClaw and Aider use sequential extraction (parallel agent support is still early on those platforms). Trae uses the Agent tool for parallel subagent dispatch and does **not** support PreToolUse hooks — AGENTS.md is the always-on mechanism.
+
+For Cursor, `graphify install --platform cursor` prints global User Rules to paste into Cursor Settings. Use `graphify cursor install` when you want a project-local `.cursor/rules/graphify.mdc` file instead.
 
 Then open your AI coding assistant and type:
 
@@ -109,7 +111,7 @@ After building a graph, run this once in your project:
 
 **OpenCode** writes to `AGENTS.md` and also installs a **`tool.execute.before` plugin** (`.opencode/plugins/graphify.js` + `opencode.json` registration) that fires before bash tool calls and injects the graph reminder into tool output when the graph exists.
 
-**Cursor** writes `.cursor/rules/graphify.mdc` with `alwaysApply: true` — Cursor includes it in every conversation automatically, no hook needed.
+**Cursor** has two paths: `graphify install --platform cursor` prints global User Rules for `Cursor Settings > Rules > User Rules`, while `graphify cursor install` writes `.cursor/rules/graphify.mdc` with `alwaysApply: true` for the current project.
 
 **Gemini CLI** copies the skill to `~/.gemini/skills/graphify/SKILL.md`, writes a `GEMINI.md` section, and installs a `BeforeTool` hook in `.gemini/settings.json` that fires before file-read tool calls — same always-on mechanism as Claude Code.
 
@@ -229,6 +231,9 @@ When the user types `/graphify`, invoke the Skill tool with `skill: "graphify"` 
 graphify hook install
 graphify hook uninstall
 graphify hook status
+
+# Cursor global setup - prints User Rules text to paste into Cursor Settings
+graphify install --platform cursor
 
 # always-on assistant instructions - platform-specific
 graphify claude install            # CLAUDE.md + PreToolUse hook (Claude Code)
