@@ -77,6 +77,11 @@ _PLATFORM_CONFIG: dict[str, dict] = {
         "skill_dst": Path(".claude") / "skills" / "graphify" / "SKILL.md",
         "claude_md": True,
     },
+    "kiro": {
+        "skill_file": "skill-kiro.md",
+        "skill_dst": Path(".kiro") / "skills" / "graphify" / "SKILL.md",
+        "claude_md": False,
+    },
 }
 
 
@@ -151,6 +156,40 @@ Rules:
 _AGENTS_MD_MARKER = "## graphify"
 
 
+# Kiro steering file content (written to .kiro/steering/graphify.md)
+_KIRO_STEERING_SECTION = """\
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+"""
+
+_KIRO_STEERING_MARKER = "## graphify"
+
+# Kiro Agent Hook config (written to .kiro/hooks/graphify-pretool.json)
+_KIRO_HOOK_CONFIG = {
+    "name": "graphify-pretool",
+    "version": "1.0.0",
+    "description": "Check graphify knowledge graph before reading files",
+    "when": {
+        "type": "preToolUse",
+        "toolTypes": ["read"],
+    },
+    "then": {
+        "type": "runCommand",
+        "command": (
+            "[ -f graphify-out/graph.json ] && "
+            "echo 'graphify: Knowledge graph exists. Read graphify-out/GRAPH_REPORT.md "
+            "for god nodes and community structure before searching raw files.' || true"
+        ),
+    },
+}
+
+
 def _agents_install(project_dir: Path, platform: str) -> None:
     """Write the graphify section to the local AGENTS.md (Codex/OpenCode/OpenClaw)."""
     target = (project_dir or Path(".")) / "AGENTS.md"
@@ -199,6 +238,56 @@ def _agents_uninstall(project_dir: Path) -> None:
     else:
         target.unlink()
         print(f"AGENTS.md was empty after removal - deleted {target.resolve()}")
+
+
+def kiro_install(project_dir: Path | None = None) -> None:
+    """Write graphify steering file and hook to .kiro/ directory."""
+    root = project_dir or Path(".")
+
+    # Steering file
+    steering_dir = root / ".kiro" / "steering"
+    steering_file = steering_dir / "graphify.md"
+    steering_dir.mkdir(parents=True, exist_ok=True)
+    if steering_file.exists() and _KIRO_STEERING_MARKER in steering_file.read_text(encoding="utf-8"):
+        print("graphify already configured in .kiro/steering/graphify.md")
+    else:
+        steering_file.write_text(_KIRO_STEERING_SECTION, encoding="utf-8")
+        print(f"graphify steering written to {steering_file.resolve()}")
+
+    # Hook file
+    hooks_dir = root / ".kiro" / "hooks"
+    hook_file = hooks_dir / "graphify-pretool.json"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    if hook_file.exists():
+        print("graphify hook already installed in .kiro/hooks/graphify-pretool.json")
+    else:
+        hook_file.write_text(json.dumps(_KIRO_HOOK_CONFIG, indent=2), encoding="utf-8")
+        print(f"graphify hook written to {hook_file.resolve()}")
+
+    print()
+    print("Kiro will now check the knowledge graph before answering")
+    print("codebase questions and rebuild it after code changes.")
+
+
+def kiro_uninstall(project_dir: Path | None = None) -> None:
+    """Remove graphify steering file and hook from .kiro/ directory."""
+    root = project_dir or Path(".")
+
+    # Steering file
+    steering_file = root / ".kiro" / "steering" / "graphify.md"
+    if steering_file.exists():
+        steering_file.unlink()
+        print(f"graphify steering removed from {steering_file.resolve()}")
+    else:
+        print("No .kiro/steering/graphify.md found - nothing to do")
+
+    # Hook file
+    hook_file = root / ".kiro" / "hooks" / "graphify-pretool.json"
+    if hook_file.exists():
+        hook_file.unlink()
+        print(f"graphify hook removed from {hook_file.resolve()}")
+    else:
+        print("No .kiro/hooks/graphify-pretool.json found - hook not installed")
 
 
 def claude_install(project_dir: Path | None = None) -> None:
@@ -309,7 +398,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|claw|droid|kiro)")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -328,6 +417,8 @@ def main() -> None:
         print("  claw uninstall          remove graphify section from AGENTS.md")
         print("  droid install           write graphify section to AGENTS.md (Factory Droid)")
         print("  droid uninstall         remove graphify section from AGENTS.md")
+        print("  kiro install            write graphify steering + hook to .kiro/ (Kiro)")
+        print("  kiro uninstall          remove graphify steering + hook from .kiro/")
         print()
         return
 
@@ -356,6 +447,15 @@ def main() -> None:
             claude_uninstall()
         else:
             print("Usage: graphify claude [install|uninstall]", file=sys.stderr)
+            sys.exit(1)
+    elif cmd == "kiro":
+        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
+        if subcmd == "install":
+            kiro_install()
+        elif subcmd == "uninstall":
+            kiro_uninstall()
+        else:
+            print("Usage: graphify kiro [install|uninstall]", file=sys.stderr)
             sys.exit(1)
     elif cmd in ("codex", "opencode", "claw", "droid"):
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
