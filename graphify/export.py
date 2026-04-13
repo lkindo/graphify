@@ -378,8 +378,8 @@ def to_html(
         label = sanitize_label(data.get("label", node_id))
         deg = degree.get(node_id, 1)
         size = 10 + 30 * (deg / max_deg)
-        # Only show label for high-degree nodes by default; others show on hover
-        font_size = 12 if deg >= max_deg * 0.15 else 0
+        # Show labels for any node that has at least 2 connections (instead of the top 15%)
+        font_size = 12 if deg >= 2 else 0
         vis_nodes.append({
             "id": node_id,
             "label": label,
