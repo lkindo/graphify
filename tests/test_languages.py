@@ -508,3 +508,110 @@ def test_julia_no_dangling_edges():
     node_ids = {n["id"] for n in r["nodes"]}
     for e in r["edges"]:
         assert e["source"] in node_ids, f"Dangling source: {e}"
+
+
+# ── Dart / Flutter ────────────────────────────────────────────────────────────
+
+from graphify.extract import extract_dart
+
+
+def test_dart_no_error():
+    r = extract_dart(FIXTURES / "sample.dart")
+    assert "error" not in r, r.get("error")
+
+
+def test_dart_finds_classes():
+    r = extract_dart(FIXTURES / "sample.dart")
+    labels = _labels(r)
+    assert any("ItemListWidget" in l for l in labels)
+    assert any("ItemController" in l for l in labels)
+    assert any("JsonDataProcessor" in l for l in labels)
+
+
+def test_dart_finds_abstract_class():
+    r = extract_dart(FIXTURES / "sample.dart")
+    labels = _labels(r)
+    assert any("DataProcessor" in l for l in labels)
+
+
+def test_dart_finds_mixin():
+    r = extract_dart(FIXTURES / "sample.dart")
+    labels = _labels(r)
+    assert any("Loggable" in l for l in labels)
+
+
+def test_dart_finds_enum():
+    r = extract_dart(FIXTURES / "sample.dart")
+    labels = _labels(r)
+    assert any("AppState" in l for l in labels)
+
+
+def test_dart_finds_typedef():
+    r = extract_dart(FIXTURES / "sample.dart")
+    labels = _labels(r)
+    assert any("ItemCallback" in l for l in labels)
+
+
+def test_dart_finds_methods():
+    r = extract_dart(FIXTURES / "sample.dart")
+    labels = _labels(r)
+    assert any("build()" in l for l in labels)
+    assert any("addItem()" in l for l in labels)
+
+
+def test_dart_finds_imports():
+    r = extract_dart(FIXTURES / "sample.dart")
+    assert "imports" in _relations(r)
+    import_targets = [
+        e["target"] for e in r["edges"] if e["relation"] == "imports"
+    ]
+    # flutter and dart packages
+    node_labels = {n["id"]: n["label"] for n in r["nodes"]}
+    imported_labels = [node_labels.get(t, t) for t in import_targets]
+    assert any("flutter" in l for l in imported_labels)
+    assert any("dart" in l for l in imported_labels)
+
+
+def test_dart_finds_inherits():
+    r = extract_dart(FIXTURES / "sample.dart")
+    inherits = [e for e in r["edges"] if e["relation"] == "inherits"]
+    assert len(inherits) >= 1
+
+
+def test_dart_finds_implements():
+    r = extract_dart(FIXTURES / "sample.dart")
+    impl_edges = [e for e in r["edges"] if e["relation"] == "implements"]
+    assert len(impl_edges) >= 1
+
+
+def test_dart_finds_mixin_usage():
+    r = extract_dart(FIXTURES / "sample.dart")
+    uses_edges = [e for e in r["edges"] if e["relation"] == "uses"]
+    assert len(uses_edges) >= 1
+
+
+def test_dart_no_dangling_edges():
+    r = extract_dart(FIXTURES / "sample.dart")
+    node_ids = {n["id"] for n in r["nodes"]}
+    for e in r["edges"]:
+        assert e["source"] in node_ids, f"Dangling source: {e}"
+
+
+def test_dart_has_source_location():
+    r = extract_dart(FIXTURES / "sample.dart")
+    for n in r["nodes"]:
+        assert "source_location" in n
+        assert n["source_location"].startswith("L")
+
+
+def test_dart_collect_files_includes_dart(tmp_path):
+    from graphify.extract import collect_files
+    dart_file = tmp_path / "main.dart"
+    dart_file.write_text("void main() {}")
+    files = collect_files(tmp_path)
+    assert any(f.suffix == ".dart" for f in files)
+
+
+def test_dart_in_detect_code_extensions():
+    from graphify.detect import CODE_EXTENSIONS
+    assert ".dart" in CODE_EXTENSIONS

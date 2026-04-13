@@ -1165,53 +1165,6 @@ def extract_php(path: Path) -> dict:
     return _extract_generic(path, _PHP_CONFIG)
 
 
-def extract_blade(path: Path) -> dict:
-    """Extract @include, <livewire:> components, and wire:click bindings from Blade templates."""
-    import re
-    try:
-        src = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return {"error": f"cannot read {path}"}
-
-    file_nid = _make_id(str(path))
-    nodes = [{"id": file_nid, "label": path.name, "file_type": "code",
-              "source_file": str(path), "source_location": None}]
-    edges = []
-
-    # @include('path.to.partial') or @include("path.to.partial")
-    for m in re.finditer(r"@include\(['\"]([^'\"]+)['\"]", src):
-        tgt = m.group(1).replace(".", "/")
-        tgt_nid = _make_id(tgt)
-        if tgt_nid not in {n["id"] for n in nodes}:
-            nodes.append({"id": tgt_nid, "label": m.group(1), "file_type": "code",
-                          "source_file": str(path), "source_location": None})
-        edges.append({"source": file_nid, "target": tgt_nid, "relation": "includes",
-                      "confidence": "EXTRACTED", "confidence_score": 1.0,
-                      "source_file": str(path), "source_location": None, "weight": 1.0})
-
-    # <livewire:component.name /> or <livewire:component.name>
-    for m in re.finditer(r"<livewire:([\w.\-]+)", src):
-        tgt_nid = _make_id(m.group(1))
-        if tgt_nid not in {n["id"] for n in nodes}:
-            nodes.append({"id": tgt_nid, "label": m.group(1), "file_type": "code",
-                          "source_file": str(path), "source_location": None})
-        edges.append({"source": file_nid, "target": tgt_nid, "relation": "uses_component",
-                      "confidence": "EXTRACTED", "confidence_score": 1.0,
-                      "source_file": str(path), "source_location": None, "weight": 1.0})
-
-    # wire:click="methodName"
-    for m in re.finditer(r'wire:click=["\']([^"\']+)["\']', src):
-        tgt_nid = _make_id(m.group(1))
-        if tgt_nid not in {n["id"] for n in nodes}:
-            nodes.append({"id": tgt_nid, "label": m.group(1), "file_type": "code",
-                          "source_file": str(path), "source_location": None})
-        edges.append({"source": file_nid, "target": tgt_nid, "relation": "binds_method",
-                      "confidence": "EXTRACTED", "confidence_score": 1.0,
-                      "source_file": str(path), "source_location": None, "weight": 1.0})
-
-    return {"nodes": nodes, "edges": edges}
-
-
 def extract_lua(path: Path) -> dict:
     """Extract functions, methods, require() imports, and calls from a .lua file."""
     return _extract_generic(path, _LUA_CONFIG)
@@ -2615,6 +2568,194 @@ def extract_elixir(path: Path) -> dict:
     return {"nodes": nodes, "edges": clean_edges, "input_tokens": 0, "output_tokens": 0}
 
 
+# ── Dart extractor (regex-based, no tree-sitter-dart on PyPI) ────────────────
+
+def extract_dart(path: Path) -> dict:
+    """Extract classes, mixins, enums, functions, imports, and calls from a .dart file.
+
+    Uses regex-based parsing because no tree-sitter-dart package is available on
+    PyPI with the new Language API (>=0.23). Handles Flutter-specific patterns:
+    StatelessWidget / StatefulWidget subclasses, State<T>, abstract classes,
+    mixins, enums, typedefs, and package imports.
+    """
+    try:
+        source = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        return {"nodes": [], "edges": [], "error": str(e)}
+
+    stem = path.stem
+    str_path = str(path)
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    seen_ids: set[str] = set()
+
+    def add_node(nid: str, label: str, line: int, kind: str = "code") -> None:
+        if nid not in seen_ids:
+            seen_ids.add(nid)
+            nodes.append({
+                "id": nid,
+                "label": label,
+                "file_type": kind,
+                "source_file": str_path,
+                "source_location": f"L{line}",
+            })
+
+    def add_edge(src: str, tgt: str, relation: str, line: int,
+                 confidence: str = "EXTRACTED", weight: float = 1.0) -> None:
+        edges.append({
+            "source": src,
+            "target": tgt,
+            "relation": relation,
+            "confidence": confidence,
+            "source_file": str_path,
+            "source_location": f"L{line}",
+            "weight": weight,
+        })
+
+    src_lines = source.splitlines()
+
+    # ── File node ────────────────────────────────────────────────────────────
+    file_nid = _make_id(str_path)
+    add_node(file_nid, path.name, 1)
+
+    # ── Imports ──────────────────────────────────────────────────────────────
+    # Matches: import 'package:flutter/material.dart'; or import 'dart:async';
+    _RE_IMPORT = re.compile(
+        r"""^import\s+['"](?:package:)?(?P<scheme>dart:)?(?P<pkg>[^/'"]+)""",
+        re.MULTILINE,
+    )
+    for m in _RE_IMPORT.finditer(source):
+        raw_pkg = m.group("pkg").split("/")[0]
+        # Keep "dart:" prefix to avoid collision with keywords like "async"
+        pkg = f"dart:{raw_pkg}" if m.group("scheme") else raw_pkg
+        tgt_nid = _make_id(pkg)
+        line = source[: m.start()].count("\n") + 1
+        add_node(tgt_nid, pkg, line)
+        add_edge(file_nid, tgt_nid, "imports", line)
+
+    # ── Class / mixin / enum / abstract class ────────────────────────────────
+    _RE_CLASS = re.compile(
+        r"^(?:abstract\s+)?(?:base\s+|final\s+|sealed\s+|interface\s+)?"
+        r"(?P<kind>class|mixin|enum|extension)\s+(?P<cls_name>\w+)"
+        r"(?:<[^{]*?>)?"
+        r"(?:\s+extends\s+(?P<extends>\w+))?"
+        r"(?:\s+with\s+(?P<with>[^{]+?))?"
+        r"(?:\s+implements\s+(?P<impl>[^{]+?))?(?=\s*[{<]|\s*$)",
+        re.MULTILINE,
+    )
+    for m in _RE_CLASS.finditer(source):
+        cls_name = m.group("cls_name")
+        kind = m.group("kind")
+        line = source[: m.start()].count("\n") + 1
+        cls_nid = _make_id(stem, cls_name)
+        label = cls_name if kind == "class" else f"{kind} {cls_name}"
+        add_node(cls_nid, label, line)
+        add_edge(file_nid, cls_nid, "defines", line)
+
+        if m.group("extends"):
+            parent = m.group("extends").strip()
+            add_edge(cls_nid, _make_id(stem, parent), "inherits", line, confidence="EXTRACTED")
+
+        if m.group("with"):
+            for mixin_name in re.split(r"[,\s]+", m.group("with").strip()):
+                mixin_name = mixin_name.strip()
+                if mixin_name:
+                    add_edge(cls_nid, _make_id(stem, mixin_name), "uses", line, confidence="EXTRACTED")
+
+        if m.group("impl"):
+            for iface in re.split(r"[,\s]+", m.group("impl").strip()):
+                iface = iface.strip()
+                if iface:
+                    add_edge(cls_nid, _make_id(stem, iface), "implements", line, confidence="EXTRACTED")
+
+    # ── typedef ──────────────────────────────────────────────────────────────
+    _RE_TYPEDEF = re.compile(r"^typedef\s+(\w+)", re.MULTILINE)
+    for m in _RE_TYPEDEF.finditer(source):
+        td_name = m.group(1)
+        line = source[: m.start()].count("\n") + 1
+        nid = _make_id(stem, td_name)
+        add_node(nid, f"typedef {td_name}", line)
+        add_edge(file_nid, nid, "defines", line)
+
+    # ── Build class start-line map for scope resolution ──────────────────────
+    class_lines: list[tuple[int, str]] = []
+    for m in _RE_CLASS.finditer(source):
+        line = source[: m.start()].count("\n") + 1
+        cls_nid = _make_id(stem, m.group("cls_name"))
+        if cls_nid in seen_ids:
+            class_lines.append((line, cls_nid))
+    class_lines.sort()
+
+    def _scope_nid(func_line: int) -> str:
+        owner = file_nid
+        for cls_line, cls_nid in class_lines:
+            if cls_line <= func_line:
+                owner = cls_nid
+            else:
+                break
+        return owner
+
+    # ── Functions and methods ─────────────────────────────────────────────────
+    _SKIP_NAMES = frozenset({
+        "if", "else", "for", "while", "switch", "do", "try", "catch",
+        "return", "throw", "assert", "await", "yield", "new", "super",
+        "this", "print", "get", "set",
+    })
+
+    _RE_FUNC = re.compile(
+        r"^[ \t]*(?:(?:@\w+\s+)*)"
+        r"(?:(?:static|async|override|abstract|external|factory|const|late|final)\s+)*"
+        r"(?:Future<[^>]+>|Stream<[^>]+>|[\w<>\[\]?]+)\s+"
+        r"(?P<func_name>_?\w+)\s*\(",
+        re.MULTILINE,
+    )
+
+    func_records: list[tuple[str, int]] = []
+    for m in _RE_FUNC.finditer(source):
+        fn_name = m.group("func_name")
+        if fn_name in _SKIP_NAMES:
+            continue
+        line = source[: m.start()].count("\n") + 1
+        scope = _scope_nid(line)
+        if scope == file_nid:
+            func_nid = _make_id(stem, fn_name)
+        else:
+            scope_suffix = scope.split("_")[-1]
+            func_nid = _make_id(stem, scope_suffix, fn_name)
+        label = f"{fn_name}()"
+        add_node(func_nid, label, line)
+        rel = "defines" if scope == file_nid else "has_method"
+        add_edge(scope, func_nid, rel, line)
+        func_records.append((func_nid, line))
+
+    # ── Call extraction ───────────────────────────────────────────────────────
+    _RE_CALL = re.compile(r"(?:(\w+)\.)?(?P<callee>\w+)\s*\(", re.MULTILINE)
+    known_funcs: dict[str, str] = {
+        n["label"].rstrip("()"): n["id"]
+        for n in nodes
+        if n["label"].endswith("()")
+    }
+
+    for func_nid, func_line in func_records:
+        body = "\n".join(src_lines[func_line: func_line + 30])
+        for cm in _RE_CALL.finditer(body):
+            callee = cm.group("callee")
+            if callee in _SKIP_NAMES:
+                continue
+            if callee in known_funcs:
+                call_line = func_line + body[: cm.start()].count("\n")
+                add_edge(func_nid, known_funcs[callee], "calls", call_line, confidence="EXTRACTED")
+
+    # ── Clean edges ───────────────────────────────────────────────────────────
+    _EXTERNAL_OK = {"imports", "inherits", "implements", "uses"}
+    clean_edges = [
+        e for e in edges
+        if e["source"] in seen_ids and (e["target"] in seen_ids or e["relation"] in _EXTERNAL_OK)
+    ]
+    return {"nodes": nodes, "edges": clean_edges, "input_tokens": 0, "output_tokens": 0}
+
+
+
 # ── Main extract and collect_files ────────────────────────────────────────────
 
 
@@ -2693,6 +2834,7 @@ def extract(paths: list[Path]) -> dict:
         ".m": extract_objc,
         ".mm": extract_objc,
         ".jl": extract_julia,
+        ".dart": extract_dart,
         ".vue": extract_js,
         ".svelte": extract_js,
     }
@@ -2702,11 +2844,7 @@ def extract(paths: list[Path]) -> dict:
     for i, path in enumerate(paths):
         if total >= _PROGRESS_INTERVAL and i % _PROGRESS_INTERVAL == 0 and i > 0:
             print(f"  AST extraction: {i}/{total} files ({i * 100 // total}%)", flush=True)
-        # .blade.php must be checked before suffix lookup since Path.suffix returns .php
-        if path.name.endswith(".blade.php"):
-            extractor = extract_blade
-        else:
-            extractor = _DISPATCH.get(path.suffix)
+        extractor = _DISPATCH.get(path.suffix)
         if extractor is None:
             continue
         cached = load_cached(path, root)
@@ -2753,7 +2891,7 @@ def collect_files(target: Path, *, follow_symlinks: bool = False, root: Path | N
         ".java", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp",
         ".rb", ".cs", ".kt", ".kts", ".scala", ".php", ".swift",
         ".lua", ".toc", ".zig", ".ps1",
-        ".m", ".mm",
+        ".m", ".mm", ".dart",
     }
     from graphify.detect import _load_graphifyignore, _is_ignored
     ignore_root = root if root is not None else target
