@@ -234,6 +234,19 @@ def test_php_finds_imports():
     r = extract_php(FIXTURES / "sample.php")
     assert "imports" in _relations(r)
 
+def test_php_finds_static_method_call():
+    r = extract_php(FIXTURES / "sample_php_static_call.php")
+    assert "uses_static" in _relations(r)
+
+def test_php_static_call_target_is_holding_class():
+    r = extract_php(FIXTURES / "sample_php_static_call.php")
+    node_by_id = {n["id"]: n["label"] for n in r["nodes"]}
+    uses_static = [
+        (node_by_id.get(e["source"], e["source"]), node_by_id.get(e["target"], e["target"]))
+        for e in r["edges"] if e["relation"] == "uses_static"
+    ]
+    assert any("StringHelper" in tgt for _, tgt in uses_static)
+
 
 # ── Swift ────────────────────────────────────────────────────────────────────
 
