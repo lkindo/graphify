@@ -80,6 +80,9 @@ _ASSET_DIR_MARKERS = {".imageset", ".xcassets", ".appiconset", ".colorset", ".la
 
 
 def classify_file(path: Path) -> FileType | None:
+    # Compound extensions must be checked before simple suffix lookup
+    if path.name.lower().endswith(".blade.php"):
+        return FileType.CODE
     ext = path.suffix.lower()
     if ext in CODE_EXTENSIONS:
         return FileType.CODE
@@ -241,6 +244,13 @@ _SKIP_DIRS = {
     ".tox", ".eggs", "*.egg-info",
 }
 
+# Large generated files that are never useful to extract
+_SKIP_FILES = {
+    "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "Cargo.lock", "poetry.lock", "Gemfile.lock",
+    "composer.lock", "go.sum", "go.work.sum",
+}
+
 def _is_noise_dir(part: str) -> bool:
     """Return True if this directory name looks like a venv, cache, or dep dir."""
     if part in _SKIP_DIRS:
@@ -357,6 +367,8 @@ def detect(root: Path, *, follow_symlinks: bool = False) -> dict:
                     and not _is_ignored(dp / d, root, ignore_patterns)
                 ]
             for fname in filenames:
+                if fname in _SKIP_FILES:
+                    continue
                 p = dp / fname
                 if p not in seen:
                     seen.add(p)

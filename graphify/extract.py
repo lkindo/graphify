@@ -2803,6 +2803,7 @@ def extract_dart(path: Path) -> dict:
 
 
 
+
 # ── Main extract and collect_files ────────────────────────────────────────────
 
 
@@ -2891,7 +2892,11 @@ def extract(paths: list[Path]) -> dict:
     for i, path in enumerate(paths):
         if total >= _PROGRESS_INTERVAL and i % _PROGRESS_INTERVAL == 0 and i > 0:
             print(f"  AST extraction: {i}/{total} files ({i * 100 // total}%)", flush=True)
-        extractor = _DISPATCH.get(path.suffix)
+        # .blade.php must be checked before suffix lookup since Path.suffix returns .php
+        if path.name.endswith(".blade.php"):
+            extractor = extract_blade
+        else:
+            extractor = _DISPATCH.get(path.suffix)
         if extractor is None:
             continue
         cached = load_cached(path, root)
