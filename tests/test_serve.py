@@ -6,7 +6,9 @@ from networkx.readwrite import json_graph
 
 from graphify.serve import (
     _communities_from_graph,
+    _find_node,
     _score_nodes,
+    _strip_diacritics,
     _bfs,
     _dfs,
     _subgraph_to_text,
@@ -151,3 +153,96 @@ def test_load_graph_missing_file(tmp_path):
     graphify_dir.mkdir()
     with pytest.raises(SystemExit):
         _load_graph(str(graphify_dir / "nonexistent.json"))
+
+
+# --- diacritic-insensitive scoring via norm_label ---
+
+def _make_diacritic_graph(with_norm: bool = True) -> nx.Graph:
+    """Graph with diacritic labels.  with_norm=True simulates a rebuilt graph."""
+    G = nx.Graph()
+    attrs = {"source_location": None, "community": 5}
+    G.add_node("d1", label="Přehled základních cvičení",
+               source_file="docs/zakladni-cviceni.md", **attrs)
+    G.add_node("d2", label="Tréninkový plán",
+               source_file="docs/treninkovy-plan.md", **attrs)
+    G.add_node("d3", label="Préparation du résumé",
+               source_file="notes/preparation-resume.md",
+               community=1, source_location=None)
+    if with_norm:
+        for nid, d in G.nodes(data=True):
+            d["norm_label"] = _strip_diacritics(d["label"]).lower()
+    G.add_edge("d1", "d2", relation="related", confidence="INFERRED")
+    return G
+
+
+# --- _strip_diacritics (fallback helper) ---
+
+def test_strip_diacritics_polish():
+    assert _strip_diacritics("ćwiczenia") == "cwiczenia"
+    assert _strip_diacritics("ćwiczenia z lukami") == "cwiczenia z lukami"
+
+def test_strip_diacritics_french():
+    assert _strip_diacritics("résumé") == "resume"
+
+def test_strip_diacritics_ascii_passthrough():
+    assert _strip_diacritics("hello world") == "hello world"
+    assert _strip_diacritics("") == ""
+
+
+# --- _score_nodes with norm_label ---
+
+def test_score_nodes_ascii_matches_diacritic_label():
+    """ASCII query 'prehled cviceni' matches norm_label from 'Přehled základních cvičení'."""
+    G = _make_diacritic_graph()
+    scored = _score_nodes(G, ["prehled", "cviceni"])
+    nids = [nid for _, nid in scored]
+    assert "d1" in nids
+    assert scored[0][1] == "d1"
+
+def test_score_nodes_diacritic_query_still_works():
+    G = _make_diacritic_graph()
+    scored = _score_nodes(G, ["přehled"])
+    assert any(nid == "d1" for _, nid in scored)
+
+def test_score_nodes_french_diacritics():
+    G = _make_diacritic_graph()
+    scored = _score_nodes(G, ["resume"])
+    assert any(nid == "d3" for _, nid in scored)
+
+def test_score_nodes_fallback_without_norm_label():
+    """Old graphs without norm_label still get diacritic matching via fallback."""
+    G = _make_diacritic_graph(with_norm=False)
+    scored = _score_nodes(G, ["prehled"])
+    assert any(nid == "d1" for _, nid in scored)
+
+
+# --- _find_node with norm_label ---
+
+def test_find_node_ascii_query():
+    G = _make_diacritic_graph()
+    assert "d1" in _find_node(G, "prehled")
+
+def test_find_node_diacritic_query():
+    G = _make_diacritic_graph()
+    assert "d1" in _find_node(G, "přehled")
+
+def test_find_node_fallback_without_norm_label():
+    G = _make_diacritic_graph(with_norm=False)
+    assert "d1" in _find_node(G, "prehled")
+
+
+# --- _subgraph_to_text relevance ordering ---
+
+def test_subgraph_to_text_relevance_ordering():
+    G = _make_diacritic_graph()
+    scores = {"d1": 2.0, "d2": 0.5}
+    text = _subgraph_to_text(G, {"d1", "d2"}, [], node_scores=scores)
+    lines = text.strip().split("\n")
+    d1_pos = next(i for i, l in enumerate(lines) if "Přehled" in l)
+    d2_pos = next(i for i, l in enumerate(lines) if "Tréninkový" in l)
+    assert d1_pos < d2_pos
+
+def test_subgraph_to_text_no_scores_falls_back_to_degree():
+    G = _make_diacritic_graph()
+    text = _subgraph_to_text(G, {"d1", "d2"}, [])
+    assert "NODE" in text

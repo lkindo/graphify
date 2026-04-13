@@ -282,6 +282,13 @@ def attach_hyperedges(G: nx.Graph, hyperedges: list) -> None:
     G.graph["hyperedges"] = existing
 
 
+def _strip_diacritics(text: str) -> str:
+    """Normalize diacritics for search: ćwiczenia → cwiczenia, résumé → resume."""
+    import unicodedata
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
+
+
 def to_json(G: nx.Graph, communities: dict[int, list[str]], output_path: str) -> None:
     node_community = _node_community_map(communities)
     try:
@@ -290,6 +297,8 @@ def to_json(G: nx.Graph, communities: dict[int, list[str]], output_path: str) ->
         data = json_graph.node_link_data(G)
     for node in data["nodes"]:
         node["community"] = node_community.get(node["id"])
+        label = node.get("label", "")
+        node["norm_label"] = _strip_diacritics(label).lower()
     for link in data["links"]:
         if "confidence_score" not in link:
             conf = link.get("confidence", "EXTRACTED")

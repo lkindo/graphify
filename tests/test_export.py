@@ -38,6 +38,30 @@ def test_to_json_nodes_have_community():
         for node in data["nodes"]:
             assert "community" in node
 
+def test_to_json_nodes_have_norm_label():
+    G = make_graph()
+    communities = cluster(G)
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "graph.json"
+        to_json(G, communities, str(out))
+        data = json.loads(out.read_text())
+        for node in data["nodes"]:
+            assert "norm_label" in node
+            assert node["norm_label"] == node["norm_label"].lower()
+
+def test_to_json_norm_label_strips_diacritics():
+    """Build a graph with a diacritic label and verify norm_label is stripped."""
+    import networkx as nx
+    G = nx.Graph()
+    G.add_node("x", label="Přehled cvičení", file_type="document",
+               source_file="test.md", source_location=None)
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "graph.json"
+        to_json(G, {}, str(out))
+        data = json.loads(out.read_text())
+        node = data["nodes"][0]
+        assert node["norm_label"] == "prehled cviceni"
+
 def test_to_cypher_creates_file():
     G = make_graph()
     with tempfile.TemporaryDirectory() as tmp:
