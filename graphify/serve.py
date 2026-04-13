@@ -39,6 +39,16 @@ def _communities_from_graph(G: nx.Graph) -> dict[int, list[str]]:
     return communities
 
 
+def _load_hierarchy(graph_path: str) -> dict | None:
+    """Load hierarchy metadata from graph.json if present."""
+    try:
+        resolved = Path(graph_path).resolve()
+        data = json.loads(resolved.read_text(encoding="utf-8"))
+        return data.get("hierarchy")
+    except Exception:
+        return None
+
+
 def _score_nodes(G: nx.Graph, terms: list[str]) -> list[tuple[float, str]]:
     scored = []
     for nid, data in G.nodes(data=True):
@@ -88,7 +98,8 @@ def _subgraph_to_text(G: nx.Graph, nodes: set[str], edges: list[tuple], token_bu
     lines = []
     for nid in sorted(nodes, key=lambda n: G.degree(n), reverse=True):
         d = G.nodes[nid]
-        line = f"NODE {sanitize_label(d.get('label', nid))} [src={d.get('source_file', '')} loc={d.get('source_location', '')} community={d.get('community', '')}]"
+        topic_str = f" topic={d.get('topic', '')}" if d.get('topic') is not None else ""
+        line = f"NODE {sanitize_label(d.get('label', nid))} [src={d.get('source_file', '')} loc={d.get('source_location', '')} community={d.get('community', '')}{topic_str}]"
         lines.append(line)
     for u, v in edges:
         if u in nodes and v in nodes:
@@ -119,6 +130,7 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
 
     G = _load_graph(graph_path)
     communities = _communities_from_graph(G)
+    hierarchy = _load_hierarchy(graph_path)
 
     server = Server("graphify")
 
@@ -193,6 +205,22 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
                     "required": ["source", "target"],
                 },
             ),
+            types.Tool(
+                name="get_topics",
+                description="Return L0 topic overview - the broadest groupings of knowledge. Each topic contains multiple communities. Use this for a high-level map before drilling down.",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            types.Tool(
+                name="drill_down",
+                description="Drill into a specific L0 topic to see its L1 communities and their nodes. Use after get_topics to explore a specific area.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "topic_id": {"type": "integer", "description": "Topic ID from get_topics"},
+                    },
+                    "required": ["topic_id"],
+                },
+            ),
         ]
 
     def _tool_query_graph(arguments: dict) -> str:
@@ -216,14 +244,14 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
         if not matches:
             return f"No node matching '{label}' found."
         nid, d = matches[0]
+        topic_line = f"\n  Topic: {d.get('topic', '')}" if d.get('topic') is not None else ""
         return "\n".join([
             f"Node: {d.get('label', nid)}",
             f"  ID: {nid}",
             f"  Source: {d.get('source_file', '')} {d.get('source_location', '')}",
             f"  Type: {d.get('file_type', '')}",
             f"  Community: {d.get('community', '')}",
-            f"  Degree: {G.degree(nid)}",
-        ])
+        ]) + topic_line + f"\n  Degree: {G.degree(nid)}"
 
     def _tool_get_neighbors(arguments: dict) -> str:
         label = arguments["label"].lower()
@@ -262,14 +290,59 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
     def _tool_graph_stats(_: dict) -> str:
         confs = [d.get("confidence", "EXTRACTED") for _, _, d in G.edges(data=True)]
         total = len(confs) or 1
+        topics_count = len(hierarchy.get("l0_topics", {})) if hierarchy else 0
+        topics_line = f"Topics: {topics_count}\n" if topics_count > 0 else ""
         return (
             f"Nodes: {G.number_of_nodes()}\n"
             f"Edges: {G.number_of_edges()}\n"
+            f"{topics_line}"
             f"Communities: {len(communities)}\n"
             f"EXTRACTED: {round(confs.count('EXTRACTED')/total*100)}%\n"
             f"INFERRED: {round(confs.count('INFERRED')/total*100)}%\n"
             f"AMBIGUOUS: {round(confs.count('AMBIGUOUS')/total*100)}%\n"
         )
+
+    def _tool_get_topics(_: dict) -> str:
+        if not hierarchy:
+            return "No hierarchy data available. Rebuild the graph with hierarchical_cluster() to enable topics."
+        l0_topics = hierarchy.get("l0_topics", {})
+        l0_labels = hierarchy.get("l0_labels", {})
+        l0_cohesion = hierarchy.get("l0_cohesion", {})
+        if not l0_topics:
+            return "No topics found."
+        lines = [f"Topics ({len(l0_topics)} total):"]
+        for tid in sorted(l0_topics.keys(), key=int):
+            cids = l0_topics[tid]
+            label = l0_labels.get(str(tid), f"Topic {tid}")
+            total_nodes = sum(len(communities.get(int(c), [])) for c in cids)
+            coh = l0_cohesion.get(str(tid), "")
+            coh_str = f" (cohesion: {coh})" if coh else ""
+            lines.append(f"  Topic {tid}: \"{label}\" — {len(cids)} communities, {total_nodes} nodes{coh_str}")
+        return "\n".join(lines)
+
+    def _tool_drill_down(arguments: dict) -> str:
+        if not hierarchy:
+            return "No hierarchy data available. Rebuild the graph with hierarchical_cluster() to enable topics."
+        tid = str(arguments["topic_id"])
+        l0_topics = hierarchy.get("l0_topics", {})
+        l0_labels = hierarchy.get("l0_labels", {})
+        l1_labels = hierarchy.get("l1_labels", {})
+        l1_cohesion = hierarchy.get("l1_cohesion", {})
+        cids = l0_topics.get(tid)
+        if cids is None:
+            return f"Topic {tid} not found. Use get_topics to see available topics."
+        topic_label = l0_labels.get(tid, f"Topic {tid}")
+        lines = [f"Topic {tid}: \"{topic_label}\"", ""]
+        for cid in sorted(cids, key=int):
+            c_label = l1_labels.get(str(cid), f"Community {cid}")
+            nodes = communities.get(int(cid), [])
+            coh = l1_cohesion.get(str(cid), "")
+            coh_str = f" — cohesion: {coh}" if coh else ""
+            node_labels = [G.nodes[n].get("label", n) for n in nodes[:8]]
+            suffix = f" (+{len(nodes)-8} more)" if len(nodes) > 8 else ""
+            lines.append(f"  Community {cid}: \"{c_label}\" — {len(nodes)} nodes{coh_str}")
+            lines.append(f"    Nodes: {', '.join(node_labels)}{suffix}")
+        return "\n".join(lines)
 
     def _tool_shortest_path(arguments: dict) -> str:
         src_scored = _score_nodes(G, [t.lower() for t in arguments["source"].split()])
@@ -307,6 +380,8 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
         "god_nodes": _tool_god_nodes,
         "graph_stats": _tool_graph_stats,
         "shortest_path": _tool_shortest_path,
+        "get_topics": _tool_get_topics,
+        "drill_down": _tool_drill_down,
     }
 
     @server.call_tool()

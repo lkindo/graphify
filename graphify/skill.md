@@ -401,7 +401,7 @@ mkdir -p graphify-out
 $(cat graphify-out/.graphify_python) -c "
 import sys, json
 from graphify.build import build_from_json
-from graphify.cluster import cluster, score_all
+from graphify.cluster import hierarchical_cluster, score_all
 from graphify.analyze import god_nodes, surprising_connections, suggest_questions
 from graphify.report import generate
 from graphify.export import to_json
@@ -411,18 +411,19 @@ extraction = json.loads(Path('graphify-out/.graphify_extract.json').read_text())
 detection  = json.loads(Path('graphify-out/.graphify_detect.json').read_text())
 
 G = build_from_json(extraction)
-communities = cluster(G)
-cohesion = score_all(G, communities)
+hc = hierarchical_cluster(G)
+communities = hc.l1_communities
+cohesion = hc.l1_cohesion
 tokens = {'input': extraction.get('input_tokens', 0), 'output': extraction.get('output_tokens', 0)}
 gods = god_nodes(G)
 surprises = surprising_connections(G, communities)
 labels = {cid: 'Community ' + str(cid) for cid in communities}
 # Placeholder questions - regenerated with real labels in Step 5
-questions = suggest_questions(G, communities, labels)
+questions = suggest_questions(G, communities, labels, hierarchy=hc)
 
-report = generate(G, communities, cohesion, labels, gods, surprises, detection, tokens, 'INPUT_PATH', suggested_questions=questions)
+report = generate(G, communities, cohesion, labels, gods, surprises, detection, tokens, 'INPUT_PATH', suggested_questions=questions, hierarchy=hc)
 Path('graphify-out/GRAPH_REPORT.md').write_text(report)
-to_json(G, communities, 'graphify-out/graph.json')
+to_json(G, communities, 'graphify-out/graph.json', hierarchy=hc)
 
 analysis = {
     'communities': {str(k): v for k, v in communities.items()},
@@ -430,13 +431,21 @@ analysis = {
     'gods': gods,
     'surprises': surprises,
     'questions': questions,
+    'hierarchy': {
+        'l0_topics': {str(k): v for k, v in hc.l0_topics.items()},
+        'l0_labels': {str(k): v for k, v in hc.l0_labels.items()},
+        'l1_to_l0': {str(k): v for k, v in hc.l1_to_l0.items()},
+        'l0_cohesion': {str(k): v for k, v in hc.l0_cohesion.items()},
+    },
 }
 Path('graphify-out/.graphify_analysis.json').write_text(json.dumps(analysis, indent=2))
 if G.number_of_nodes() == 0:
     print('ERROR: Graph is empty - extraction produced no nodes.')
     print('Possible causes: all files were skipped, binary-only corpus, or extraction failed.')
     raise SystemExit(1)
-print(f'Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges, {len(communities)} communities')
+n_topics = len(hc.l0_topics)
+topic_str = f', {n_topics} topics' if n_topics > 1 else ''
+print(f'Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges, {len(communities)} communities{topic_str}')
 "
 ```
 
@@ -444,9 +453,13 @@ If this step prints `ERROR: Graph is empty`, stop and tell the user what happene
 
 Replace INPUT_PATH with the actual path.
 
-### Step 5 - Label communities
+### Step 5 - Label topics and communities
 
-Read `graphify-out/.graphify_analysis.json`. For each community key, look at its node labels and write a 2-5 word plain-language name (e.g. "Attention Mechanism", "Training Pipeline", "Data Loading").
+Read `graphify-out/.graphify_analysis.json`.
+
+**First**, if the analysis contains a `hierarchy` key with `l0_topics`, label each L0 topic with a 2-5 word name describing the broad theme (e.g. "Authentication & Security", "Data Processing Pipeline").
+
+**Then**, label each L1 community with a 2-5 word name (e.g. "Attention Mechanism", "Training Pipeline", "Data Loading").
 
 Then regenerate the report and save the labels for the visualizer:
 
@@ -454,9 +467,10 @@ Then regenerate the report and save the labels for the visualizer:
 $(cat graphify-out/.graphify_python) -c "
 import sys, json
 from graphify.build import build_from_json
-from graphify.cluster import score_all
+from graphify.cluster import HierarchicalCommunities, score_all
 from graphify.analyze import god_nodes, surprising_connections, suggest_questions
 from graphify.report import generate
+from graphify.export import to_json
 from pathlib import Path
 
 extraction = json.loads(Path('graphify-out/.graphify_extract.json').read_text())
@@ -468,20 +482,47 @@ communities = {int(k): v for k, v in analysis['communities'].items()}
 cohesion = {int(k): v for k, v in analysis['cohesion'].items()}
 tokens = {'input': extraction.get('input_tokens', 0), 'output': extraction.get('output_tokens', 0)}
 
-# LABELS - replace these with the names you chose above
+# COMMUNITY LABELS - replace with names you chose
 labels = LABELS_DICT
 
-# Regenerate questions with real community labels (labels affect question phrasing)
-questions = suggest_questions(G, communities, labels)
+# TOPIC LABELS - replace with names you chose (only if hierarchy exists)
+topic_labels = TOPIC_LABELS_DICT
 
-report = generate(G, communities, cohesion, labels, analysis['gods'], analysis['surprises'], detection, tokens, 'INPUT_PATH', suggested_questions=questions)
+# Reconstruct hierarchy if available
+hc = None
+h_raw = analysis.get('hierarchy')
+if h_raw:
+    hc = HierarchicalCommunities(
+        l1_communities=communities,
+        l0_topics={int(k): v for k, v in h_raw.get('l0_topics', {}).items()},
+        l1_to_l0={int(k): v for k, v in h_raw.get('l1_to_l0', {}).items()},
+        l0_labels={int(k): v for k, v in topic_labels.items()} if topic_labels else {int(k): v for k, v in h_raw.get('l0_labels', {}).items()},
+        l1_labels={int(k): v for k, v in labels.items()},
+        l0_cohesion={int(k): v for k, v in h_raw.get('l0_cohesion', {}).items()},
+        l1_cohesion=cohesion,
+    )
+
+# Regenerate questions with real labels (labels affect question phrasing)
+questions = suggest_questions(G, communities, labels, hierarchy=hc)
+
+report = generate(G, communities, cohesion, labels, analysis['gods'], analysis['surprises'], detection, tokens, 'INPUT_PATH', suggested_questions=questions, hierarchy=hc)
 Path('graphify-out/GRAPH_REPORT.md').write_text(report)
-Path('graphify-out/.graphify_labels.json').write_text(json.dumps({str(k): v for k, v in labels.items()}))
-print('Report updated with community labels')
+
+# Save labels (community + topic)
+all_labels = {str(k): v for k, v in labels.items()}
+if topic_labels:
+    all_labels['_topics'] = {str(k): v for k, v in topic_labels.items()}
+Path('graphify-out/.graphify_labels.json').write_text(json.dumps(all_labels))
+
+# Regenerate graph.json with hierarchy
+to_json(G, communities, 'graphify-out/graph.json', hierarchy=hc)
+
+print('Report updated with community and topic labels')
 "
 ```
 
-Replace `LABELS_DICT` with the actual dict you constructed (e.g. `{0: "Attention Mechanism", 1: "Training Pipeline"}`).
+Replace `LABELS_DICT` with the actual community labels dict (e.g. `{0: "Attention Mechanism", 1: "Training Pipeline"}`).
+Replace `TOPIC_LABELS_DICT` with the actual topic labels dict (e.g. `{0: "Model Architecture", 1: "Data Pipeline"}`), or `None` if no hierarchy.
 Replace INPUT_PATH with the actual path.
 
 ### Step 6 - Generate Obsidian vault (opt-in) + HTML
@@ -496,6 +537,7 @@ If `--obsidian` was given:
 $(cat graphify-out/.graphify_python) -c "
 import sys, json
 from graphify.build import build_from_json
+from graphify.cluster import HierarchicalCommunities
 from graphify.export import to_obsidian, to_canvas
 from pathlib import Path
 
@@ -506,11 +548,26 @@ labels_raw = json.loads(Path('graphify-out/.graphify_labels.json').read_text()) 
 G = build_from_json(extraction)
 communities = {int(k): v for k, v in analysis['communities'].items()}
 cohesion = {int(k): v for k, v in analysis['cohesion'].items()}
-labels = {int(k): v for k, v in labels_raw.items()}
+labels = {int(k): v for k, v in labels_raw.items() if k != '_topics'}
+topic_labels_raw = labels_raw.get('_topics', {})
+
+# Reconstruct hierarchy if available
+hc = None
+h_raw = analysis.get('hierarchy')
+if h_raw:
+    hc = HierarchicalCommunities(
+        l1_communities=communities,
+        l0_topics={int(k): v for k, v in h_raw.get('l0_topics', {}).items()},
+        l1_to_l0={int(k): v for k, v in h_raw.get('l1_to_l0', {}).items()},
+        l0_labels={int(k): v for k, v in topic_labels_raw.items()} if topic_labels_raw else {int(k): v for k, v in h_raw.get('l0_labels', {}).items()},
+        l1_labels=labels,
+        l0_cohesion={int(k): v for k, v in h_raw.get('l0_cohesion', {}).items()},
+        l1_cohesion=cohesion,
+    )
 
 obsidian_dir = 'OBSIDIAN_DIR'  # replace with --obsidian-dir value, or 'graphify-out/obsidian' if not given
 
-n = to_obsidian(G, communities, obsidian_dir, community_labels=labels or None, cohesion=cohesion)
+n = to_obsidian(G, communities, obsidian_dir, community_labels=labels or None, cohesion=cohesion, hierarchy=hc)
 print(f'Obsidian vault: {n} notes in {obsidian_dir}/')
 
 to_canvas(G, communities, f'{obsidian_dir}/graph.canvas', community_labels=labels or None)
@@ -520,6 +577,8 @@ print(f'Open {obsidian_dir}/ as a vault in Obsidian.')
 print('  Graph view   - nodes colored by community (set automatically)')
 print('  graph.canvas - structured layout with communities as groups')
 print('  _COMMUNITY_* - overview notes with cohesion scores and dataview queries')
+if hc and len(hc.l0_topics) > 1:
+    print('  _TOPIC_*     - topic overview notes grouping related communities')
 "
 ```
 
@@ -529,6 +588,7 @@ Generate the HTML graph (always, unless `--no-viz`):
 $(cat graphify-out/.graphify_python) -c "
 import sys, json
 from graphify.build import build_from_json
+from graphify.cluster import HierarchicalCommunities
 from graphify.export import to_html
 from pathlib import Path
 
@@ -538,12 +598,28 @@ labels_raw = json.loads(Path('graphify-out/.graphify_labels.json').read_text()) 
 
 G = build_from_json(extraction)
 communities = {int(k): v for k, v in analysis['communities'].items()}
-labels = {int(k): v for k, v in labels_raw.items()}
+labels = {int(k): v for k, v in labels_raw.items() if k != '_topics'}
+topic_labels_raw = labels_raw.get('_topics', {})
+
+# Reconstruct hierarchy if available
+hc = None
+h_raw = analysis.get('hierarchy')
+if h_raw:
+    cohesion = {int(k): v for k, v in analysis['cohesion'].items()}
+    hc = HierarchicalCommunities(
+        l1_communities=communities,
+        l0_topics={int(k): v for k, v in h_raw.get('l0_topics', {}).items()},
+        l1_to_l0={int(k): v for k, v in h_raw.get('l1_to_l0', {}).items()},
+        l0_labels={int(k): v for k, v in topic_labels_raw.items()} if topic_labels_raw else {int(k): v for k, v in h_raw.get('l0_labels', {}).items()},
+        l1_labels=labels,
+        l0_cohesion={int(k): v for k, v in h_raw.get('l0_cohesion', {}).items()},
+        l1_cohesion=cohesion,
+    )
 
 if G.number_of_nodes() > 5000:
     print(f'Graph has {G.number_of_nodes()} nodes - too large for HTML viz. Use Obsidian vault instead.')
 else:
-    to_html(G, communities, 'graphify-out/graph.html', community_labels=labels or None)
+    to_html(G, communities, 'graphify-out/graph.html', community_labels=labels or None, hierarchy=hc)
     print('graph.html written - open in any browser, no server needed')
 "
 ```
@@ -874,7 +950,7 @@ Skip Steps 1–3. Load the existing graph from `graphify-out/graph.json` and re-
 ```bash
 $(cat graphify-out/.graphify_python) -c "
 import sys, json
-from graphify.cluster import cluster, score_all
+from graphify.cluster import hierarchical_cluster
 from graphify.analyze import god_nodes, surprising_connections
 from graphify.report import generate
 from graphify.export import to_json
@@ -889,24 +965,33 @@ detection = {'total_files': 0, 'total_words': 99999, 'needs_graph': True, 'warni
              'files': {'code': [], 'document': [], 'paper': []}}
 tokens = {'input': 0, 'output': 0}
 
-communities = cluster(G)
-cohesion = score_all(G, communities)
+hc = hierarchical_cluster(G)
+communities = hc.l1_communities
+cohesion = hc.l1_cohesion
 gods = god_nodes(G)
 surprises = surprising_connections(G, communities)
 labels = {cid: 'Community ' + str(cid) for cid in communities}
 
-report = generate(G, communities, cohesion, labels, gods, surprises, detection, tokens, '.')
+report = generate(G, communities, cohesion, labels, gods, surprises, detection, tokens, '.', hierarchy=hc)
 Path('graphify-out/GRAPH_REPORT.md').write_text(report)
-to_json(G, communities, 'graphify-out/graph.json')
+to_json(G, communities, 'graphify-out/graph.json', hierarchy=hc)
 
 analysis = {
     'communities': {str(k): v for k, v in communities.items()},
     'cohesion': {str(k): v for k, v in cohesion.items()},
     'gods': gods,
     'surprises': surprises,
+    'hierarchy': {
+        'l0_topics': {str(k): v for k, v in hc.l0_topics.items()},
+        'l0_labels': {str(k): v for k, v in hc.l0_labels.items()},
+        'l1_to_l0': {str(k): v for k, v in hc.l1_to_l0.items()},
+        'l0_cohesion': {str(k): v for k, v in hc.l0_cohesion.items()},
+    },
 }
 Path('graphify-out/.graphify_analysis.json').write_text(json.dumps(analysis, indent=2))
-print(f'Re-clustered: {len(communities)} communities')
+n_topics = len(hc.l0_topics)
+topic_str = f', {n_topics} topics' if n_topics > 1 else ''
+print(f'Re-clustered: {len(communities)} communities{topic_str}')
 "
 ```
 
