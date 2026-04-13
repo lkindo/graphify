@@ -48,7 +48,7 @@ Every relationship is tagged `EXTRACTED` (found directly in source), `INFERRED` 
 
 ## Install
 
-**Requires:** Python 3.10+ and one of: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [Cursor](https://cursor.com), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli), [Aider](https://aider.chat), [OpenClaw](https://openclaw.ai), [Factory Droid](https://factory.ai), [Trae](https://trae.ai), Hermes, or [Google Antigravity](https://antigravity.google)
+**Requires:** Python 3.10+ and one of: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [Cursor](https://cursor.com), [Kiro IDE](https://kiro.ai), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli), [Aider](https://aider.chat), [OpenClaw](https://openclaw.ai), [Factory Droid](https://factory.ai), [Trae](https://trae.ai), Hermes, or [Google Antigravity](https://antigravity.google)
 
 ```bash
 pip install graphifyy && graphify install
@@ -64,6 +64,7 @@ pip install graphifyy && graphify install
 | Claude Code (Windows) | `graphify install` (auto-detected) or `graphify install --platform windows` |
 | Codex | `graphify install --platform codex` |
 | OpenCode | `graphify install --platform opencode` |
+| Kiro IDE | `graphify install --platform kiro` |
 | GitHub Copilot CLI | `graphify install --platform copilot` |
 | Aider | `graphify install --platform aider` |
 | OpenClaw | `graphify install --platform claw` |
@@ -94,6 +95,7 @@ After building a graph, run this once in your project:
 | Claude Code | `graphify claude install` |
 | Codex | `graphify codex install` |
 | OpenCode | `graphify opencode install` |
+| Kiro IDE | `graphify kiro install` |
 | GitHub Copilot CLI | `graphify copilot install` |
 | Aider | `graphify aider install` |
 | OpenClaw | `graphify claw install` |
@@ -112,6 +114,8 @@ After building a graph, run this once in your project:
 **OpenCode** writes to `AGENTS.md` and also installs a **`tool.execute.before` plugin** (`.opencode/plugins/graphify.js` + `opencode.json` registration) that fires before bash tool calls and injects the graph reminder into tool output when the graph exists.
 
 **Cursor** writes `.cursor/rules/graphify.mdc` with `alwaysApply: true` — Cursor includes it in every conversation automatically, no hook needed.
+
+**Kiro IDE** copies the skill to `~/.kiro/skills/graphify/SKILL.md` and writes a steering file to `.kiro/steering/graphify.md` — Kiro automatically includes steering files in the agent context, providing always-on graph awareness.
 
 **Gemini CLI** copies the skill to `~/.gemini/skills/graphify/SKILL.md`, writes a `GEMINI.md` section, and installs a `BeforeTool` hook in `.gemini/settings.json` that fires before file-read tool calls — same always-on mechanism as Claude Code.
 
