@@ -134,6 +134,37 @@ def _find_node(G: nx.Graph, label: str) -> list[str]:
             if term in d.get("label", "").lower() or term == nid.lower()]
 
 
+
+def _filter_blank_stdin() -> None:
+    """Filter blank lines from stdin before MCP reads it.
+
+    Some MCP clients (Claude Desktop, etc.) send blank lines between JSON
+    messages. The MCP stdio transport tries to parse every line as a
+    JSONRPCMessage, so a bare newline triggers a Pydantic ValidationError.
+    This installs an OS-level pipe that relays stdin while dropping blanks.
+    """
+    import os
+    import threading
+
+    r_fd, w_fd = os.pipe()
+    saved_fd = os.dup(sys.stdin.fileno())
+
+    def _relay() -> None:
+        try:
+            with open(saved_fd, "rb") as src, open(w_fd, "wb") as dst:
+                for line in src:
+                    if line.strip():
+                        dst.write(line)
+                        dst.flush()
+        except Exception:
+            pass
+
+    threading.Thread(target=_relay, daemon=True).start()
+    os.dup2(r_fd, sys.stdin.fileno())
+    os.close(r_fd)
+    sys.stdin = open(0, "r", closefd=False)
+
+
 def serve(graph_path: str = "graphify-out/graph.json", layers_config_path: str | None = None) -> None:
     """Start the MCP server. Requires pip install mcp.
 
@@ -414,6 +445,7 @@ def serve(graph_path: str = "graphify-out/graph.json", layers_config_path: str |
         async with stdio_server() as streams:
             await server.run(streams[0], streams[1], server.create_initialization_options())
 
+    _filter_blank_stdin()
     asyncio.run(main())
 
 
