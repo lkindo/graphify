@@ -92,6 +92,11 @@ _PLATFORM_CONFIG: dict[str, dict] = {
         "skill_dst": Path(".trae-cn") / "skills" / "graphify" / "SKILL.md",
         "claude_md": False,
     },
+    "codebuddy": {
+        "skill_file": "skill.md",
+        "skill_dst": Path(".codebuddy") / "skills" / "graphify" / "SKILL.md",
+        "claude_md": False,
+    },
     "antigravity": {
         "skill_file": "skill.md",
         "skill_dst": Path(".agent") / "skills" / "graphify" / "SKILL.md",
@@ -146,6 +151,21 @@ def install(platform: str = "claude") -> None:
             claude_md.write_text(_SKILL_REGISTRATION.lstrip(), encoding="utf-8")
             print(f"  CLAUDE.md        ->  created at {claude_md}")
 
+    if platform == "codebuddy":
+        # Register in ~/.codebuddy/CODEBUDDY.md (CodeBuddy only)
+        codebuddy_md = Path.home() / ".codebuddy" / "CODEBUDDY.md"
+        if codebuddy_md.exists():
+            content = codebuddy_md.read_text(encoding="utf-8")
+            if "graphify" in content:
+                print(f"  CODEBUDDY.md     ->  already registered (no change)")
+            else:
+                codebuddy_md.write_text(content.rstrip() + _SKILL_REGISTRATION, encoding="utf-8")
+                print(f"  CODEBUDDY.md     ->  skill registered in {codebuddy_md}")
+        else:
+            codebuddy_md.parent.mkdir(parents=True, exist_ok=True)
+            codebuddy_md.write_text(_SKILL_REGISTRATION.lstrip(), encoding="utf-8")
+            print(f"  CODEBUDDY.md     ->  created at {codebuddy_md}")
+
     print()
     print("Done. Open your AI coding assistant and type:")
     print()
@@ -165,6 +185,19 @@ Rules:
 """
 
 _CLAUDE_MD_MARKER = "## graphify"
+
+_CODEBUDDY_MD_SECTION = """\
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+"""
+
+_CODEBUDDY_MD_MARKER = "## graphify"
 
 # AGENTS.md section for Codex, OpenCode, and OpenClaw.
 # All three platforms read AGENTS.md in the project root for persistent instructions.
@@ -717,6 +750,100 @@ def claude_uninstall(project_dir: Path | None = None) -> None:
     _uninstall_claude_hook(project_dir or Path("."))
 
 
+def codebuddy_install(project_dir: Path | None = None) -> None:
+    """Write the graphify section to the local CODEBUDDY.md."""
+    target = (project_dir or Path(".")) / "CODEBUDDY.md"
+
+    if target.exists():
+        content = target.read_text(encoding="utf-8")
+        if _CODEBUDDY_MD_MARKER in content:
+            print("graphify already configured in CODEBUDDY.md")
+            return
+        new_content = content.rstrip() + "\n\n" + _CODEBUDDY_MD_SECTION
+    else:
+        new_content = _CODEBUDDY_MD_SECTION
+
+    target.write_text(new_content, encoding="utf-8")
+    print(f"graphify section written to {target.resolve()}")
+
+    # Also write CodeBuddy PreToolUse hook to .codebuddy/settings.json
+    _install_codebuddy_hook(project_dir or Path("."))
+
+    print()
+    print("CodeBuddy will now check the knowledge graph before answering")
+    print("codebase questions and rebuild it after code changes.")
+
+
+def _install_codebuddy_hook(project_dir: Path) -> None:
+    """Add graphify PreToolUse hook to .codebuddy/settings.json."""
+    settings_path = project_dir / ".codebuddy" / "settings.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if settings_path.exists():
+        try:
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            settings = {}
+    else:
+        settings = {}
+
+    hooks = settings.setdefault("hooks", {})
+    pre_tool = hooks.setdefault("PreToolUse", [])
+
+    hooks["PreToolUse"] = [h for h in pre_tool if not (h.get("matcher") == "Glob|Grep" and "graphify" in str(h))]
+    hooks["PreToolUse"].append(_SETTINGS_HOOK)
+    settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+    print(f"  .codebuddy/settings.json  ->  PreToolUse hook registered")
+
+
+def _uninstall_codebuddy_hook(project_dir: Path) -> None:
+    """Remove graphify PreToolUse hook from .codebuddy/settings.json."""
+    settings_path = project_dir / ".codebuddy" / "settings.json"
+    if not settings_path.exists():
+        return
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return
+    pre_tool = settings.get("hooks", {}).get("PreToolUse", [])
+    filtered = [h for h in pre_tool if not (h.get("matcher") == "Glob|Grep" and "graphify" in str(h))]
+    if len(filtered) == len(pre_tool):
+        return
+    settings["hooks"]["PreToolUse"] = filtered
+    settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+    print(f"  .codebuddy/settings.json  ->  PreToolUse hook removed")
+
+
+def codebuddy_uninstall(project_dir: Path | None = None) -> None:
+    """Remove the graphify section from the local CODEBUDDY.md."""
+    target = (project_dir or Path(".")) / "CODEBUDDY.md"
+
+    if not target.exists():
+        print("No CODEBUDDY.md found in current directory - nothing to do")
+        return
+
+    content = target.read_text(encoding="utf-8")
+    if _CODEBUDDY_MD_MARKER not in content:
+        print("graphify section not found in CODEBUDDY.md - nothing to do")
+        return
+
+    # Remove the ## graphify section: from the marker to the next ## heading or EOF
+    cleaned = re.sub(
+        r"\n*## graphify\n.*?(?=\n## |\Z)",
+        "",
+        content,
+        flags=re.DOTALL,
+    ).rstrip()
+    if cleaned:
+        target.write_text(cleaned + "\n", encoding="utf-8")
+        print(f"graphify section removed from {target.resolve()}")
+    else:
+        target.unlink()
+        print(f"CODEBUDDY.md was empty after removal - deleted {target.resolve()}")
+
+    _uninstall_codebuddy_hook(project_dir or Path("."))
+
+
 def main() -> None:
     # Check all known skill install locations for a stale version stamp.
     # Skip during install/uninstall (hook writes trigger a fresh check anyway).
@@ -729,7 +856,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor|antigravity)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codebuddy|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor|antigravity)")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -750,6 +877,8 @@ def main() -> None:
         print("  cursor uninstall        remove .cursor/rules/graphify.mdc")
         print("  claude install          write graphify section to CLAUDE.md + PreToolUse hook (Claude Code)")
         print("  claude uninstall        remove graphify section from CLAUDE.md + PreToolUse hook")
+        print("  codebuddy install       write graphify section to CODEBUDDY.md + PreToolUse hook (CodeBuddy)")
+        print("  codebuddy uninstall     remove graphify section from CODEBUDDY.md + PreToolUse hook")
         print("  codex install           write graphify section to AGENTS.md (Codex)")
         print("  codex uninstall         remove graphify section from AGENTS.md")
         print("  opencode install        write graphify section to AGENTS.md + tool.execute.before plugin (OpenCode)")
@@ -796,6 +925,15 @@ def main() -> None:
             claude_uninstall()
         else:
             print("Usage: graphify claude [install|uninstall]", file=sys.stderr)
+            sys.exit(1)
+    elif cmd == "codebuddy":
+        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
+        if subcmd == "install":
+            codebuddy_install()
+        elif subcmd == "uninstall":
+            codebuddy_uninstall()
+        else:
+            print("Usage: graphify codebuddy [install|uninstall]", file=sys.stderr)
             sys.exit(1)
     elif cmd == "gemini":
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
