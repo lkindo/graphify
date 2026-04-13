@@ -3,18 +3,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from pathlib import Path
 
 
 def file_hash(path: Path) -> str:
-    """SHA256 of file contents + resolved path. Prevents cache collisions on identical content."""
-    p = Path(path)
-    h = hashlib.sha256()
-    h.update(p.read_bytes())
-    h.update(b"\x00")
-    h.update(str(p.resolve()).encode())
-    return h.hexdigest()
+    """SHA256 of file contents, hex digest."""
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def cache_dir(root: Path = Path(".")) -> Path:
@@ -52,13 +46,7 @@ def save_cached(path: Path, result: dict, root: Path = Path(".")) -> None:
     """
     h = file_hash(path)
     entry = cache_dir(root) / f"{h}.json"
-    tmp = entry.with_suffix(".tmp")
-    try:
-        tmp.write_text(json.dumps(result))
-        os.replace(tmp, entry)
-    except Exception:
-        tmp.unlink(missing_ok=True)
-        raise
+    entry.write_text(json.dumps(result))
 
 
 def cached_files(root: Path = Path(".")) -> set[str]:
@@ -77,15 +65,14 @@ def clear_cache(root: Path = Path(".")) -> None:
 def check_semantic_cache(
     files: list[str],
     root: Path = Path("."),
-) -> tuple[list[dict], list[dict], list[dict], list[str]]:
+) -> tuple[list[dict], list[dict], list[str]]:
     """Check semantic extraction cache for a list of absolute file paths.
 
-    Returns (cached_nodes, cached_edges, cached_hyperedges, uncached_files).
+    Returns (cached_nodes, cached_edges, uncached_files).
     Uncached files need Claude extraction; cached files are merged directly.
     """
     cached_nodes: list[dict] = []
     cached_edges: list[dict] = []
-    cached_hyperedges: list[dict] = []
     uncached: list[str] = []
 
     for fpath in files:
@@ -93,17 +80,15 @@ def check_semantic_cache(
         if result is not None:
             cached_nodes.extend(result.get("nodes", []))
             cached_edges.extend(result.get("edges", []))
-            cached_hyperedges.extend(result.get("hyperedges", []))
         else:
             uncached.append(fpath)
 
-    return cached_nodes, cached_edges, cached_hyperedges, uncached
+    return cached_nodes, cached_edges, uncached
 
 
 def save_semantic_cache(
     nodes: list[dict],
     edges: list[dict],
-    hyperedges: list[dict] | None = None,
     root: Path = Path("."),
 ) -> int:
     """Save semantic extraction results to cache, keyed by source_file.
@@ -113,7 +98,7 @@ def save_semantic_cache(
     """
     from collections import defaultdict
 
-    by_file: dict[str, dict] = defaultdict(lambda: {"nodes": [], "edges": [], "hyperedges": []})
+    by_file: dict[str, dict] = defaultdict(lambda: {"nodes": [], "edges": []})
     for n in nodes:
         src = n.get("source_file", "")
         if src:
@@ -122,16 +107,10 @@ def save_semantic_cache(
         src = e.get("source_file", "")
         if src:
             by_file[src]["edges"].append(e)
-    for h in (hyperedges or []):
-        src = h.get("source_file", "")
-        if src:
-            by_file[src]["hyperedges"].append(h)
 
     saved = 0
     for fpath, result in by_file.items():
         p = Path(fpath)
-        if not p.is_absolute():
-            p = Path(root) / p
         if p.exists():
             save_cached(p, result, root)
             saved += 1

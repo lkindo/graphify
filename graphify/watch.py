@@ -18,7 +18,7 @@ _CODE_EXTENSIONS = {
 }
 
 
-def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
+def _rebuild_code(watch_path: Path) -> bool:
     """Re-run AST extraction + build + cluster + report for code files. No LLM needed.
 
     Returns True on success, False on error.
@@ -31,10 +31,13 @@ def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
         from graphify.report import generate
         from graphify.export import to_json
 
-        code_files = collect_files(watch_path, follow_symlinks=follow_symlinks)
+        code_files = []
+        for ext in _CODE_EXTENSIONS:
+            code_files.extend(watch_path.rglob(f"*{ext}"))
         code_files = [
             f for f in code_files
-            if "graphify-out" not in f.parts
+            if not any(part.startswith(".") for part in f.parts)
+            and "graphify-out" not in f.parts
             and "__pycache__" not in f.parts
         ]
 
@@ -47,7 +50,7 @@ def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
         detection = {
             "files": {"code": [str(f) for f in code_files], "document": [], "paper": [], "image": []},
             "total_files": len(code_files),
-            "total_words": 0,  # not needed during watch rebuild
+            "total_words": sum(len(f.read_text(errors="ignore").split()) for f in code_files),
         }
 
         G = build_from_json(result)
@@ -115,7 +118,7 @@ def watch(watch_path: Path, debounce: float = 3.0) -> None:
 
     last_trigger: float = 0.0
     pending: bool = False
-    changed: set[Path] = set()
+    changed: list[Path] = []
 
     class Handler(FileSystemEventHandler):
         def on_any_event(self, event):
@@ -131,7 +134,8 @@ def watch(watch_path: Path, debounce: float = 3.0) -> None:
                 return
             last_trigger = time.monotonic()
             pending = True
-            changed.add(path)
+            if path not in changed:
+                changed.append(path)
 
     handler = Handler()
     observer = Observer()

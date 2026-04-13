@@ -58,26 +58,15 @@ Follow these steps in order. Do not skip steps.
 ### Step 1 - Ensure graphify is installed
 
 ```bash
-# Detect the correct Python interpreter (handles pipx, venv, system installs)
-GRAPHIFY_BIN=$(which graphify 2>/dev/null)
-if [ -n "$GRAPHIFY_BIN" ]; then
-    PYTHON=$(head -1 "$GRAPHIFY_BIN" | tr -d '#!')
-else
-    PYTHON="python3"
-fi
-$PYTHON -c "import graphify" 2>/dev/null || pip install graphifyy -q --break-system-packages 2>&1 | tail -3
-# Write interpreter path for all subsequent steps
-$PYTHON -c "import sys; open('.graphify_python', 'w').write(sys.executable)"
+python3 -c "import graphify" 2>/dev/null || pip install graphifyy -q --break-system-packages 2>&1 | tail -3
 ```
 
 If the import succeeds, print nothing and move straight to Step 2.
 
-**In every subsequent bash block, replace `python3` with `$(cat .graphify_python)` to use the correct interpreter.**
-
 ### Step 2 - Detect files
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import json
 from graphify.detect import detect
 from pathlib import Path
@@ -117,7 +106,7 @@ Note: Parallelizing AST + semantic saves 5-15s on large corpora. AST is determin
 For any code files detected, run AST extraction in parallel with Part B subagents:
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import sys, json
 from graphify.extract import collect_files, extract
 from pathlib import Path
@@ -142,16 +131,20 @@ else:
 
 **Fast path:** If detection found zero docs, papers, and images (code-only corpus), skip Part B entirely and go straight to Part C. AST handles code - there is nothing for semantic subagents to do.
 
-> **OpenClaw platform:** Multi-agent support is still early on OpenClaw. Extraction runs sequentially — you read and extract each file yourself. This is slower than parallel platforms but fully reliable.
+**MANDATORY: You MUST use the Agent tool here. Reading files yourself one-by-one is forbidden - it is 5-10x slower. If you do not use the Agent tool you are doing this wrong.**
 
-Print: `"Semantic extraction: N files (sequential — OpenClaw)"`
+Before dispatching subagents, print a timing estimate:
+- Load `total_words` and file counts from `.graphify_detect.json`
+- Estimate agents needed: `ceil(uncached_non_code_files / 22)` (chunk size is 20-25)
+- Estimate time: ~45s per agent batch (they run in parallel, so total ≈ 45s × ceil(agents/parallel_limit))
+- Print: "Semantic extraction: ~N files → X agents, estimated ~Ys"
 
 **Step B0 - Check extraction cache first**
 
 Before dispatching any subagents, check which files already have cached extraction results:
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import json
 from graphify.cache import check_semantic_cache
 from pathlib import Path
@@ -159,10 +152,10 @@ from pathlib import Path
 detect = json.loads(Path('.graphify_detect.json').read_text())
 all_files = [f for files in detect['files'].values() for f in files]
 
-cached_nodes, cached_edges, cached_hyperedges, uncached = check_semantic_cache(all_files)
+cached_nodes, cached_edges, uncached = check_semantic_cache(all_files)
 
-if cached_nodes or cached_edges or cached_hyperedges:
-    Path('.graphify_cached.json').write_text(json.dumps({'nodes': cached_nodes, 'edges': cached_edges, 'hyperedges': cached_hyperedges}))
+if cached_nodes or cached_edges:
+    Path('.graphify_cached.json').write_text(json.dumps({'nodes': cached_nodes, 'edges': cached_edges}))
 Path('.graphify_uncached.txt').write_text('\n'.join(uncached))
 print(f'Cache: {len(all_files)-len(uncached)} files hit, {len(uncached)} files need extraction')
 "
@@ -172,62 +165,106 @@ Only dispatch subagents for files listed in `.graphify_uncached.txt`. If all fil
 
 **Step B1 - Split into chunks**
 
-Load files from `.graphify_uncached.txt`.
+Load files from `.graphify_uncached.txt`. Split into chunks of 20-25 files each. Each image gets its own chunk (vision needs separate context).
 
-**Step B2 - Sequential extraction (OpenClaw)**
+**Step B2 - Dispatch ALL subagents in a single message**
 
-Process each file one at a time. For each file:
+Call the Agent tool multiple times IN THE SAME RESPONSE - one call per chunk. This is the only way they run in parallel. If you make one Agent call, wait, then make another, you are doing it sequentially and defeating the purpose.
 
-1. Read the file contents
-2. Extract nodes, edges, and hyperedges applying the same rules:
-   - EXTRACTED: relationship explicit in source (import, call, citation)
-   - INFERRED: reasonable inference (shared structure, implied dependency)
-   - AMBIGUOUS: uncertain — flag it, do not omit
-   - Code files: semantic edges AST cannot find. Do not re-extract imports.
-   - Doc/paper files: named concepts, entities, citations, and rationale nodes (WHY decisions were made → `rationale_for` edges)
-   - Image files: use vision — understand what the image IS, not just OCR
-   - DEEP_MODE (if --mode deep): be aggressive with INFERRED edges
-   - Semantic similarity: if two concepts solve the same problem without a structural link, add `semantically_similar_to` INFERRED edge (confidence 0.6-0.95). Non-obvious cross-file links only.
-   - Hyperedges: if 3+ nodes share a concept/flow not captured by pairwise edges, add a hyperedge. Max 3 per file.
-   - confidence_score REQUIRED on every edge: EXTRACTED=1.0, INFERRED=0.6-0.9 (reason individually), AMBIGUOUS=0.1-0.3
-3. Accumulate results across all files
+Concrete example for 3 chunks:
+```
+[Agent tool call 1: files 1-15]
+[Agent tool call 2: files 16-30]  
+[Agent tool call 3: files 31-45]
+```
+All three in one message. Not three separate messages.
 
-Schema for each file's output:
-{"nodes":[{"id":"filestem_entityname","label":"Human Readable Name","file_type":"code|document|paper|image","source_file":"relative/path","source_location":null,"source_url":null,"captured_at":null,"author":null,"contributor":null}],"edges":[{"source":"node_id","target":"node_id","relation":"calls|implements|references|cites|conceptually_related_to|shares_data_with|semantically_similar_to|rationale_for","confidence":"EXTRACTED|INFERRED|AMBIGUOUS","confidence_score":1.0,"source_file":"relative/path","source_location":null,"weight":1.0}],"hyperedges":[{"id":"snake_case_id","label":"Human Readable Label","nodes":["node_id1","node_id2","node_id3"],"relation":"participate_in|implement|form","confidence":"EXTRACTED|INFERRED","confidence_score":0.75,"source_file":"relative/path"}],"input_tokens":0,"output_tokens":0}
+Each subagent receives this exact prompt (substitute FILE_LIST, CHUNK_NUM, TOTAL_CHUNKS, and DEEP_MODE):
 
-After processing all files, write the accumulated result to `.graphify_semantic_new.json`.
+```
+You are a graphify extraction subagent. Read the files listed and extract a knowledge graph fragment.
+Output ONLY valid JSON matching the schema below - no explanation, no markdown fences, no preamble.
 
-**Step B3 - Cache and merge**
+Files (chunk CHUNK_NUM of TOTAL_CHUNKS):
+FILE_LIST
 
-For the accumulated result:
+Rules:
+- EXTRACTED: relationship explicit in source (import, call, citation, "see §3.2")
+- INFERRED: reasonable inference (shared data structure, implied dependency)
+- AMBIGUOUS: uncertain - flag for review, do not omit
+
+Code files: focus on semantic edges AST cannot find (call relationships, shared data, arch patterns).
+  Do not re-extract imports - AST already has those.
+Doc/paper files: extract named concepts, entities, citations.
+Image files: use vision to understand what the image IS - do not just OCR.
+  UI screenshot: layout patterns, design decisions, key elements, purpose.
+  Chart: metric, trend/insight, data source.
+  Tweet/post: claim as node, author, concepts mentioned.
+  Diagram: components and connections.
+  Research figure: what it demonstrates, method, result.
+  Handwritten/whiteboard: ideas and arrows, mark uncertain readings AMBIGUOUS.
+
+DEEP_MODE (if --mode deep was given): be aggressive with INFERRED edges - indirect deps,
+  shared assumptions, latent couplings. Mark uncertain ones AMBIGUOUS instead of omitting.
+
+Semantic similarity: if two concepts in this chunk solve the same problem or represent the same idea without any structural link (no import, no call, no citation), add a `semantically_similar_to` edge marked INFERRED with a confidence_score reflecting how similar they are (0.6-0.95). Examples:
+- Two functions that both validate user input but never call each other
+- A class in code and a concept in a paper that describe the same algorithm
+- Two error types that handle the same failure mode differently
+Only add these when the similarity is genuinely non-obvious and cross-cutting. Do not add them for trivially similar things.
+
+Hyperedges: if 3 or more nodes clearly participate together in a shared concept, flow, or pattern that is not captured by pairwise edges alone, add a hyperedge to a top-level `hyperedges` array. Examples:
+- All classes that implement a common protocol or interface
+- All functions in an authentication flow (even if they don't all call each other)
+- All concepts from a paper section that form one coherent idea
+Use sparingly — only when the group relationship adds information beyond the pairwise edges. Maximum 3 hyperedges per chunk.
+
+If a file has YAML frontmatter (--- ... ---), copy source_url, captured_at, author,
+  contributor onto every node from that file.
+
+confidence_score rules:
+- EXTRACTED edges: confidence_score must be 1.0
+- INFERRED edges: score 0.4-0.9 based on how certain you are.
+  Strong structural inference (e.g. two classes clearly share data): 0.8-0.9.
+  Reasonable but not certain: 0.6-0.7. Weak inference: 0.4-0.5.
+- AMBIGUOUS edges: score 0.1-0.3
+
+Output exactly this JSON (no other text):
+{"nodes":[{"id":"filestem_entityname","label":"Human Readable Name","file_type":"code|document|paper|image","source_file":"relative/path","source_location":null,"source_url":null,"captured_at":null,"author":null,"contributor":null}],"edges":[{"source":"node_id","target":"node_id","relation":"calls|implements|references|cites|conceptually_related_to|shares_data_with|semantically_similar_to","confidence":"EXTRACTED|INFERRED|AMBIGUOUS","confidence_score":1.0,"source_file":"relative/path","source_location":null,"weight":1.0}],"hyperedges":[{"id":"snake_case_id","label":"Human Readable Label","nodes":["node_id1","node_id2","node_id3"],"relation":"participate_in|implement|form","confidence":"EXTRACTED|INFERRED","confidence_score":0.75,"source_file":"relative/path"}],"input_tokens":0,"output_tokens":0}
+```
+
+**Step B3 - Collect, cache, and merge**
+
+Wait for all subagents. For each result:
+- If a subagent returned valid JSON with `nodes` and `edges`, include it and save each file's nodes/edges to the cache
+- If a subagent failed or returned invalid JSON, print a warning and skip that chunk - do not abort
 
 If more than half the chunks failed, stop and tell the user.
 
 Save new results to cache:
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import json
 from graphify.cache import save_semantic_cache
 from pathlib import Path
 
-new = json.loads(Path('.graphify_semantic_new.json').read_text()) if Path('.graphify_semantic_new.json').exists() else {'nodes':[],'edges':[],'hyperedges':[]}
-saved = save_semantic_cache(new.get('nodes', []), new.get('edges', []), new.get('hyperedges', []))
+new = json.loads(Path('.graphify_semantic_new.json').read_text()) if Path('.graphify_semantic_new.json').exists() else {'nodes':[],'edges':[]}
+saved = save_semantic_cache(new.get('nodes', []), new.get('edges', []))
 print(f'Cached {saved} files')
 "
 ```
 
 Merge cached + new results into `.graphify_semantic.json`:
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import json
 from pathlib import Path
 
-cached = json.loads(Path('.graphify_cached.json').read_text()) if Path('.graphify_cached.json').exists() else {'nodes':[],'edges':[],'hyperedges':[]}
-new = json.loads(Path('.graphify_semantic_new.json').read_text()) if Path('.graphify_semantic_new.json').exists() else {'nodes':[],'edges':[],'hyperedges':[]}
+cached = json.loads(Path('.graphify_cached.json').read_text()) if Path('.graphify_cached.json').exists() else {'nodes':[],'edges':[]}
+new = json.loads(Path('.graphify_semantic_new.json').read_text()) if Path('.graphify_semantic_new.json').exists() else {'nodes':[],'edges':[]}
 
 all_nodes = cached['nodes'] + new.get('nodes', [])
 all_edges = cached['edges'] + new.get('edges', [])
-all_hyperedges = cached.get('hyperedges', []) + new.get('hyperedges', [])
 seen = set()
 deduped = []
 for n in all_nodes:
@@ -238,7 +275,6 @@ for n in all_nodes:
 merged = {
     'nodes': deduped,
     'edges': all_edges,
-    'hyperedges': all_hyperedges,
     'input_tokens': new.get('input_tokens', 0),
     'output_tokens': new.get('output_tokens', 0),
 }
@@ -251,7 +287,7 @@ Clean up temp files: `rm -f .graphify_cached.json .graphify_uncached.txt .graphi
 #### Part C - Merge AST + semantic into final extraction
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import sys, json
 from pathlib import Path
 
@@ -267,11 +303,9 @@ for n in sem['nodes']:
         seen.add(n['id'])
 
 merged_edges = ast['edges'] + sem['edges']
-merged_hyperedges = sem.get('hyperedges', [])
 merged = {
     'nodes': merged_nodes,
     'edges': merged_edges,
-    'hyperedges': merged_hyperedges,
     'input_tokens': sem.get('input_tokens', 0),
     'output_tokens': sem.get('output_tokens', 0),
 }
@@ -286,7 +320,7 @@ print(f'Merged: {total} nodes, {edges} edges ({len(ast[\"nodes\"])} AST + {len(s
 
 ```bash
 mkdir -p graphify-out
-$(cat .graphify_python) -c "
+python3 -c "
 import sys, json
 from graphify.build import build_from_json
 from graphify.cluster import cluster, score_all
@@ -339,7 +373,7 @@ Read `.graphify_analysis.json`. For each community key, look at its node labels 
 Then regenerate the report and save the labels for the visualizer:
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import sys, json
 from graphify.build import build_from_json
 from graphify.cluster import score_all
@@ -372,14 +406,12 @@ print('Report updated with community labels')
 Replace `LABELS_DICT` with the actual dict you constructed (e.g. `{0: "Attention Mechanism", 1: "Training Pipeline"}`).
 Replace INPUT_PATH with the actual path.
 
-### Step 6 - Generate Obsidian vault (opt-in) + HTML
+### Step 6 - Generate Obsidian vault (default) + optional HTML
 
-**Generate HTML always** (unless `--no-viz`). **Obsidian vault only if `--obsidian` was explicitly given** — skip it otherwise, it generates one file per node.
-
-If `--obsidian` was given:
+**Always generate the Obsidian vault and HTML** - they are the primary visualizations. Skip both if `--no-viz` (report + JSON only).
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import sys, json
 from graphify.build import build_from_json
 from graphify.export import to_obsidian, to_canvas
@@ -407,10 +439,10 @@ print('  _COMMUNITY_* - overview notes with cohesion scores and dataview queries
 "
 ```
 
-Generate the HTML graph (always, unless `--no-viz`):
+Also generate the HTML graph (always, unless `--no-viz`):
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import sys, json
 from graphify.build import build_from_json
 from graphify.export import to_html
@@ -437,7 +469,7 @@ else:
 **If `--neo4j`** - generate a Cypher file for manual import:
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import sys, json
 from graphify.build import build_from_json
 from graphify.export import to_cypher
@@ -452,7 +484,7 @@ print('cypher.txt written - import with: cypher-shell < graphify-out/cypher.txt'
 **If `--neo4j-push <uri>`** - push directly to a running Neo4j instance. Ask the user for credentials if not provided:
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import sys, json
 from graphify.build import build_from_json
 from graphify.cluster import cluster
@@ -474,7 +506,7 @@ Replace `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` with actual values. Default 
 ### Step 7b - SVG export (only if --svg flag)
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import sys, json
 from graphify.build import build_from_json
 from graphify.export import to_svg
@@ -496,7 +528,7 @@ print('graph.svg written - embeds in Obsidian, Notion, GitHub READMEs')
 ### Step 7c - GraphML export (only if --graphml flag)
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import json
 from graphify.build import build_from_json
 from graphify.export import to_graphml
@@ -538,7 +570,7 @@ To configure in Claude Desktop, add to `claude_desktop_config.json`:
 If `total_words` from `.graphify_detect.json` is greater than 5,000, run:
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import json
 from graphify.benchmark import run_benchmark, print_benchmark
 from pathlib import Path
@@ -556,7 +588,7 @@ Print the output directly in chat. If `total_words <= 5000`, skip silently - the
 ### Step 9 - Save manifest, update cost tracker, clean up, and report
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import json
 from pathlib import Path
 from datetime import datetime, timezone
@@ -590,18 +622,26 @@ cost_path.write_text(json.dumps(cost, indent=2))
 print(f'This run: {input_tok:,} input tokens, {output_tok:,} output tokens')
 print(f'All time: {cost[\"total_input_tokens\"]:,} input, {cost[\"total_output_tokens\"]:,} output ({len(cost[\"runs\"])} runs)')
 "
-rm -f .graphify_detect.json .graphify_extract.json .graphify_ast.json .graphify_semantic.json .graphify_analysis.json .graphify_labels.json .graphify_python
+rm -f .graphify_detect.json .graphify_extract.json .graphify_ast.json .graphify_semantic.json .graphify_analysis.json .graphify_labels.json
 rm -f graphify-out/.needs_update 2>/dev/null || true
 ```
 
-Tell the user (omit the obsidian line unless --obsidian was given):
+Tell the user:
 ```
-Graph complete. Outputs in PATH_TO_DIR/graphify-out/
+Graph complete. Outputs are in a hidden folder called graphify-out/ inside the directory you ran this on.
 
-  graph.html            - interactive graph, open in browser
-  GRAPH_REPORT.md       - audit report
-  graph.json            - raw graph data
-  obsidian/             - Obsidian vault (only if --obsidian was given)
+The folder is hidden (dot prefix) so it won't show in Finder or a normal ls.
+To see it:
+  Mac/Linux:  ls -la graphify-out/
+  VS Code:    the Explorer panel shows hidden files by default
+  Finder:     Cmd+Shift+. to toggle hidden files
+
+What's inside:
+  graphify-out/obsidian/        - open this folder as a vault in Obsidian (File > Open Vault)
+  graphify-out/GRAPH_REPORT.md  - full audit report, also readable here in Claude
+  graphify-out/graph.json       - persistent graph, query it later with /graphify query "..."
+
+Full path: PATH_TO_DIR/graphify-out/
 ```
 
 Replace PATH_TO_DIR with the actual absolute path of the directory that was processed.
@@ -628,7 +668,7 @@ The graph is the map. Your job after the pipeline is to be the guide.
 Use when you've added or modified files since the last run. Only re-extracts changed files - saves tokens and time.
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import sys, json
 from graphify.detect import detect_incremental, save_manifest
 from pathlib import Path
@@ -647,7 +687,7 @@ print(f'{new_total} new/changed file(s) to re-extract.')
 If new files exist, first check whether all changed files are code files:
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import json
 from pathlib import Path
 
@@ -667,7 +707,7 @@ If `code_only` is False (any changed file is a doc/paper/image): run the full St
 Then:
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import sys, json
 from graphify.build import build_from_json
 from graphify.export import to_json
@@ -694,7 +734,7 @@ Then run Steps 4–8 on the merged graph as normal.
 After Step 4, show the graph diff:
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import json
 from graphify.analyze import graph_diff
 from graphify.build import build_from_json
@@ -728,7 +768,7 @@ Clean up after: `rm -f .graphify_old.json`
 Skip Steps 1–3. Load the existing graph from `graphify-out/graph.json` and re-run clustering:
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import sys, json
 from graphify.cluster import cluster, score_all
 from graphify.analyze import god_nodes, surprising_connections
@@ -781,7 +821,7 @@ Two traversal modes - choose based on the question:
 
 First check the graph exists:
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 from pathlib import Path
 if not Path('graphify-out/graph.json').exists():
     print('ERROR: No graph found. Run /graphify <path> first to build the graph.')
@@ -799,7 +839,7 @@ Load `graphify-out/graph.json`, then:
 5. If the graph lacks enough information, say so - do not hallucinate edges.
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import sys, json
 from networkx.readwrite import json_graph
 import networkx as nx
@@ -890,7 +930,7 @@ Replace `QUESTION` with the user's actual question, `MODE` with `bfs` or `dfs`, 
 After writing the answer, save it back into the graph so it improves future queries:
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 from graphify.ingest import save_query_result
 from pathlib import Path
 save_query_result(
@@ -914,7 +954,7 @@ Find the shortest path between two named concepts in the graph.
 
 First check the graph exists:
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 from pathlib import Path
 if not Path('graphify-out/graph.json').exists():
     print('ERROR: No graph found. Run /graphify <path> first to build the graph.')
@@ -924,7 +964,7 @@ if not Path('graphify-out/graph.json').exists():
 If it fails, stop and tell the user to run `/graphify <path>` first.
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import json, sys
 import networkx as nx
 from networkx.readwrite import json_graph
@@ -976,7 +1016,7 @@ Replace `NODE_A` and `NODE_B` with the actual concept names from the user. Then 
 After writing the explanation, save it back:
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 from graphify.ingest import save_query_result
 from pathlib import Path
 save_query_result(
@@ -998,7 +1038,7 @@ Give a plain-language explanation of a single node - everything connected to it.
 
 First check the graph exists:
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 from pathlib import Path
 if not Path('graphify-out/graph.json').exists():
     print('ERROR: No graph found. Run /graphify <path> first to build the graph.')
@@ -1008,7 +1048,7 @@ if not Path('graphify-out/graph.json').exists():
 If it fails, stop and tell the user to run `/graphify <path>` first.
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import json, sys
 import networkx as nx
 from networkx.readwrite import json_graph
@@ -1053,7 +1093,7 @@ Replace `NODE_NAME` with the concept the user asked about. Then write a 3-5 sent
 After writing the explanation, save it back:
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 from graphify.ingest import save_query_result
 from pathlib import Path
 save_query_result(
@@ -1074,7 +1114,7 @@ print('Explanation saved to graphify-out/memory/')
 Fetch a URL and add it to the corpus, then update the graph.
 
 ```bash
-$(cat .graphify_python) -c "
+python3 -c "
 import sys
 from graphify.ingest import ingest
 from pathlib import Path

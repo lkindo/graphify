@@ -1,14 +1,10 @@
 # graphify
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+[![CI](https://github.com/safishamsi/graphify/actions/workflows/ci.yml/badge.svg?branch=v1)](https://github.com/safishamsi/graphify/actions/workflows/ci.yml)
 
-[![CI](https://github.com/safishamsi/graphify/actions/workflows/ci.yml/badge.svg?branch=v3)](https://github.com/safishamsi/graphify/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/graphifyy)](https://pypi.org/project/graphifyy/)
-[![Sponsor](https://img.shields.io/badge/sponsor-safishamsi-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/safishamsi)
+**A Claude Code skill.** Type `/graphify` in Claude Code - it reads your files, builds a knowledge graph, and gives you back structure you didn't know was there.
 
-**An AI coding assistant skill.** Type `/graphify` in Claude Code, Codex, OpenCode, OpenClaw, or Factory Droid - it reads your files, builds a knowledge graph, and gives you back structure you didn't know was there. Understand a codebase faster. Find the "why" behind architectural decisions.
-
-Fully multimodal. Drop in code, PDFs, markdown, screenshots, diagrams, whiteboard photos, even images in other languages - graphify uses Claude vision to extract concepts and relationships from all of it and connects them into one graph. 19 languages supported via tree-sitter AST (Python, JS, TS, Go, Rust, Java, C, C++, Ruby, C#, Kotlin, Scala, PHP, Swift, Lua, Zig, PowerShell, Elixir, Objective-C).
+Fully multimodal. Drop in code, PDFs, markdown, screenshots, diagrams, whiteboard photos, even images in other languages - graphify uses Claude vision to extract concepts and relationships from all of it and connects them into one graph.
 
 > Andrej Karpathy keeps a `/raw` folder where he drops papers, tweets, screenshots, and notes. graphify is the answer to that problem - 71.5x fewer tokens per query vs reading the raw files, persistent across sessions, honest about what it found vs guessed.
 
@@ -19,34 +15,16 @@ Fully multimodal. Drop in code, PDFs, markdown, screenshots, diagrams, whiteboar
 ```
 graphify-out/
 ├── graph.html       interactive graph - click nodes, search, filter by community
+├── obsidian/        open as Obsidian vault
+├── wiki/            Wikipedia-style articles for agent navigation (--wiki)
 ├── GRAPH_REPORT.md  god nodes, surprising connections, suggested questions
 ├── graph.json       persistent graph - query weeks later without re-reading
 └── cache/           SHA256 cache - re-runs only process changed files
 ```
 
-Add a `.graphifyignore` file to exclude folders you don't want in the graph:
-
-```
-# .graphifyignore
-vendor/
-node_modules/
-dist/
-*.generated.py
-```
-
-Same syntax as `.gitignore`. Patterns match against file paths relative to the folder you run graphify on.
-
-## How it works
-
-graphify runs in two passes. First, a deterministic AST pass extracts structure from code files (classes, functions, imports, call graphs, docstrings, rationale comments) with no LLM needed. Second, Claude subagents run in parallel over docs, papers, and images to extract concepts, relationships, and design rationale. The results are merged into a NetworkX graph, clustered with Leiden community detection, and exported as interactive HTML, queryable JSON, and a plain-language audit report.
-
-**Clustering is graph-topology-based — no embeddings.** Leiden finds communities by edge density. The semantic similarity edges that Claude extracts (`semantically_similar_to`, marked INFERRED) are already in the graph, so they influence community detection directly. The graph structure is the similarity signal — no separate embedding step or vector database needed.
-
-Every relationship is tagged `EXTRACTED` (found directly in source), `INFERRED` (reasonable inference, with a confidence score), or `AMBIGUOUS` (flagged for review). You always know what was found vs guessed.
-
 ## Install
 
-**Requires:** Python 3.10+ and one of: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [OpenClaw](https://openclaw.ai), or [Factory Droid](https://factory.ai)
+**Requires:** [Claude Code](https://claude.ai/code) and Python 3.10+
 
 ```bash
 pip install graphifyy && graphify install
@@ -54,59 +32,18 @@ pip install graphifyy && graphify install
 
 > The PyPI package is temporarily named `graphifyy` while the `graphify` name is being reclaimed. The CLI and skill command are still `graphify`.
 
-### Platform support
-
-| Platform | Install command |
-|----------|----------------|
-| Claude Code (Linux/Mac) | `graphify install` |
-| Claude Code (Windows) | `graphify install` (auto-detected) or `graphify install --platform windows` |
-| Codex | `graphify install --platform codex` |
-| OpenCode | `graphify install --platform opencode` |
-| OpenClaw | `graphify install --platform claw` |
-| Factory Droid | `graphify install --platform droid` |
-
-Codex users also need `multi_agent = true` under `[features]` in `~/.codex/config.toml` for parallel extraction. Factory Droid uses the `Task` tool for parallel subagent dispatch. OpenClaw uses sequential extraction (parallel agent support is still early on that platform).
-
-Then open your AI coding assistant and type:
+Then open Claude Code in any directory and type:
 
 ```
 /graphify .
 ```
-
-Note: Codex uses `$` instead of `/` for skill calling, so type `$graphify .` instead.
-
-### Make your assistant always use the graph (recommended)
-
-After building a graph, run this once in your project:
-
-| Platform | Command |
-|----------|---------|
-| Claude Code | `graphify claude install` |
-| Codex | `graphify codex install` |
-| OpenCode | `graphify opencode install` |
-| OpenClaw | `graphify claw install` |
-| Factory Droid | `graphify droid install` |
-
-**Claude Code** does two things: writes a `CLAUDE.md` section telling Claude to read `graphify-out/GRAPH_REPORT.md` before answering architecture questions, and installs a **PreToolUse hook** (`settings.json`) that fires before every Glob and Grep call. If a knowledge graph exists, Claude sees: _"graphify: Knowledge graph exists. Read GRAPH_REPORT.md for god nodes and community structure before searching raw files."_ — so Claude navigates via the graph instead of grepping through every file.
-
-**Codex, OpenCode, OpenClaw, Factory Droid** write the same rules to `AGENTS.md` in your project root. These platforms don't support PreToolUse hooks, so AGENTS.md is the always-on mechanism.
-
-Uninstall with the matching uninstall command (e.g. `graphify claude uninstall`).
-
-**Always-on vs explicit trigger — what's the difference?**
-
-The always-on hook surfaces `GRAPH_REPORT.md` — a one-page summary of god nodes, communities, and surprising connections. Your assistant reads this before searching files, so it navigates by structure instead of keyword matching. That covers most everyday questions.
-
-`/graphify query`, `/graphify path`, and `/graphify explain` go deeper: they traverse the raw `graph.json` hop by hop, trace exact paths between nodes, and surface edge-level detail (relation type, confidence score, source location). Use them when you want a specific question answered from the graph rather than a general orientation.
-
-Think of it this way: the always-on hook gives your assistant a map. The `/graphify` commands let it navigate the map precisely.
 
 <details>
 <summary>Manual install (curl)</summary>
 
 ```bash
 mkdir -p ~/.claude/skills/graphify
-curl -fsSL https://raw.githubusercontent.com/safishamsi/graphify/v3/graphify/skill.md \
+curl -fsSL https://raw.githubusercontent.com/safishamsi/graphify/v1/skills/graphify/skill.md \
   > ~/.claude/skills/graphify/SKILL.md
 ```
 
@@ -126,19 +63,11 @@ When the user types `/graphify`, invoke the Skill tool with `skill: "graphify"` 
 /graphify ./raw                    # run on a specific folder
 /graphify ./raw --mode deep        # more aggressive INFERRED edge extraction
 /graphify ./raw --update           # re-extract only changed files, merge into existing graph
-/graphify ./raw --cluster-only     # rerun clustering on existing graph, no re-extraction
-/graphify ./raw --no-viz           # skip HTML, just produce report + JSON
-/graphify ./raw --obsidian                          # also generate Obsidian vault (opt-in)
-/graphify ./raw --obsidian --obsidian-dir ~/vaults/myproject  # write vault to a specific directory
 
 /graphify add https://arxiv.org/abs/1706.03762        # fetch a paper, save, update graph
 /graphify add https://x.com/karpathy/status/...       # fetch a tweet
-/graphify add https://... --author "Name"             # tag the original author
-/graphify add https://... --contributor "Name"        # tag who added it to the corpus
 
 /graphify query "what connects attention to the optimizer?"
-/graphify query "what connects attention to the optimizer?" --dfs   # trace a specific path
-/graphify query "what connects attention to the optimizer?" --budget 1500  # cap at N tokens
 /graphify path "DigestAuth" "Response"
 /graphify explain "SwinTransformer"
 
@@ -147,36 +76,17 @@ When the user types `/graphify`, invoke the Skill tool with `skill: "graphify"` 
 /graphify ./raw --svg              # export graph.svg
 /graphify ./raw --graphml          # export graph.graphml (Gephi, yEd)
 /graphify ./raw --neo4j            # generate cypher.txt for Neo4j
-/graphify ./raw --neo4j-push bolt://localhost:7687    # push directly to a running Neo4j instance
 /graphify ./raw --mcp              # start MCP stdio server
 
-# git hooks - platform-agnostic, rebuild graph on commit and branch switch
-graphify hook install
-graphify hook uninstall
-graphify hook status
-
-# always-on assistant instructions - platform-specific
-graphify claude install            # CLAUDE.md + PreToolUse hook (Claude Code)
-graphify claude uninstall
-graphify codex install             # AGENTS.md (Codex)
-graphify opencode install          # AGENTS.md (OpenCode)
-graphify claw install              # AGENTS.md (OpenClaw)
-graphify droid install             # AGENTS.md (Factory Droid)
-
-# query the graph directly from the terminal (no AI assistant needed)
-graphify query "what connects attention to the optimizer?"
-graphify query "show the auth flow" --dfs
-graphify query "what is CfgNode?" --budget 500
-graphify query "..." --graph path/to/graph.json
+graphify hook install              # post-commit git hook - rebuilds graph on every commit automatically
 ```
 
 Works with any mix of file types:
 
 | Type | Extensions | Extraction |
 |------|-----------|------------|
-| Code | `.py .ts .js .go .rs .java .c .cpp .rb .cs .kt .scala .php .swift .lua .zig .ps1 .ex .exs .m .mm` | AST via tree-sitter + call-graph + docstring/comment rationale |
-| Docs | `.md .txt .rst` | Concepts + relationships + design rationale via Claude |
-| Office | `.docx .xlsx` | Converted to markdown then extracted via Claude (requires `pip install graphifyy[office]`) |
+| Code | `.py .ts .js .go .rs .java .c .cpp .rb .cs .kt .scala .php` | AST via tree-sitter + call-graph pass |
+| Docs | `.md .txt .rst` | Concepts + relationships via Claude |
 | Papers | `.pdf` | Citation mining + concept extraction |
 | Images | `.png .jpg .webp .gif` | Claude vision - screenshots, diagrams, any language |
 
@@ -188,21 +98,15 @@ Works with any mix of file types:
 
 **Suggested questions** - 4-5 questions the graph is uniquely positioned to answer
 
-**The "why"** - docstrings, inline comments (`# NOTE:`, `# IMPORTANT:`, `# HACK:`, `# WHY:`), and design rationale from docs are extracted as `rationale_for` nodes. Not just what the code does - why it was written that way.
+**Token benchmark** - printed automatically after every run. On a mixed corpus (Karpathy repos + papers + images): **71.5x** fewer tokens per query vs reading raw files.
 
-**Confidence scores** - every INFERRED edge has a `confidence_score` (0.0-1.0). You know not just what was guessed but how confident the model was. EXTRACTED edges are always 1.0.
+**Auto-sync** (`--watch`) - run in a background terminal and the graph updates itself as your codebase changes. Code file saves trigger an instant rebuild (AST only, no LLM). Doc/image changes notify you to run `--update` for the LLM re-pass. Useful for agentic workflows where multiple agents are writing code in parallel - the graph stays current between waves automatically.
 
-**Semantic similarity edges** - cross-file conceptual links with no structural connection. Two functions solving the same problem without calling each other, a class in code and a concept in a paper describing the same algorithm.
-
-**Hyperedges** - group relationships connecting 3+ nodes that pairwise edges can't express. All classes implementing a shared protocol, all functions in an auth flow, all concepts from a paper section forming one idea.
-
-**Token benchmark** - printed automatically after every run. On a mixed corpus (Karpathy repos + papers + images): **71.5x** fewer tokens per query vs reading raw files. The first run extracts and builds the graph (this costs tokens). Every subsequent query reads the compact graph instead of raw files — that's where the savings compound. The SHA256 cache means re-runs only re-process changed files.
-
-**Auto-sync** (`--watch`) - run in a background terminal and the graph updates itself as your codebase changes. Code file saves trigger an instant rebuild (AST only, no LLM). Doc/image changes notify you to run `--update` for the LLM re-pass.
-
-**Git hooks** (`graphify hook install`) - installs post-commit and post-checkout hooks. Graph rebuilds automatically after every commit and every branch switch. If a rebuild fails, the hook exits with a non-zero code so git surfaces the error instead of silently continuing. No background process needed.
+**Git commit hook** (`graphify hook install`) - installs a post-commit hook that rebuilds the graph after every commit. No background process needed. Triggers once per commit, works with any editor, safe to add alongside existing hooks.
 
 **Wiki** (`--wiki`) - Wikipedia-style markdown articles per community and god node, with an `index.md` entry point. Point any agent at `index.md` and it can navigate the knowledge base by reading files instead of parsing JSON.
+
+Every edge is tagged `EXTRACTED`, `INFERRED`, or `AMBIGUOUS` - you always know what was found vs guessed.
 
 ## Worked examples
 
@@ -214,17 +118,9 @@ Works with any mix of file types:
 
 Token reduction scales with corpus size. 6 files fits in a context window anyway, so graph value there is structural clarity, not compression. At 52 files (code + papers + images) you get 71x+. Each `worked/` folder has the raw input files and the actual output (`GRAPH_REPORT.md`, `graph.json`) so you can run it yourself and verify the numbers.
 
-## Privacy
-
-graphify sends file contents to your AI coding assistant's underlying model API for semantic extraction of docs, papers, and images — Anthropic (Claude Code), OpenAI (Codex), or whichever provider your platform uses. Code files are processed locally via tree-sitter AST — no file contents leave your machine for code. No telemetry, usage tracking, or analytics of any kind. The only network calls are to your platform's model API during extraction, using your own API key.
-
 ## Tech stack
 
-NetworkX + Leiden (graspologic) + tree-sitter + vis.js. Semantic extraction via Claude (Claude Code), GPT-4 (Codex), or whichever model your platform runs. No Neo4j required, no server, runs entirely locally.
-
-## Star history
-
-[![Star History Chart](https://api.star-history.com/svg?repos=safishamsi/graphify&type=Date)](https://star-history.com/#safishamsi/graphify&Date)
+NetworkX + Leiden (graspologic) + tree-sitter + Claude + vis.js. No Neo4j required, no server, runs entirely locally.
 
 <details>
 <summary>Contributing</summary>
