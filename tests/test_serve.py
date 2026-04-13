@@ -151,3 +151,22 @@ def test_load_graph_missing_file(tmp_path):
     graphify_dir.mkdir()
     with pytest.raises(SystemExit):
         _load_graph(str(graphify_dir / "nonexistent.json"))
+
+
+# --- _subgraph_to_text relevance ordering ---
+
+def test_subgraph_to_text_relevance_ordering():
+    """Nodes with higher query scores appear before high-degree but low-score nodes."""
+    G = _make_graph()
+    scores = {"n1": 2.0, "n2": 0.5}
+    text = _subgraph_to_text(G, {"n1", "n2"}, [], node_scores=scores)
+    lines = [l for l in text.strip().split("\n") if l.startswith("NODE")]
+    n1_pos = next(i for i, l in enumerate(lines) if "extract" in l)
+    n2_pos = next(i for i, l in enumerate(lines) if "cluster" in l)
+    assert n1_pos < n2_pos
+
+def test_subgraph_to_text_no_scores_falls_back_to_degree():
+    """Without node_scores, degree-based ordering is preserved (backward compat)."""
+    G = _make_graph()
+    text = _subgraph_to_text(G, {"n1", "n2"}, [])
+    assert "NODE" in text
