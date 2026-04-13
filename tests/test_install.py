@@ -181,7 +181,7 @@ def test_agents_uninstall_preserves_other_content(tmp_path):
 def test_agents_uninstall_no_op_when_not_installed(tmp_path, capsys):
     _agents_uninstall(tmp_path, "codex")
     out = capsys.readouterr().out
-    assert "nothing to do" in out
+    assert "No AGENTS.md found in current directory - nothing to do" in out
 
 
 @pytest.mark.parametrize("platform", ["codex", "aider", "claw", "droid", "trae", "trae-cn"])
@@ -268,6 +268,62 @@ def test_opencode_agents_uninstall_cleans_plugin_without_graphify_section(tmp_pa
     if config_file.exists():
         config = json.loads(config_file.read_text())
         assert not any("graphify.js" in p for p in config.get("plugin", []))
+
+
+def test_codex_agents_uninstall_missing_agents_reports_cleanup_not_noop(tmp_path, capsys):
+    """codex uninstall should not claim no-op when it still removes its hook."""
+    _agents_install(tmp_path, "codex")
+    (tmp_path / "AGENTS.md").unlink()
+
+    _agents_uninstall(tmp_path, "codex")
+
+    out = capsys.readouterr().out
+    assert "No AGENTS.md found in current directory" in out
+    assert "nothing to do" not in out
+    assert ".codex/hooks.json  ->  PreToolUse hook removed" in out
+
+
+def test_opencode_agents_uninstall_missing_agents_reports_cleanup_not_noop(tmp_path, capsys):
+    """opencode uninstall should not claim no-op when it still removes plugin state."""
+    _agents_install(tmp_path, "opencode")
+    (tmp_path / "AGENTS.md").unlink()
+
+    _agents_uninstall(tmp_path, "opencode")
+
+    out = capsys.readouterr().out
+    assert "No AGENTS.md found in current directory" in out
+    assert "nothing to do" not in out
+    assert "graphify.js  ->  removed" in out
+    assert "opencode.json  ->  plugin deregistered" in out
+
+
+def test_opencode_agents_uninstall_missing_marker_reports_cleanup_not_noop(tmp_path, capsys):
+    """opencode uninstall should not claim no-op when AGENTS.md lacks the marker but plugin state exists."""
+    _agents_install(tmp_path, "opencode")
+    (tmp_path / "AGENTS.md").write_text("# Existing rules\n", encoding="utf-8")
+
+    _agents_uninstall(tmp_path, "opencode")
+
+    out = capsys.readouterr().out
+    assert "graphify section not found in AGENTS.md" in out
+    assert "nothing to do" not in out
+    assert "graphify.js  ->  removed" in out
+
+
+def test_opencode_agents_uninstall_true_noop_reports_nothing_to_do(tmp_path, capsys):
+    """opencode uninstall should report no-op only when neither AGENTS nor plugin state exists."""
+    _agents_uninstall(tmp_path, "opencode")
+
+    out = capsys.readouterr().out
+    assert "No AGENTS.md found in current directory - nothing to do" in out
+
+
+def test_codex_agents_uninstall_true_noop_reports_nothing_to_do(tmp_path, capsys):
+    """codex uninstall should report no-op only when neither AGENTS nor hook state exists."""
+    _agents_uninstall(tmp_path, "codex")
+
+    out = capsys.readouterr().out
+    assert "No AGENTS.md found in current directory - nothing to do" in out
 
 
 # ── Cursor ────────────────────────────────────────────────────────────────────

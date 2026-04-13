@@ -484,20 +484,22 @@ def _install_opencode_plugin(project_dir: Path) -> None:
         print(f"  {_OPENCODE_CONFIG_PATH}  ->  plugin already registered (no change)")
 
 
-def _uninstall_opencode_plugin(project_dir: Path) -> None:
+def _uninstall_opencode_plugin(project_dir: Path) -> bool:
     """Remove graphify.js plugin and deregister from opencode.json."""
+    changed = False
     plugin_file = project_dir / _OPENCODE_PLUGIN_PATH
     if plugin_file.exists():
         plugin_file.unlink()
+        changed = True
         print(f"  {_OPENCODE_PLUGIN_PATH}  ->  removed")
 
     config_file = project_dir / _OPENCODE_CONFIG_PATH
     if not config_file.exists():
-        return
+        return changed
     try:
         config = json.loads(config_file.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
-        return
+        return changed
     plugins = config.get("plugin", [])
     entry = str(_OPENCODE_PLUGIN_PATH)
     if entry in plugins:
@@ -505,7 +507,9 @@ def _uninstall_opencode_plugin(project_dir: Path) -> None:
         if not plugins:
             config.pop("plugin")
         config_file.write_text(json.dumps(config, indent=2), encoding="utf-8")
+        changed = True
         print(f"  {_OPENCODE_CONFIG_PATH}  ->  plugin deregistered")
+    return changed
 
 
 _CODEX_HOOK = {
@@ -549,20 +553,23 @@ def _install_codex_hook(project_dir: Path) -> None:
     print(f"  .codex/hooks.json  ->  PreToolUse hook registered")
 
 
-def _uninstall_codex_hook(project_dir: Path) -> None:
+def _uninstall_codex_hook(project_dir: Path) -> bool:
     """Remove graphify PreToolUse hook from .codex/hooks.json."""
     hooks_path = project_dir / ".codex" / "hooks.json"
     if not hooks_path.exists():
-        return
+        return False
     try:
         existing = json.loads(hooks_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
-        return
+        return False
     pre_tool = existing.get("hooks", {}).get("PreToolUse", [])
     filtered = [h for h in pre_tool if "graphify" not in str(h)]
+    if len(filtered) == len(pre_tool):
+        return False
     existing["hooks"]["PreToolUse"] = filtered
     hooks_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
     print(f"  .codex/hooks.json  ->  PreToolUse hook removed")
+    return True
 
 
 def _agents_install(project_dir: Path, platform: str) -> None:
@@ -598,13 +605,15 @@ def _agents_uninstall(project_dir: Path, platform: str) -> None:
     """Remove the graphify section from AGENTS.md and any platform-owned state."""
     base_dir = project_dir or Path(".")
     target = base_dir / "AGENTS.md"
+    agents_status = ""
+    agents_changed = False
 
     if not target.exists():
-        print("No AGENTS.md found in current directory - nothing to do")
+        agents_status = "No AGENTS.md found in current directory"
     else:
         content = target.read_text(encoding="utf-8")
         if _AGENTS_MD_MARKER not in content:
-            print("graphify section not found in AGENTS.md - nothing to do")
+            agents_status = "graphify section not found in AGENTS.md"
         else:
             cleaned = re.sub(
                 r"\n*## graphify\n.*?(?=\n## |\Z)",
@@ -614,15 +623,24 @@ def _agents_uninstall(project_dir: Path, platform: str) -> None:
             ).rstrip()
             if cleaned:
                 target.write_text(cleaned + "\n", encoding="utf-8")
+                agents_changed = True
                 print(f"graphify section removed from {target.resolve()}")
             else:
                 target.unlink()
+                agents_changed = True
                 print(f"AGENTS.md was empty after removal - deleted {target.resolve()}")
 
+    platform_changed = False
     if platform == "opencode":
-        _uninstall_opencode_plugin(base_dir)
+        platform_changed = _uninstall_opencode_plugin(base_dir)
     elif platform == "codex":
-        _uninstall_codex_hook(base_dir)
+        platform_changed = _uninstall_codex_hook(base_dir)
+
+    if agents_status:
+        if not agents_changed and not platform_changed:
+            print(f"{agents_status} - nothing to do")
+        else:
+            print(agents_status)
 
 
 def claude_install(project_dir: Path | None = None) -> None:
