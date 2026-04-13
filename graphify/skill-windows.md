@@ -632,6 +632,29 @@ To configure in Claude Desktop, add to `claude_desktop_config.json`:
 }
 ```
 
+### Step 7e - Wiki export (only if --wiki flag)
+
+```powershell
+python -c "
+import json
+from graphify.build import build_from_json
+from graphify.wiki import to_wiki
+from pathlib import Path
+
+extraction = json.loads(Path('.graphify_extract.json').read_text())
+analysis   = json.loads(Path('.graphify_analysis.json').read_text())
+labels_raw = json.loads(Path('.graphify_labels.json').read_text()) if Path('.graphify_labels.json').exists() else {}
+
+G = build_from_json(extraction)
+communities = {int(k): v for k, v in analysis['communities'].items()}
+cohesion    = {int(k): v for k, v in analysis['cohesion'].items()}
+labels      = {int(k): v for k, v in labels_raw.items()}
+
+n = to_wiki(G, communities, 'graphify-out/wiki', community_labels=labels or None, cohesion=cohesion, god_nodes_data=analysis.get('gods', []))
+print(f'Wiki: {n} articles in graphify-out/wiki/ - entry point: graphify-out/wiki/index.md')
+"
+```
+
 ### Step 8 - Token reduction benchmark (only if total_words > 5000)
 
 If `total_words` from `.graphify_detect.json` is greater than 5,000, run:
