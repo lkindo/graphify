@@ -62,8 +62,8 @@ def test_cached_files(tmp_path, cache_root):
     save_cached(f2, {"nodes": [], "edges": []}, root=cache_root)
 
     hashes = cached_files(cache_root)
-    assert file_hash(f1) in hashes
-    assert file_hash(f2) in hashes
+    assert file_hash(f1, root=cache_root) in hashes
+    assert file_hash(f2, root=cache_root) in hashes
 
 
 def test_clear_cache(tmp_file, cache_root):
@@ -112,6 +112,33 @@ def test_non_md_file_hashed_fully(tmp_path):
     f.write_text("# changed comment\nx = 1")
     h2 = file_hash(f)
     assert h1 != h2
+
+
+def test_file_hash_uses_project_relative_path_when_root_is_provided(tmp_path):
+    """Same relative file in different roots should share the cache key."""
+    root_a = tmp_path / "clone-a"
+    root_b = tmp_path / "clone-b"
+    file_a = root_a / "src" / "sample.py"
+    file_b = root_b / "src" / "sample.py"
+
+    file_a.parent.mkdir(parents=True)
+    file_b.parent.mkdir(parents=True)
+    file_a.write_text("print('hello')\n")
+    file_b.write_text("print('hello')\n")
+
+    assert file_hash(file_a, root=root_a) == file_hash(file_b, root=root_b)
+
+
+def test_file_hash_falls_back_to_absolute_path_outside_root(tmp_path):
+    """Files outside the declared root keep distinct cache keys."""
+    root = tmp_path / "project"
+    root.mkdir()
+    file_a = tmp_path / "external-a.py"
+    file_b = tmp_path / "external-b.py"
+    file_a.write_text("print('hello')\n")
+    file_b.write_text("print('hello')\n")
+
+    assert file_hash(file_a, root=root) != file_hash(file_b, root=root)
 
 
 def test_body_content_strips_frontmatter():
