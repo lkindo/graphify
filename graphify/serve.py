@@ -89,11 +89,22 @@ def _dfs(G: nx.Graph, start_nodes: list[str], depth: int) -> tuple[set[str], lis
     return visited, edges_seen
 
 
-def _subgraph_to_text(G: nx.Graph, nodes: set[str], edges: list[tuple], token_budget: int = 2000) -> str:
-    """Render subgraph as text, cutting at token_budget (approx 3 chars/token)."""
+def _subgraph_to_text(
+    G: nx.Graph,
+    nodes: set[str],
+    edges: list[tuple],
+    token_budget: int = 2000,
+    node_scores: dict[str, float] | None = None,
+) -> str:
+    """Render subgraph as text, cutting at token_budget (approx 3 chars/token).
+
+    Nodes are sorted by query relevance score first, then by degree as
+    tiebreaker so that direct matches always appear before traversal neighbors.
+    """
     char_budget = token_budget * 3
+    scores = node_scores or {}
     lines = []
-    for nid in sorted(nodes, key=lambda n: G.degree(n), reverse=True):
+    for nid in sorted(nodes, key=lambda n: (scores.get(n, 0), G.degree(n)), reverse=True):
         d = G.nodes[nid]
         line = f"NODE {sanitize_label(d.get('label', nid))} [src={d.get('source_file', '')} loc={d.get('source_location', '')} community={d.get('community', '')}]"
         lines.append(line)
@@ -243,17 +254,18 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
         start_nodes = [nid for _, nid in scored[:3]]
         if not start_nodes:
             return "No matching nodes found."
+        score_map = {nid: s for s, nid in scored}
         nodes, edges = _dfs(G, start_nodes, depth) if mode == "dfs" else _bfs(G, start_nodes, depth)
         header = f"Traversal: {mode.upper()} depth={depth} | Start: {[G.nodes[n].get('label', n) for n in start_nodes]} | {len(nodes)} nodes found\n\n"
-        return header + _subgraph_to_text(G, nodes, edges, budget)
+        return header + _subgraph_to_text(G, nodes, edges, budget, node_scores=score_map)
 
     def _tool_get_node(arguments: dict) -> str:
-        label = arguments["label"].lower()
-        matches = [(nid, d) for nid, d in G.nodes(data=True)
-                   if label in d.get("label", "").lower() or label == nid.lower()]
-        if not matches:
+        label = arguments["label"]
+        matched_ids = _find_node(G, label)
+        if not matched_ids:
             return f"No node matching '{label}' found."
-        nid, d = matches[0]
+        nid = matched_ids[0]
+        d = G.nodes[nid]
         return "\n".join([
             f"Node: {d.get('label', nid)}",
             f"  ID: {nid}",
