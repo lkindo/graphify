@@ -62,6 +62,18 @@ def test_install_windows(tmp_path):
     assert (tmp_path / ".claude" / "skills" / "graphify" / "SKILL.md").exists()
 
 
+def test_install_cursor_prints_global_user_rules(tmp_path, capsys):
+    with patch("graphify.__main__._cursor_install") as project_install:
+        _install(tmp_path, "cursor")
+
+    out = capsys.readouterr().out
+    assert "Cursor Settings > Rules > User Rules" in out
+    assert "graphify cursor install" in out
+    assert "Before answering architecture or codebase questions" in out
+    assert not (tmp_path / ".cursor" / "rules" / "graphify.mdc").exists()
+    project_install.assert_not_called()
+
+
 def test_install_unknown_platform_exits(tmp_path):
     with pytest.raises(SystemExit):
         _install(tmp_path, "unknown")
@@ -263,6 +275,30 @@ def test_cursor_uninstall_noop_if_not_installed(tmp_path):
     """cursor uninstall does nothing if rule was never written."""
     from graphify.__main__ import _cursor_uninstall
     _cursor_uninstall(tmp_path)  # should not raise
+
+
+def test_main_install_platform_cursor_uses_global_installer():
+    from graphify.__main__ import main
+
+    with patch("graphify.__main__.sys.argv", ["graphify", "install", "--platform", "cursor"]):
+        with patch("graphify.__main__._cursor_global_install") as global_install:
+            with patch("graphify.__main__._cursor_install") as project_install:
+                main()
+
+    global_install.assert_called_once_with()
+    project_install.assert_not_called()
+
+
+def test_main_cursor_install_uses_project_installer():
+    from graphify.__main__ import main
+
+    with patch("graphify.__main__.sys.argv", ["graphify", "cursor", "install"]):
+        with patch("graphify.__main__._cursor_global_install") as global_install:
+            with patch("graphify.__main__._cursor_install") as project_install:
+                main()
+
+    global_install.assert_not_called()
+    project_install.assert_called_once_with(Path("."))
 
 
 # ── Gemini CLI ────────────────────────────────────────────────────────────────
