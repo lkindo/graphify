@@ -163,7 +163,7 @@ graphify trae-cn uninstall
 
 | 类型 | 扩展名 | 提取方式 |
 |------|--------|----------|
-| 代码 | `.py .ts .js .go .rs .java .c .cpp .rb .cs .kt .scala .php` | tree-sitter AST + 调用图 + docstring / 注释中的 rationale |
+| 代码 | `.py .ts .js .jsx .tsx .go .rs .java .c .cpp .rb .cs .kt .scala .php .swift .lua .zig .ps1 .ex .exs .m .mm .jl .vue .svelte .v .sv` | tree-sitter AST + 调用图 + docstring / 注释中的 rationale |
 | 文档 | `.md .txt .rst` | 通过 Claude 提取概念、关系和设计动机 |
 | 论文 | `.pdf` | 引文挖掘 + 概念提取 |
 | 图片 | `.png .jpg .webp .gif` | Claude vision —— 截图、图表、任意语言都可以 |

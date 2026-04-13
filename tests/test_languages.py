@@ -1,11 +1,11 @@
-"""Tests for language extractors: Java, C, C++, Ruby, C#, Kotlin, Scala, PHP, Swift, Go, Julia."""
+"""Tests for language extractors: Java, C, C++, Ruby, C#, Kotlin, Scala, PHP, Swift, Go, Julia, Verilog."""
 from __future__ import annotations
 from pathlib import Path
 import pytest
 from graphify.extract import (
     extract_java, extract_c, extract_cpp, extract_ruby,
     extract_csharp, extract_kotlin, extract_scala, extract_php,
-    extract_swift, extract_go, extract_julia,
+    extract_swift, extract_go, extract_julia, extract_verilog,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -505,6 +505,43 @@ def test_julia_finds_calls():
 
 def test_julia_no_dangling_edges():
     r = extract_julia(FIXTURES / "sample.jl")
+    node_ids = {n["id"] for n in r["nodes"]}
+    for e in r["edges"]:
+        assert e["source"] in node_ids, f"Dangling source: {e}"
+
+
+# ── Verilog / SystemVerilog ──────────────────────────────────────────────────
+
+def test_verilog_no_error():
+    r = extract_verilog(FIXTURES / "sample.sv")
+    assert "error" not in r
+
+def test_verilog_finds_modules():
+    r = extract_verilog(FIXTURES / "sample.sv")
+    labels = _labels(r)
+    assert any("DataProcessor" in l for l in labels)
+    assert any("SubModule" in l for l in labels)
+
+def test_verilog_finds_functions():
+    r = extract_verilog(FIXTURES / "sample.sv")
+    labels = _labels(r)
+    assert any("calc_checksum" in l for l in labels)
+
+def test_verilog_finds_tasks():
+    r = extract_verilog(FIXTURES / "sample.sv")
+    labels = _labels(r)
+    assert any("do_reset" in l for l in labels)
+
+def test_verilog_finds_imports():
+    r = extract_verilog(FIXTURES / "sample.sv")
+    assert "imports" in _relations(r)
+
+def test_verilog_finds_instantiation():
+    r = extract_verilog(FIXTURES / "sample.sv")
+    assert "instantiates" in _relations(r)
+
+def test_verilog_no_dangling_edges():
+    r = extract_verilog(FIXTURES / "sample.sv")
     node_ids = {n["id"] for n in r["nodes"]}
     for e in r["edges"]:
         assert e["source"] in node_ids, f"Dangling source: {e}"

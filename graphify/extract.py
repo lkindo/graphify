@@ -1434,6 +1434,183 @@ def extract_julia(path: Path) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
+# ── Verilog / SystemVerilog extractor (custom walk) ──────────────────────────
+
+def _verilog_find_simple_id(node) -> str | None:
+    """Recursively descend to find the first simple_identifier text."""
+    if node.type == "simple_identifier":
+        return node.text.decode("utf-8", errors="replace")
+    for child in node.children:
+        result = _verilog_find_simple_id(child)
+        if result:
+            return result
+    return None
+
+
+def _verilog_find_name_in(node, container_type: str) -> str | None:
+    """Find the simple_identifier inside a specific container type (e.g. function_identifier)."""
+    for child in node.children:
+        if child.type == container_type:
+            return _verilog_find_simple_id(child)
+        result = _verilog_find_name_in(child, container_type)
+        if result:
+            return result
+    return None
+
+
+def extract_verilog(path: Path) -> dict:
+    """Extract modules, functions, tasks, imports, and instantiations from a .v/.sv file."""
+    try:
+        import tree_sitter_verilog as tsverilog
+        from tree_sitter import Language, Parser
+    except ImportError:
+        return {"nodes": [], "edges": [], "error": "tree-sitter-verilog not installed"}
+
+    try:
+        language = Language(tsverilog.language())
+        parser = Parser(language)
+        source = path.read_bytes()
+        tree = parser.parse(source)
+        root = tree.root_node
+    except Exception as e:
+        return {"nodes": [], "edges": [], "error": str(e)}
+
+    stem = path.stem
+    str_path = str(path)
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    seen_ids: set[str] = set()
+
+    def add_node(nid: str, label: str, line: int) -> None:
+        if nid not in seen_ids:
+            seen_ids.add(nid)
+            nodes.append({
+                "id": nid, "label": label, "file_type": "code",
+                "source_file": str_path, "source_location": f"L{line}",
+            })
+
+    def add_edge(src: str, tgt: str, relation: str, line: int,
+                 confidence: str = "EXTRACTED", score: float = 1.0) -> None:
+        edges.append({
+            "source": src, "target": tgt, "relation": relation,
+            "confidence": confidence, "confidence_score": score,
+            "source_file": str_path, "source_location": f"L{line}", "weight": 1.0,
+        })
+
+    file_nid = _make_id(str_path)
+    add_node(file_nid, path.name, 1)
+
+    def _extract_module_name(mod_node) -> str | None:
+        """Get module name from module_header or module_ansi_header."""
+        for child in mod_node.children:
+            if child.type in ("module_header", "module_ansi_header"):
+                # Find the module keyword, then the next simple_identifier sibling
+                for i, sub in enumerate(child.children):
+                    if sub.type == "module_keyword":
+                        for sib in child.children[i + 1:]:
+                            name = _verilog_find_simple_id(sib)
+                            if name:
+                                return name
+                # Fallback: first simple_identifier in header
+                return _verilog_find_simple_id(child)
+        return None
+
+    def _extract_imports_from_header(mod_node, parent_nid: str) -> None:
+        """Extract package_import_declaration nodes from module_ansi_header."""
+        for child in mod_node.children:
+            if child.type in ("module_header", "module_ansi_header"):
+                for sub in child.children:
+                    if sub.type == "package_import_declaration":
+                        pkg = _verilog_find_name_in(sub, "package_identifier")
+                        if pkg:
+                            line = sub.start_point[0] + 1
+                            pkg_nid = _make_id(pkg)
+                            if pkg_nid not in seen_ids:
+                                add_node(pkg_nid, pkg, line)
+                            add_edge(parent_nid, pkg_nid, "imports", line)
+
+    def _walk_module_body(node, mod_nid: str) -> None:
+        """Walk children of a module looking for functions, tasks, instantiations, imports."""
+        for child in node.children:
+            # Unwrap module_or_generate_item and package_or_generate_item_declaration
+            inner = child
+            if inner.type == "module_or_generate_item":
+                if inner.child_count > 0:
+                    inner = inner.children[0]
+            if inner.type == "package_or_generate_item_declaration":
+                if inner.child_count > 0:
+                    inner = inner.children[0]
+
+            line = inner.start_point[0] + 1
+
+            if inner.type == "function_declaration":
+                name = _verilog_find_name_in(inner, "function_identifier")
+                if name:
+                    fnid = _make_id(stem, name)
+                    add_node(fnid, f"{name}()", line)
+                    add_edge(mod_nid, fnid, "method", line)
+
+            elif inner.type == "task_declaration":
+                name = _verilog_find_name_in(inner, "task_identifier")
+                if name:
+                    tnid = _make_id(stem, name)
+                    add_node(tnid, f"{name}()", line)
+                    add_edge(mod_nid, tnid, "method", line)
+
+            elif inner.type in ("module_instantiation", "checker_instantiation"):
+                inst_type = _verilog_find_simple_id(inner)
+                if inst_type:
+                    type_nid = _make_id(inst_type)
+                    if type_nid not in seen_ids:
+                        add_node(type_nid, inst_type, line)
+                    add_edge(mod_nid, type_nid, "instantiates", line)
+
+            elif inner.type == "concurrent_assertion_item":
+                # checker_instantiation can be wrapped in concurrent_assertion_item
+                for sub in inner.children:
+                    if sub.type == "checker_instantiation":
+                        inst_type = _verilog_find_simple_id(sub)
+                        if inst_type:
+                            sub_line = sub.start_point[0] + 1
+                            type_nid = _make_id(inst_type)
+                            if type_nid not in seen_ids:
+                                add_node(type_nid, inst_type, sub_line)
+                            add_edge(mod_nid, type_nid, "instantiates", sub_line)
+
+            elif inner.type == "package_import_declaration":
+                pkg = _verilog_find_name_in(inner, "package_identifier")
+                if pkg:
+                    pkg_nid = _make_id(pkg)
+                    if pkg_nid not in seen_ids:
+                        add_node(pkg_nid, pkg, line)
+                    add_edge(mod_nid, pkg_nid, "imports", line)
+
+    # Walk top-level declarations
+    for child in root.children:
+        if child.type == "module_declaration":
+            mod_name = _extract_module_name(child)
+            if not mod_name:
+                continue
+            line = child.start_point[0] + 1
+            mod_nid = _make_id(stem, mod_name)
+            add_node(mod_nid, mod_name, line)
+            add_edge(file_nid, mod_nid, "contains", line)
+            _extract_imports_from_header(child, mod_nid)
+            _walk_module_body(child, mod_nid)
+
+        elif child.type == "package_import_declaration":
+            # File-scope imports (outside modules)
+            pkg = _verilog_find_simple_id(child)
+            if pkg:
+                line = child.start_point[0] + 1
+                pkg_nid = _make_id(pkg)
+                if pkg_nid not in seen_ids:
+                    add_node(pkg_nid, pkg, line)
+                add_edge(file_nid, pkg_nid, "imports", line)
+
+    return {"nodes": nodes, "edges": edges}
+
+
 # ── Go extractor (custom walk) ────────────────────────────────────────────────
 
 def extract_go(path: Path) -> dict:
@@ -2695,6 +2872,8 @@ def extract(paths: list[Path]) -> dict:
         ".jl": extract_julia,
         ".vue": extract_js,
         ".svelte": extract_js,
+        ".v": extract_verilog,
+        ".sv": extract_verilog,
     }
 
     total = len(paths)
@@ -2754,6 +2933,7 @@ def collect_files(target: Path, *, follow_symlinks: bool = False, root: Path | N
         ".rb", ".cs", ".kt", ".kts", ".scala", ".php", ".swift",
         ".lua", ".toc", ".zig", ".ps1",
         ".m", ".mm",
+        ".v", ".sv",
     }
     from graphify.detect import _load_graphifyignore, _is_ignored
     ignore_root = root if root is not None else target
