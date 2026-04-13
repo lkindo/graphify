@@ -23,6 +23,7 @@ def generate(
     token_cost: dict,
     root: str,
     suggested_questions: list[dict] | None = None,
+    hierarchy: "HierarchicalCommunities | None" = None,
 ) -> str:
     today = date.today().isoformat()
 
@@ -49,14 +50,41 @@ def generate(
             "- Verdict: corpus is large enough that graph structure adds value.",
         ]
 
+    topic_str = ""
+    if hierarchy and len(hierarchy.l0_topics) > 1:
+        topic_str = f" · {len(hierarchy.l0_topics)} topics"
+
     lines += [
         "",
         "## Summary",
-        f"- {G.number_of_nodes()} nodes · {G.number_of_edges()} edges · {len(communities)} communities detected",
+        f"- {G.number_of_nodes()} nodes · {G.number_of_edges()} edges · {len(communities)} communities{topic_str} detected",
         f"- Extraction: {ext_pct}% EXTRACTED · {inf_pct}% INFERRED · {amb_pct}% AMBIGUOUS"
         + (f" · INFERRED: {len(inf_edges)} edges (avg confidence: {inf_avg})" if inf_avg is not None else ""),
         f"- Token cost: {token_cost.get('input', 0):,} input · {token_cost.get('output', 0):,} output",
     ]
+
+    # Topic overview - hierarchical navigation (L0 → L1)
+    if hierarchy and len(hierarchy.l0_topics) > 1:
+        lines += ["", "## Topic Overview (L0 → L1 hierarchy)"]
+        lines.append("")
+        lines.append("```")
+        for tid in sorted(hierarchy.l0_topics.keys()):
+            t_label = hierarchy.l0_labels.get(tid, f"Topic {tid}")
+            cids = hierarchy.l0_topics[tid]
+            total_nodes = sum(len(communities.get(c, [])) for c in cids)
+            lines.append(f"  {t_label} ({total_nodes} nodes)")
+            for cid in sorted(cids):
+                c_label = community_labels.get(cid, f"Community {cid}")
+                n_nodes = len(communities.get(cid, []))
+                lines.append(f"    └── {c_label} ({n_nodes} nodes)")
+        lines.append("```")
+
+        # Topic hub navigation links
+        lines += ["", "### Topic Hubs"]
+        for tid in sorted(hierarchy.l0_topics.keys()):
+            t_label = hierarchy.l0_labels.get(tid, f"Topic {tid}")
+            safe = _safe_community_name(t_label)
+            lines.append(f"- [[_TOPIC_{safe}|{t_label}]]")
 
     # Community hub navigation - links to _COMMUNITY_*.md files in the Obsidian vault.
     # Without these, GRAPH_REPORT.md is a dead-end and the vault splits into disconnected components.
@@ -113,9 +141,15 @@ def generate(
         real_nodes = [n for n in nodes if not _ifn(G, n)]
         display = [G.nodes[n].get("label", n) for n in real_nodes[:8]]
         suffix = f" (+{len(real_nodes)-8} more)" if len(real_nodes) > 8 else ""
+        # Show parent topic if hierarchy available
+        topic_str = ""
+        if hierarchy:
+            tid = hierarchy.l1_to_l0.get(cid)
+            if tid is not None:
+                topic_str = f" (Topic: {hierarchy.l0_labels.get(tid, f'Topic {tid}')})"
         lines += [
             "",
-            f"### Community {cid} - \"{label}\"",
+            f"### Community {cid} - \"{label}\"{topic_str}",
             f"Cohesion: {score}",
             f"Nodes ({len(real_nodes)}): {', '.join(display)}{suffix}",
         ]

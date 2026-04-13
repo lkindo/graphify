@@ -10,6 +10,7 @@ import networkx as nx
 from networkx.readwrite import json_graph
 from graphify.security import sanitize_label
 from graphify.analyze import _node_community_map
+from graphify.cluster import HierarchicalCommunities
 
 COMMUNITY_COLORS = [
     "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
@@ -104,11 +105,12 @@ network.on('afterDrawing', drawHyperedges);
 </script>"""
 
 
-def _html_script(nodes_json: str, edges_json: str, legend_json: str) -> str:
+def _html_script(nodes_json: str, edges_json: str, legend_json: str, topics_json: str = "[]") -> str:
     return f"""<script>
 const RAW_NODES = {nodes_json};
 const RAW_EDGES = {edges_json};
 const LEGEND = {legend_json};
+const TOPICS = {topics_json};
 
 // HTML-escape helper — prevents XSS when injecting graph data into innerHTML
 function esc(s) {{
@@ -120,6 +122,7 @@ const nodesDS = new vis.DataSet(RAW_NODES.map(n => ({{
   id: n.id, label: n.label, color: n.color, size: n.size,
   font: n.font, title: n.title,
   _community: n.community, _community_name: n.community_name,
+  _topic: n.topic, _topic_name: n.topic_name || '',
   _source_file: n.source_file, _file_type: n.file_type, _degree: n.degree,
 }})));
 
@@ -172,9 +175,11 @@ function showInfo(nodeId) {{
     const color = nb ? nb.color.background : '#555';
     return `<span class="neighbor-link" style="border-left-color:${{esc(color)}}" onclick="focusNode(${{JSON.stringify(nid)}})">${{esc(nb ? nb.label : nid)}}</span>`;
   }}).join('');
+  const topicLine = n._topic_name ? `<div class="field">Topic: ${{esc(n._topic_name)}}</div>` : '';
   document.getElementById('info-content').innerHTML = `
     <div class="field"><b>${{esc(n.label)}}</b></div>
     <div class="field">Type: ${{esc(n._file_type || 'unknown')}}</div>
+    ${{topicLine}}
     <div class="field">Community: ${{esc(n._community_name)}}</div>
     <div class="field">Source: ${{esc(n._source_file || '-')}}</div>
     <div class="field">Degree: ${{n._degree}}</div>
@@ -244,27 +249,61 @@ document.addEventListener('click', e => {{
 
 const hiddenCommunities = new Set();
 const legendEl = document.getElementById('legend');
-LEGEND.forEach(c => {{
-  const item = document.createElement('div');
-  item.className = 'legend-item';
-  item.innerHTML = `<div class="legend-dot" style="background:${{c.color}}"></div>
-    <span class="legend-label">${{c.label}}</span>
-    <span class="legend-count">${{c.count}}</span>`;
-  item.onclick = () => {{
-    if (hiddenCommunities.has(c.cid)) {{
-      hiddenCommunities.delete(c.cid);
-      item.classList.remove('dimmed');
-    }} else {{
-      hiddenCommunities.add(c.cid);
-      item.classList.add('dimmed');
-    }}
-    const updates = RAW_NODES
-      .filter(n => n.community === c.cid)
-      .map(n => ({{ id: n.id, hidden: hiddenCommunities.has(c.cid) }}));
-    nodesDS.update(updates);
-  }};
-  legendEl.appendChild(item);
-}});
+
+function toggleCommunity(cid, dimEl) {{
+  if (hiddenCommunities.has(cid)) {{
+    hiddenCommunities.delete(cid);
+    dimEl.classList.remove('dimmed');
+  }} else {{
+    hiddenCommunities.add(cid);
+    dimEl.classList.add('dimmed');
+  }}
+  const updates = RAW_NODES
+    .filter(n => n.community === cid)
+    .map(n => ({{ id: n.id, hidden: hiddenCommunities.has(cid) }}));
+  nodesDS.update(updates);
+}}
+
+if (TOPICS.length > 0) {{
+  // Two-level legend: Topics → Communities
+  TOPICS.forEach(t => {{
+    const topicEl = document.createElement('div');
+    topicEl.style.marginBottom = '8px';
+    const header = document.createElement('div');
+    header.style.cssText = 'font-size:12px;font-weight:bold;color:#ccc;cursor:pointer;padding:4px 0;';
+    header.innerHTML = `&#9662; ${{t.label}} <span style="color:#666;font-weight:normal">(${{t.count}})</span>`;
+    const commList = document.createElement('div');
+    commList.style.paddingLeft = '12px';
+    header.onclick = () => {{
+      const visible = commList.style.display !== 'none';
+      commList.style.display = visible ? 'none' : 'block';
+      header.innerHTML = `${{visible ? '&#9656;' : '&#9662;'}} ${{t.label}} <span style="color:#666;font-weight:normal">(${{t.count}})</span>`;
+    }};
+    t.communities.forEach(c => {{
+      const item = document.createElement('div');
+      item.className = 'legend-item';
+      item.innerHTML = `<div class="legend-dot" style="background:${{c.color}}"></div>
+        <span class="legend-label">${{c.label}}</span>
+        <span class="legend-count">${{c.count}}</span>`;
+      item.onclick = () => toggleCommunity(c.cid, item);
+      commList.appendChild(item);
+    }});
+    topicEl.appendChild(header);
+    topicEl.appendChild(commList);
+    legendEl.appendChild(topicEl);
+  }});
+}} else {{
+  // Flat legend (no hierarchy)
+  LEGEND.forEach(c => {{
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `<div class="legend-dot" style="background:${{c.color}}"></div>
+      <span class="legend-label">${{c.label}}</span>
+      <span class="legend-count">${{c.count}}</span>`;
+    item.onclick = () => toggleCommunity(c.cid, item);
+    legendEl.appendChild(item);
+  }});
+}}
 </script>"""
 
 
@@ -282,19 +321,46 @@ def attach_hyperedges(G: nx.Graph, hyperedges: list) -> None:
     G.graph["hyperedges"] = existing
 
 
-def to_json(G: nx.Graph, communities: dict[int, list[str]], output_path: str) -> None:
+def to_json(
+    G: nx.Graph,
+    communities: dict[int, list[str]],
+    output_path: str,
+    hierarchy: HierarchicalCommunities | None = None,
+) -> None:
     node_community = _node_community_map(communities)
     try:
         data = json_graph.node_link_data(G, edges="links")
     except TypeError:
         data = json_graph.node_link_data(G)
+
+    # Build node→topic mapping from hierarchy
+    node_topic: dict[str, int] = {}
+    if hierarchy:
+        for cid, tid in hierarchy.l1_to_l0.items():
+            for n in communities.get(cid, []):
+                node_topic[n] = tid
+
     for node in data["nodes"]:
         node["community"] = node_community.get(node["id"])
+        if hierarchy:
+            node["topic"] = node_topic.get(node["id"])
     for link in data["links"]:
         if "confidence_score" not in link:
             conf = link.get("confidence", "EXTRACTED")
             link["confidence_score"] = _CONFIDENCE_SCORE_DEFAULTS.get(conf, 1.0)
     data["hyperedges"] = getattr(G, "graph", {}).get("hyperedges", [])
+
+    # Persist hierarchy metadata
+    if hierarchy:
+        data["hierarchy"] = {
+            "l0_topics": {str(k): v for k, v in hierarchy.l0_topics.items()},
+            "l0_labels": {str(k): v for k, v in hierarchy.l0_labels.items()},
+            "l1_labels": {str(k): v for k, v in hierarchy.l1_labels.items()},
+            "l1_to_l0": {str(k): v for k, v in hierarchy.l1_to_l0.items()},
+            "l0_cohesion": {str(k): v for k, v in hierarchy.l0_cohesion.items()},
+            "l1_cohesion": {str(k): v for k, v in hierarchy.l1_cohesion.items()},
+        }
+
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
@@ -331,6 +397,7 @@ def to_html(
     communities: dict[int, list[str]],
     output_path: str,
     community_labels: dict[int, str] | None = None,
+    hierarchy: HierarchicalCommunities | None = None,
 ) -> None:
     """Generate an interactive vis.js HTML visualization of the graph.
 
@@ -348,6 +415,13 @@ def to_html(
     degree = dict(G.degree())
     max_deg = max(degree.values(), default=1) or 1
 
+    # Build node→topic mapping
+    node_topic: dict[str, int] = {}
+    if hierarchy:
+        for cid, tid in hierarchy.l1_to_l0.items():
+            for n in communities.get(cid, []):
+                node_topic[n] = tid
+
     # Build nodes list for vis.js
     vis_nodes = []
     for node_id, data in G.nodes(data=True):
@@ -358,7 +432,7 @@ def to_html(
         size = 10 + 30 * (deg / max_deg)
         # Only show label for high-degree nodes by default; others show on hover
         font_size = 12 if deg >= max_deg * 0.15 else 0
-        vis_nodes.append({
+        node_data = {
             "id": node_id,
             "label": label,
             "color": {"background": color, "border": color, "highlight": {"background": "#ffffff", "border": color}},
@@ -370,7 +444,12 @@ def to_html(
             "source_file": sanitize_label(data.get("source_file", "")),
             "file_type": data.get("file_type", ""),
             "degree": deg,
-        })
+        }
+        if hierarchy:
+            tid = node_topic.get(node_id)
+            node_data["topic"] = tid
+            node_data["topic_name"] = sanitize_label(hierarchy.l0_labels.get(tid, f"Topic {tid}")) if tid is not None else ""
+        vis_nodes.append(node_data)
 
     # Build edges list
     vis_edges = []
@@ -388,8 +467,22 @@ def to_html(
             "confidence": confidence,
         })
 
-    # Build community legend data
+    # Build community legend data (with optional topic grouping)
     legend_data = []
+    topics_data = []
+    if hierarchy and len(hierarchy.l0_topics) > 1:
+        for tid in sorted(hierarchy.l0_topics.keys()):
+            cids = hierarchy.l0_topics[tid]
+            topic_label = _html.escape(sanitize_label(hierarchy.l0_labels.get(tid, f"Topic {tid}")))
+            total_nodes = sum(len(communities.get(c, [])) for c in cids)
+            topic_communities = []
+            for cid in sorted(cids):
+                color = COMMUNITY_COLORS[cid % len(COMMUNITY_COLORS)]
+                lbl = _html.escape(sanitize_label((community_labels or {}).get(cid, f"Community {cid}")))
+                n = len(communities.get(cid, []))
+                topic_communities.append({"cid": cid, "color": color, "label": lbl, "count": n})
+            topics_data.append({"tid": tid, "label": topic_label, "count": total_nodes, "communities": topic_communities})
+    # Flat legend (always built for backward compat)
     for cid in sorted((community_labels or {}).keys()):
         color = COMMUNITY_COLORS[cid % len(COMMUNITY_COLORS)]
         lbl = _html.escape(sanitize_label((community_labels or {}).get(cid, f"Community {cid}")))
@@ -403,9 +496,11 @@ def to_html(
     nodes_json = _js_safe(vis_nodes)
     edges_json = _js_safe(vis_edges)
     legend_json = _js_safe(legend_data)
+    topics_json = _js_safe(topics_data)
     hyperedges_json = _js_safe(getattr(G, "graph", {}).get("hyperedges", []))
     title = _html.escape(sanitize_label(str(output_path)))
-    stats = f"{G.number_of_nodes()} nodes &middot; {G.number_of_edges()} edges &middot; {len(communities)} communities"
+    topic_stat = f" &middot; {len(hierarchy.l0_topics)} topics" if hierarchy and len(hierarchy.l0_topics) > 1 else ""
+    stats = f"{G.number_of_nodes()} nodes &middot; {G.number_of_edges()} edges &middot; {len(communities)} communities{topic_stat}"
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -432,7 +527,7 @@ def to_html(
   </div>
   <div id="stats">{stats}</div>
 </div>
-{_html_script(nodes_json, edges_json, legend_json)}
+{_html_script(nodes_json, edges_json, legend_json, topics_json)}
 {_hyperedge_script(hyperedges_json)}
 </body>
 </html>"""
@@ -450,6 +545,7 @@ def to_obsidian(
     output_dir: str,
     community_labels: dict[int, str] | None = None,
     cohesion: dict[int, float] | None = None,
+    hierarchy: HierarchicalCommunities | None = None,
 ) -> int:
     """Export graph as an Obsidian vault - one .md file per node with [[wikilinks]],
     plus one _COMMUNITY_name.md overview note per community (sorted to top by underscore prefix).
@@ -520,6 +616,13 @@ def to_obsidian(
 
         lines: list[str] = []
 
+        # Resolve topic name for this node
+        topic_name = ""
+        if hierarchy:
+            tid = hierarchy.l1_to_l0.get(cid)
+            if tid is not None:
+                topic_name = hierarchy.l0_labels.get(tid, f"Topic {tid}")
+
         # YAML frontmatter - readable in Obsidian's properties panel
         lines += [
             "---",
@@ -527,6 +630,8 @@ def to_obsidian(
             f'type: "{ftype}"',
             f'community: "{community_name}"',
         ]
+        if topic_name:
+            lines.append(f'topic: "{topic_name}"')
         if data.get("source_location"):
             lines.append(f'location: "{data["source_location"]}"')
         # Add tags list to frontmatter
@@ -672,6 +777,70 @@ def to_obsidian(
         (out / fname).write_text("\n".join(lines), encoding="utf-8")
         community_notes_written += 1
 
+    # Write one _TOPIC_name.md overview note per L0 topic (if hierarchy available)
+    topic_notes_written = 0
+    if hierarchy and len(hierarchy.l0_topics) > 1:
+        for tid, cids in hierarchy.l0_topics.items():
+            topic_name = hierarchy.l0_labels.get(tid, f"Topic {tid}")
+            total_nodes = sum(len(communities.get(c, [])) for c in cids)
+            t_coh = hierarchy.l0_cohesion.get(tid)
+
+            lines: list[str] = []
+            lines.append("---")
+            lines.append("type: topic")
+            if t_coh is not None:
+                lines.append(f"cohesion: {t_coh:.2f}")
+            lines.append(f"communities: {len(cids)}")
+            lines.append(f"members: {total_nodes}")
+            lines.append("---")
+            lines.append("")
+            lines.append(f"# {topic_name}")
+            lines.append("")
+            lines.append(f"**Communities:** {len(cids)} | **Total nodes:** {total_nodes}")
+            if t_coh is not None:
+                lines.append(f"**Cohesion:** {t_coh:.2f}")
+            lines.append("")
+            lines.append("## Communities in this topic")
+            for cid in sorted(cids):
+                c_label = (community_labels or {}).get(cid, f"Community {cid}")
+                c_safe = safe_name(c_label)
+                n_nodes = len(communities.get(cid, []))
+                c_coh = hierarchy.l1_cohesion.get(cid)
+                coh_str = f" (cohesion: {c_coh:.2f})" if c_coh is not None else ""
+                lines.append(f"- [[_COMMUNITY_{c_safe}|{c_label}]] — {n_nodes} nodes{coh_str}")
+            lines.append("")
+
+            topic_safe = safe_name(topic_name)
+            fname = f"_TOPIC_{topic_safe}.md"
+            (out / fname).write_text("\n".join(lines), encoding="utf-8")
+            topic_notes_written += 1
+
+        # Add parent topic link to each community note (rewrite the community files)
+        for cid, members in communities.items():
+            tid = hierarchy.l1_to_l0.get(cid)
+            if tid is None:
+                continue
+            topic_name = hierarchy.l0_labels.get(tid, f"Topic {tid}")
+            topic_safe = safe_name(topic_name)
+            community_name = (
+                community_labels.get(cid, f"Community {cid}")
+                if community_labels and cid is not None
+                else f"Community {cid}"
+            )
+            community_safe = safe_name(community_name)
+            comm_path = out / f"_COMMUNITY_{community_safe}.md"
+            if comm_path.exists():
+                content = comm_path.read_text(encoding="utf-8")
+                # Insert parent topic reference after the title
+                title_line = f"# {community_name}"
+                if title_line in content:
+                    content = content.replace(
+                        title_line,
+                        f"{title_line}\n\n**Parent topic:** [[_TOPIC_{topic_safe}|{topic_name}]]",
+                        1,
+                    )
+                    comm_path.write_text(content, encoding="utf-8")
+
     # Improvement 4: write .obsidian/graph.json to color nodes by community in graph view
     obsidian_dir = out / ".obsidian"
     obsidian_dir.mkdir(exist_ok=True)
@@ -686,7 +855,7 @@ def to_obsidian(
     }
     (obsidian_dir / "graph.json").write_text(json.dumps(graph_config, indent=2), encoding="utf-8")
 
-    return G.number_of_nodes() + community_notes_written
+    return G.number_of_nodes() + community_notes_written + topic_notes_written
 
 
 def to_canvas(

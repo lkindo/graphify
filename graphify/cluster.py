@@ -1,9 +1,13 @@
-"""Community detection on NetworkX graphs. Uses Leiden (graspologic) if available, falls back to Louvain (networkx). Splits oversized communities. Returns cohesion scores."""
+"""Community detection on NetworkX graphs. Uses Leiden (graspologic) if available, falls back to Louvain (networkx). Splits oversized communities. Returns cohesion scores.
+
+Hierarchical clustering: two-pass Leiden produces L0 topics → L1 communities → L2 nodes.
+"""
 from __future__ import annotations
 import contextlib
 import inspect
 import io
 import sys
+from dataclasses import dataclass, field
 import networkx as nx
 
 
@@ -135,3 +139,147 @@ def cohesion_score(G: nx.Graph, community_nodes: list[str]) -> float:
 
 def score_all(G: nx.Graph, communities: dict[int, list[str]]) -> dict[int, float]:
     return {cid: cohesion_score(G, nodes) for cid, nodes in communities.items()}
+
+
+# ---------------------------------------------------------------------------
+# Hierarchical clustering: L0 topics → L1 communities → L2 nodes
+# ---------------------------------------------------------------------------
+
+@dataclass
+class HierarchicalCommunities:
+    """Three-level hierarchy produced by two-pass Leiden.
+
+    L1 communities are identical to what ``cluster()`` returns, so all
+    existing code that accepts ``dict[int, list[str]]`` can use
+    ``hc.l1_communities`` directly with zero changes.
+
+    L0 topics group related L1 communities into coarser themes by running
+    Leiden on the contracted community-level graph.
+    """
+
+    # L1: concept clusters (= existing flat communities)
+    l1_communities: dict[int, list[str]] = field(default_factory=dict)
+    # L0: topic groups (each topic contains a list of L1 community IDs)
+    l0_topics: dict[int, list[int]] = field(default_factory=dict)
+    # Reverse mapping: community → topic
+    l1_to_l0: dict[int, int] = field(default_factory=dict)
+    # Labels (populated later by the user / LLM)
+    l0_labels: dict[int, str] = field(default_factory=dict)
+    l1_labels: dict[int, str] = field(default_factory=dict)
+    # Cohesion scores
+    l0_cohesion: dict[int, float] = field(default_factory=dict)
+    l1_cohesion: dict[int, float] = field(default_factory=dict)
+
+
+def _build_contracted_graph(
+    G: nx.Graph,
+    communities: dict[int, list[str]],
+) -> nx.Graph:
+    """Contract nodes by community into a weighted super-graph.
+
+    Each L1 community becomes a single node (keyed by its community ID as a
+    string, since ``_partition`` expects string node IDs).  Edge weight
+    between two super-nodes = number of original cross-community edges.
+    """
+    node_to_cid: dict[str, int] = {}
+    for cid, nodes in communities.items():
+        for n in nodes:
+            node_to_cid[n] = cid
+
+    edge_weights: dict[tuple[int, int], int] = {}
+    for u, v in G.edges():
+        cu = node_to_cid.get(u)
+        cv = node_to_cid.get(v)
+        if cu is None or cv is None or cu == cv:
+            continue
+        key = (min(cu, cv), max(cu, cv))
+        edge_weights[key] = edge_weights.get(key, 0) + 1
+
+    G_c = nx.Graph()
+    for cid in communities:
+        G_c.add_node(str(cid))
+    for (cu, cv), w in edge_weights.items():
+        G_c.add_edge(str(cu), str(cv), weight=w)
+    return G_c
+
+
+_MIN_COMMUNITIES_FOR_L0 = 4  # need at least this many L1 communities to form L0
+
+
+def hierarchical_cluster(G: nx.Graph) -> HierarchicalCommunities:
+    """Two-pass Leiden producing L0 topics → L1 communities → L2 nodes.
+
+    Pass 1 (existing): Leiden on the original graph → L1 communities.
+    Pass 2 (new):      Contract L1 communities into super-nodes, then run
+                        Leiden on the contracted graph → L0 topics.
+
+    If fewer than ``_MIN_COMMUNITIES_FOR_L0`` L1 communities exist, all
+    communities are placed under a single L0 topic (no second pass).
+    """
+    # --- Pass 1: L1 communities (unchanged) ---
+    l1_communities = cluster(G)
+    l1_cohesion = score_all(G, l1_communities)
+
+    hc = HierarchicalCommunities(
+        l1_communities=l1_communities,
+        l1_cohesion=l1_cohesion,
+    )
+
+    # --- Pass 2: L0 topics via contracted graph ---
+    if len(l1_communities) < _MIN_COMMUNITIES_FOR_L0:
+        # Too few communities – single topic containing everything
+        hc.l0_topics = {0: list(l1_communities.keys())}
+        hc.l1_to_l0 = {cid: 0 for cid in l1_communities}
+        hc.l0_labels = {0: "All"}
+        hc.l0_cohesion = {0: 1.0}
+        hc.l1_labels = {cid: f"Community {cid}" for cid in l1_communities}
+        return hc
+
+    G_undirected = G.to_undirected() if G.is_directed() else G
+    G_contracted = _build_contracted_graph(G_undirected, l1_communities)
+
+    # Run community detection on contracted graph
+    if G_contracted.number_of_edges() == 0:
+        # No inter-community edges: each community is its own topic
+        hc.l0_topics = {i: [cid] for i, cid in enumerate(sorted(l1_communities.keys()))}
+        hc.l1_to_l0 = {cid: i for i, cid in enumerate(sorted(l1_communities.keys()))}
+    else:
+        l0_partition = _partition(G_contracted)  # {str(cid): topic_id}
+        raw_topics: dict[int, list[int]] = {}
+        for cid_str, tid in l0_partition.items():
+            raw_topics.setdefault(tid, []).append(int(cid_str))
+
+        # Re-index topics by total node count descending
+        topic_sizes = []
+        for tid, cids in raw_topics.items():
+            total_nodes = sum(len(l1_communities[c]) for c in cids)
+            topic_sizes.append((total_nodes, tid, cids))
+        topic_sizes.sort(reverse=True)
+
+        hc.l0_topics = {}
+        hc.l1_to_l0 = {}
+        for new_tid, (_, _, cids) in enumerate(topic_sizes):
+            hc.l0_topics[new_tid] = sorted(cids)
+            for cid in cids:
+                hc.l1_to_l0[cid] = new_tid
+
+    # Compute L0 cohesion: ratio of inter-community edges within the topic
+    # to maximum possible inter-community edges within the topic
+    for tid, cids in hc.l0_topics.items():
+        if len(cids) <= 1:
+            hc.l0_cohesion[tid] = 1.0
+            continue
+        cid_set = set(cids)
+        internal = 0
+        total_possible = len(cids) * (len(cids) - 1) // 2
+        for cu in cids:
+            for cv in cids:
+                if cu < cv and G_contracted.has_edge(str(cu), str(cv)):
+                    internal += 1
+        hc.l0_cohesion[tid] = round(internal / total_possible, 2) if total_possible > 0 else 0.0
+
+    # Default labels
+    hc.l0_labels = {tid: f"Topic {tid}" for tid in hc.l0_topics}
+    hc.l1_labels = {cid: f"Community {cid}" for cid in l1_communities}
+
+    return hc

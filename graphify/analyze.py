@@ -337,6 +337,7 @@ def suggest_questions(
     communities: dict[int, list[str]],
     community_labels: dict[int, str],
     top_n: int = 7,
+    hierarchy: "HierarchicalCommunities | None" = None,
 ) -> list[dict]:
     """
     Generate questions the graph is uniquely positioned to answer.
@@ -436,6 +437,32 @@ def suggest_questions(
                 "type": "low_cohesion",
                 "question": f"Should `{label}` be split into smaller, more focused modules?",
                 "why": f"Cohesion score {score} - nodes in this community are weakly interconnected.",
+            })
+
+    # 6. Cross-topic edges → why do distant topics connect?
+    if hierarchy and len(getattr(hierarchy, 'l0_topics', {})) > 1:
+        seen_topic_pairs: set[tuple[int, int]] = set()
+        for u, v, data in G.edges(data=True):
+            cu = node_community.get(u)
+            cv = node_community.get(v)
+            if cu is None or cv is None or cu == cv:
+                continue
+            tu = hierarchy.l1_to_l0.get(cu)
+            tv = hierarchy.l1_to_l0.get(cv)
+            if tu is None or tv is None or tu == tv:
+                continue
+            pair = (min(tu, tv), max(tu, tv))
+            if pair in seen_topic_pairs:
+                continue
+            seen_topic_pairs.add(pair)
+            t_label_u = hierarchy.l0_labels.get(tu, f"Topic {tu}")
+            t_label_v = hierarchy.l0_labels.get(tv, f"Topic {tv}")
+            ul = G.nodes[u].get("label", u)
+            vl = G.nodes[v].get("label", v)
+            questions.append({
+                "type": "cross_topic",
+                "question": f"Why does `{t_label_u}` connect to `{t_label_v}` (via `{ul}` → `{vl}`)?",
+                "why": f"Edge crosses topic boundary — these topics were clustered separately.",
             })
 
     if not questions:
