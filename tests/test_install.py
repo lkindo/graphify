@@ -13,6 +13,7 @@ PLATFORMS = {
     "trae": (".trae/skills/graphify/SKILL.md",),
     "trae-cn": (".trae-cn/skills/graphify/SKILL.md",),
     "windows": (".claude/skills/graphify/SKILL.md",),
+    "kiro": (".kiro/skills/graphify/SKILL.md",),
 }
 
 
@@ -62,6 +63,11 @@ def test_install_windows(tmp_path):
     assert (tmp_path / ".claude" / "skills" / "graphify" / "SKILL.md").exists()
 
 
+def test_install_kiro(tmp_path):
+    _install(tmp_path, "kiro")
+    assert (tmp_path / ".kiro" / "skills" / "graphify" / "SKILL.md").exists()
+
+
 def test_install_unknown_platform_exits(tmp_path):
     with pytest.raises(SystemExit):
         _install(tmp_path, "unknown")
@@ -90,11 +96,19 @@ def test_claw_skill_is_sequential():
     assert "@mention" not in skill
 
 
+def test_kiro_skill_contains_use_subagent():
+    """Kiro skill file must reference use_subagent."""
+    import graphify
+    skill = (Path(graphify.__file__).parent / "skill-kiro.md").read_text()
+    assert "use_subagent" in skill
+    assert "InvokeSubagents" in skill
+
+
 def test_all_skill_files_exist_in_package():
     """All installable platform skill files must be present in the installed package."""
     import graphify
     pkg = Path(graphify.__file__).parent
-    for name in ("skill.md", "skill-codex.md", "skill-opencode.md", "skill-claw.md", "skill-windows.md", "skill-droid.md", "skill-trae.md"):
+    for name in ("skill.md", "skill-codex.md", "skill-opencode.md", "skill-claw.md", "skill-windows.md", "skill-droid.md", "skill-trae.md", "skill-kiro.md"):
         assert (pkg / name).exists(), f"Missing: {name}"
 
 
@@ -106,6 +120,11 @@ def test_claude_install_registers_claude_md(tmp_path):
 
 def test_codex_install_does_not_write_claude_md(tmp_path):
     _install(tmp_path, "codex")
+    assert not (tmp_path / ".claude" / "CLAUDE.md").exists()
+
+
+def test_kiro_install_does_not_write_claude_md(tmp_path):
+    _install(tmp_path, "kiro")
     assert not (tmp_path / ".claude" / "CLAUDE.md").exists()
 
 
@@ -145,6 +164,13 @@ def test_agents_install_idempotent(tmp_path):
     _agents_install(tmp_path, "codex")
     content = (tmp_path / "AGENTS.md").read_text()
     assert content.count("## graphify") == 1
+
+
+def test_kiro_agents_install_writes_agents_md(tmp_path):
+    _agents_install(tmp_path, "kiro")
+    agents_md = tmp_path / "AGENTS.md"
+    assert agents_md.exists()
+    assert "graphify" in agents_md.read_text()
 
 
 def test_agents_install_appends_to_existing(tmp_path):
