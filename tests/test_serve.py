@@ -6,7 +6,9 @@ from networkx.readwrite import json_graph
 
 from graphify.serve import (
     _communities_from_graph,
+    _find_node,
     _score_nodes,
+    _strip_diacritics,
     _bfs,
     _dfs,
     _subgraph_to_text,
@@ -151,3 +153,92 @@ def test_load_graph_missing_file(tmp_path):
     graphify_dir.mkdir()
     with pytest.raises(SystemExit):
         _load_graph(str(graphify_dir / "nonexistent.json"))
+
+
+# --- _strip_diacritics ---
+
+def test_strip_diacritics_polish():
+    assert _strip_diacritics("ćwiczenia") == "cwiczenia"
+    assert _strip_diacritics("źródło") == "zrodło"  # ł (stroke) is not a combining char
+    # ł stays because NFKD doesn't decompose stroked letters;
+    # ć, ź, ó are accent+base and do decompose correctly.
+    assert _strip_diacritics("ćwiczenia z lukami") == "cwiczenia z lukami"
+
+def test_strip_diacritics_french():
+    assert _strip_diacritics("résumé") == "resume"
+    assert _strip_diacritics("naïve") == "naive"
+
+def test_strip_diacritics_ascii_passthrough():
+    assert _strip_diacritics("hello world") == "hello world"
+    assert _strip_diacritics("") == ""
+
+
+# --- _score_nodes diacritic-insensitive ---
+
+def _make_diacritic_graph() -> nx.Graph:
+    G = nx.Graph()
+    G.add_node("d1", label="Přehled základních cvičení",
+               source_file="docs/zakladni-cviceni.md",
+               source_location=None, community=5)
+    G.add_node("d2", label="Tréninkový plán",
+               source_file="docs/treninkovy-plan.md",
+               source_location=None, community=5)
+    G.add_node("d3", label="Préparation du résumé",
+               source_file="notes/preparation-resume.md",
+               source_location=None, community=1)
+    G.add_edge("d1", "d2", relation="related", confidence="INFERRED")
+    return G
+
+def test_score_nodes_ascii_matches_diacritic_label():
+    """The motivating bug: ASCII 'cviceni' must match 'cvičení' (stripped from 'Přehled základních cvičení')."""
+    G = _make_diacritic_graph()
+    scored = _score_nodes(G, ["prehled", "cviceni"])
+    nids = [nid for _, nid in scored]
+    assert "d1" in nids
+    assert scored[0][1] == "d1"  # highest score
+
+def test_score_nodes_diacritic_query_matches_diacritic_label():
+    G = _make_diacritic_graph()
+    scored = _score_nodes(G, ["přehled"])
+    nids = [nid for _, nid in scored]
+    assert "d1" in nids
+
+def test_score_nodes_french_diacritics():
+    G = _make_diacritic_graph()
+    scored = _score_nodes(G, ["resume"])
+    nids = [nid for _, nid in scored]
+    assert "d3" in nids
+
+
+# --- _find_node diacritic-insensitive ---
+
+def test_find_node_ascii_query_diacritic_label():
+    G = _make_diacritic_graph()
+    matches = _find_node(G, "prehled")
+    assert "d1" in matches
+
+def test_find_node_diacritic_query_diacritic_label():
+    G = _make_diacritic_graph()
+    matches = _find_node(G, "přehled")
+    assert "d1" in matches
+
+
+# --- _subgraph_to_text relevance ordering ---
+
+def test_subgraph_to_text_relevance_ordering():
+    """Nodes with higher scores appear before high-degree but low-score nodes."""
+    G = _make_diacritic_graph()
+    scores = {"d1": 2.0, "d2": 0.5}
+    text = _subgraph_to_text(G, {"d1", "d2"}, [], node_scores=scores)
+    lines = text.strip().split("\n")
+    # d1 (score=2.0) must appear before d2 (score=0.5)
+    d1_pos = next(i for i, l in enumerate(lines) if "Přehled" in l or "cviceni" in l)
+    d2_pos = next(i for i, l in enumerate(lines) if "Tréninkový" in l)
+    assert d1_pos < d2_pos
+
+def test_subgraph_to_text_no_scores_falls_back_to_degree():
+    """Without node_scores, original degree-based ordering is preserved."""
+    G = _make_diacritic_graph()
+    # No node_scores passed — backward-compatible behavior
+    text = _subgraph_to_text(G, {"d1", "d2"}, [])
+    assert "NODE" in text

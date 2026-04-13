@@ -926,9 +926,10 @@ def main() -> None:
         if not scored:
             print("No matching nodes found.")
             sys.exit(0)
+        score_map = {nid: s for s, nid in scored}
         start = [nid for _, nid in scored[:5]]
         nodes, edges = (_dfs if use_dfs else _bfs)(G, start, depth=2)
-        print(_subgraph_to_text(G, nodes, edges, token_budget=budget))
+        print(_subgraph_to_text(G, nodes, edges, token_budget=budget, node_scores=score_map))
     elif cmd == "save-result":
         # graphify save-result --question Q --answer A --type T [--nodes N1 N2 ...]
         import argparse as _ap
