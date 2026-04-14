@@ -1,6 +1,5 @@
 # write graph to HTML, JSON, SVG, GraphML, Obsidian vault, and Neo4j Cypher
 from __future__ import annotations
-import html as _html
 import json
 import math
 import re
@@ -10,12 +9,6 @@ import networkx as nx
 from networkx.readwrite import json_graph
 from graphify.security import sanitize_label
 from graphify.analyze import _node_community_map
-
-def _strip_diacritics(text: str) -> str:
-    import unicodedata
-    nfkd = unicodedata.normalize("NFKD", text)
-    return "".join(c for c in nfkd if not unicodedata.combining(c))
-
 
 COMMUNITY_COLORS = [
     "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
@@ -56,52 +49,9 @@ def _html_styles() -> str:
 
 
 def _hyperedge_script(hyperedges_json: str) -> str:
-<<<<<<< HEAD
-    return f"""<script>
-// Render hyperedges as shaded regions
-const hyperedges = {hyperedges_json};
-// afterDrawing passes ctx already transformed to network coordinate space.
-// Draw node positions raw — no manual pan/zoom/DPR math needed.
-network.on('afterDrawing', function(ctx) {{
-    hyperedges.forEach(h => {{
-        const positions = h.nodes
-            .map(nid => network.getPositions([nid])[nid])
-            .filter(p => p !== undefined);
-        if (positions.length < 2) return;
-        ctx.save();
-        ctx.globalAlpha = 0.12;
-        ctx.fillStyle = '#6366f1';
-        ctx.strokeStyle = '#6366f1';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        // Centroid and expanded hull in network coordinates
-        const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
-        const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
-        const expanded = positions.map(p => ({{
-            x: cx + (p.x - cx) * 1.15,
-            y: cy + (p.y - cy) * 1.15
-        }}));
-        ctx.moveTo(expanded[0].x, expanded[0].y);
-        expanded.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
-        ctx.closePath();
-        ctx.fill();
-        ctx.globalAlpha = 0.4;
-        ctx.stroke();
-        // Label
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = '#4f46e5';
-        ctx.font = 'bold 11px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(h.label, cx, cy - 5);
-        ctx.restore();
-    }});
-}});
-</script>"""
-=======
     # Legacy no-op: hyperedge overlays were tied to the previous HTML engine.
     _ = hyperedges_json
     return ""
->>>>>>> e72bce7 (Migrate HTML graph rendering to cosmos.gl and remove node cap.)
 
 
 def _html_script(nodes_json: str, edges_json: str, legend_json: str) -> str:
@@ -112,32 +62,10 @@ const RAW_NODES = {nodes_json};
 const RAW_EDGES = {edges_json};
 const LEGEND = {legend_json};
 
-<<<<<<< HEAD
-// HTML-escape helper — prevents XSS when injecting graph data into innerHTML
 function esc(s) {{
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }}
 
-// Build vis datasets
-const nodesDS = new vis.DataSet(RAW_NODES.map(n => ({{
-  id: n.id, label: n.label, color: n.color, size: n.size,
-  font: n.font, title: n.title,
-  _community: n.community, _community_name: n.community_name,
-  _source_file: n.source_file, _file_type: n.file_type, _degree: n.degree,
-}})));
-
-const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => ({{
-  id: i, from: e.from, to: e.to,
-  label: '',
-  title: e.title,
-  dashes: e.dashes,
-  width: e.width,
-  color: e.color,
-  arrows: {{ to: {{ enabled: true, scaleFactor: 0.5 }} }},
-}})));
-
-=======
->>>>>>> e72bce7 (Migrate HTML graph rendering to cosmos.gl and remove node cap.)
 const container = document.getElementById('graph');
 const infoContent = document.getElementById('info-content');
 const hiddenCommunities = new Set();
@@ -200,63 +128,18 @@ function showInfo(nodeId) {{
   const neighborItems = neighbors.slice(0, 50).map(nid => {{
     const nb = nodeById.get(nid);
     const color = nb ? nb.color.background : '#555';
-<<<<<<< HEAD
-    return `<span class="neighbor-link" style="border-left-color:${{esc(color)}}" onclick="focusNode(${{JSON.stringify(nid)}})">${{esc(nb ? nb.label : nid)}}</span>`;
-  }}).join('');
-  document.getElementById('info-content').innerHTML = `
-    <div class="field"><b>${{esc(n.label)}}</b></div>
-    <div class="field">Type: ${{esc(n._file_type || 'unknown')}}</div>
-    <div class="field">Community: ${{esc(n._community_name)}}</div>
-    <div class="field">Source: ${{esc(n._source_file || '-')}}</div>
-    <div class="field">Degree: ${{n._degree}}</div>
-    ${{neighborIds.length ? `<div class="field" style="margin-top:8px;color:#aaa;font-size:11px">Neighbors (${{neighborIds.length}})</div><div id="neighbors-list">${{neighborItems}}</div>` : ''}}
-  `;
-}}
-
-function focusNode(nodeId) {{
-  network.focus(nodeId, {{ scale: 1.4, animation: true }});
-  network.selectNodes([nodeId]);
-  showInfo(nodeId);
-}}
-
-// Track hovered node — hover detection is more reliable than click params
-let hoveredNodeId = null;
-network.on('hoverNode', params => {{
-  hoveredNodeId = params.node;
-  container.style.cursor = 'pointer';
-}});
-network.on('blurNode', () => {{
-  hoveredNodeId = null;
-  container.style.cursor = 'default';
-}});
-container.addEventListener('click', () => {{
-  if (hoveredNodeId !== null) {{
-    showInfo(hoveredNodeId);
-    network.selectNodes([hoveredNodeId]);
-  }}
-}});
-network.on('click', params => {{
-  if (params.nodes.length > 0) {{
-    showInfo(params.nodes[0]);
-  }} else if (hoveredNodeId === null) {{
-    document.getElementById('info-content').innerHTML = '<span class="empty">Click a node to inspect it</span>';
-  }}
-}});
-
-=======
-    return `<span class="neighbor-link" style="border-left-color:${{color}}">${{nb ? nb.label : nid}}</span>`;
+    return `<span class="neighbor-link" style="border-left-color:${{esc(color)}}">${{esc(nb ? nb.label : nid)}}</span>`;
   }}).join('');
   infoContent.innerHTML = `
-    <div class="field"><b>${{n.label}}</b></div>
-    <div class="field">Type: ${{n.file_type || 'unknown'}}</div>
-    <div class="field">Community: ${{n.community_name}}</div>
-    <div class="field">Source: ${{n.source_file || '-'}}</div>
+    <div class="field"><b>${{esc(n.label)}}</b></div>
+    <div class="field">Type: ${{esc(n.file_type || 'unknown')}}</div>
+    <div class="field">Community: ${{esc(n.community_name)}}</div>
+    <div class="field">Source: ${{esc(n.source_file || '-')}}</div>
     <div class="field">Degree: ${{n.degree}}</div>
     ${{neighbors.length ? `<div class="field" style="margin-top:8px;color:#aaa;font-size:11px">Neighbors (${{neighbors.length}})</div><div id="neighbors-list">${{neighborItems}}</div>` : ''}}
   `;
 }}
 
->>>>>>> e72bce7 (Migrate HTML graph rendering to cosmos.gl and remove node cap.)
 const searchInput = document.getElementById('search');
 const searchResults = document.getElementById('search-results');
 searchInput.addEventListener('input', () => {{
@@ -326,35 +209,16 @@ def attach_hyperedges(G: nx.Graph, hyperedges: list) -> None:
 
 def to_json(G: nx.Graph, communities: dict[int, list[str]], output_path: str) -> None:
     node_community = _node_community_map(communities)
-    try:
-        data = json_graph.node_link_data(G, edges="links")
-    except TypeError:
-        data = json_graph.node_link_data(G)
+    data = json_graph.node_link_data(G, edges="links")
     for node in data["nodes"]:
         node["community"] = node_community.get(node["id"])
-        node["norm_label"] = _strip_diacritics(node.get("label", "")).lower()
     for link in data["links"]:
         if "confidence_score" not in link:
             conf = link.get("confidence", "EXTRACTED")
             link["confidence_score"] = _CONFIDENCE_SCORE_DEFAULTS.get(conf, 1.0)
     data["hyperedges"] = getattr(G, "graph", {}).get("hyperedges", [])
-    with open(output_path, "w", encoding="utf-8") as f:
+    with open(output_path, "w") as f:
         json.dump(data, f, indent=2)
-
-
-def prune_dangling_edges(graph_data: dict) -> tuple[dict, int]:
-    """Remove edges whose source or target node is not in the node set.
-
-    Returns the cleaned graph_data dict and the number of pruned edges.
-    """
-    node_ids = {n["id"] for n in graph_data["nodes"]}
-    links_key = "links" if "links" in graph_data else "edges"
-    before = len(graph_data[links_key])
-    graph_data[links_key] = [
-        e for e in graph_data[links_key]
-        if e["source"] in node_ids and e["target"] in node_ids
-    ]
-    return graph_data, before - len(graph_data[links_key])
 
 
 def _cypher_escape(s: str) -> str:
@@ -367,8 +231,7 @@ def to_cypher(G: nx.Graph, output_path: str) -> None:
     for node_id, data in G.nodes(data=True):
         label = _cypher_escape(data.get("label", node_id))
         node_id_esc = _cypher_escape(node_id)
-        _ft = re.sub(r"[^A-Za-z0-9_]", "", data.get("file_type", "unknown").capitalize())
-        ftype = (_ft if _ft and _ft[0].isalpha() else "Entity")
+        ftype = re.sub(r"[^A-Za-z0-9_]", "", data.get("file_type", "unknown").capitalize()) or "Entity"
         lines.append(f"MERGE (n:{ftype} {{id: '{node_id_esc}', label: '{label}'}});")
     lines.append("")
     for u, v, data in G.edges(data=True):
@@ -380,7 +243,7 @@ def to_cypher(G: nx.Graph, output_path: str) -> None:
             f"MATCH (a {{id: '{u_esc}'}}), (b {{id: '{v_esc}'}}) "
             f"MERGE (a)-[:{rel} {{confidence: '{conf}'}}]->(b);"
         )
-    with open(output_path, "w", encoding="utf-8") as f:
+    with open(output_path, "w") as f:
         f.write("\n".join(lines))
 
 
@@ -397,15 +260,11 @@ def to_html(
     """
     node_community = _node_community_map(communities)
     degree = dict(G.degree())
-<<<<<<< HEAD
-    max_deg = max(degree.values(), default=1) or 1
-=======
     max_deg = max(degree.values()) if degree else 1
     if G.number_of_nodes() > 15_000:
         pos = nx.random_layout(G, seed=42)
     else:
         pos = nx.spring_layout(G, seed=42, k=2.0 / (G.number_of_nodes() ** 0.5 + 1))
->>>>>>> e72bce7 (Migrate HTML graph rendering to cosmos.gl and remove node cap.)
 
     # Build nodes list for vis.js
     vis_nodes = []
@@ -423,7 +282,7 @@ def to_html(
             "color": {"background": color, "border": color, "highlight": {"background": "#ffffff", "border": color}},
             "size": round(size, 1),
             "font": {"size": font_size, "color": "#ffffff"},
-            "title": _html.escape(label),
+            "title": f"{label}",
             "community": cid,
             "community_name": sanitize_label((community_labels or {}).get(cid, f"Community {cid}")),
             "source_file": sanitize_label(data.get("source_file", "")),
@@ -442,7 +301,7 @@ def to_html(
             "from": u,
             "to": v,
             "label": relation,
-            "title": _html.escape(f"{relation} [{confidence}]"),
+            "title": f"{relation} [{confidence}]",
             "dashes": confidence != "EXTRACTED",
             "width": 2 if confidence == "EXTRACTED" else 1,
             "color": {"opacity": 0.7 if confidence == "EXTRACTED" else 0.35},
@@ -453,19 +312,15 @@ def to_html(
     legend_data = []
     for cid in sorted((community_labels or {}).keys()):
         color = COMMUNITY_COLORS[cid % len(COMMUNITY_COLORS)]
-        lbl = _html.escape(sanitize_label((community_labels or {}).get(cid, f"Community {cid}")))
+        lbl = (community_labels or {}).get(cid, f"Community {cid}")
         n = len(communities.get(cid, []))
         legend_data.append({"cid": cid, "color": color, "label": lbl, "count": n})
 
-    # Escape </script> sequences so embedded JSON cannot break out of the script tag
-    def _js_safe(obj) -> str:
-        return json.dumps(obj).replace("</", "<\\/")
-
-    nodes_json = _js_safe(vis_nodes)
-    edges_json = _js_safe(vis_edges)
-    legend_json = _js_safe(legend_data)
-    hyperedges_json = _js_safe(getattr(G, "graph", {}).get("hyperedges", []))
-    title = _html.escape(sanitize_label(str(output_path)))
+    nodes_json = json.dumps(vis_nodes)
+    edges_json = json.dumps(vis_edges)
+    legend_json = json.dumps(legend_data)
+    hyperedges_json = json.dumps(getattr(G, "graph", {}).get("hyperedges", []))
+    title = sanitize_label(str(output_path))
     stats = f"{G.number_of_nodes()} nodes &middot; {G.number_of_edges()} edges &middot; {len(communities)} communities"
 
     html = f"""<!DOCTYPE html>
@@ -524,13 +379,10 @@ def to_obsidian(
 
     node_community = _node_community_map(communities)
 
-    # Map node_id → safe filename so wikilinks stay consistent.
+    # Map node_id -> safe filename so wikilinks stay consistent.
     # Deduplicate: if two nodes produce the same filename, append a numeric suffix.
     def safe_name(label: str) -> str:
-        cleaned = re.sub(r'[\\/*?:"<>|#^[\]]', "", label.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")).strip()
-        # Strip trailing .md/.mdx/.markdown so "CLAUDE.md" doesn't become "CLAUDE.md.md"
-        cleaned = re.sub(r"\.(md|mdx|markdown)$", "", cleaned, flags=re.IGNORECASE)
-        return cleaned or "unnamed"
+        return re.sub(r'[\\/*?:"<>|#^[\]]', "", label).strip() or "unnamed"
 
     node_filename: dict[str, str] = {}
     seen_names: dict[str, int] = {}
@@ -552,7 +404,7 @@ def to_obsidian(
             return "EXTRACTED"
         return Counter(confs).most_common(1)[0][0]
 
-    # Map file_type → graphify tag
+    # Map file_type -> graphify tag
     _FTYPE_TAG = {
         "code": "graphify/code",
         "document": "graphify/document",
@@ -744,7 +596,7 @@ def to_obsidian(
             for cid, label in sorted((community_labels or {}).items())
         ]
     }
-    (obsidian_dir / "graph.json").write_text(json.dumps(graph_config, indent=2), encoding="utf-8")
+    (obsidian_dir / "graph.json").write_text(json.dumps(graph_config, indent=2))
 
     return G.number_of_nodes() + community_notes_written
 
@@ -766,9 +618,7 @@ def to_canvas(
     CANVAS_COLORS = ["1", "2", "3", "4", "5", "6"]  # red, orange, yellow, green, cyan, purple
 
     def safe_name(label: str) -> str:
-        cleaned = re.sub(r'[\\/*?:"<>|#^[\]]', "", label.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")).strip()
-        cleaned = re.sub(r"\.(md|mdx|markdown)$", "", cleaned, flags=re.IGNORECASE)
-        return cleaned or "unnamed"
+        return re.sub(r'[\\/*?:"<>|#^[\]]', "", label).strip() or "unnamed"
 
     # Build node_filenames if not provided (same dedup logic as to_obsidian)
     if node_filenames is None:
@@ -829,7 +679,7 @@ def to_canvas(
                 max_h = max(max_h, h)
         row_heights.append(max_h)
 
-    # Map from cid → (group_x, group_y, group_w, group_h)
+    # Map from cid -> (group_x, group_y, group_w, group_h)
     group_layout: dict[int, tuple[int, int, int, int]] = {}
     for idx, cid in enumerate(sorted_cids):
         col_idx = idx % cols
@@ -1022,7 +872,7 @@ def to_svg(
     pos = nx.spring_layout(G, seed=42, k=2.0 / (G.number_of_nodes() ** 0.5 + 1))
 
     degree = dict(G.degree())
-    max_deg = max(degree.values(), default=1) or 1
+    max_deg = max(degree.values()) if degree else 1
 
     node_colors = [COMMUNITY_COLORS[node_community.get(n, 0) % len(COMMUNITY_COLORS)] for n in G.nodes()]
     node_sizes = [300 + 1200 * (degree.get(n, 1) / max_deg) for n in G.nodes()]
