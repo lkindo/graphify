@@ -1902,6 +1902,7 @@ def extract_rust(path: Path) -> dict:
     edges: list[dict] = []
     seen_ids: set[str] = set()
     function_bodies: list[tuple[str, object]] = []
+    rust_uses: list[dict] = []  # filled by walk(), consumed by _resolve_cross_file_rust_imports
 
     def add_node(nid: str, label: str, line: int) -> None:
         if nid not in seen_ids:
@@ -1974,14 +1975,81 @@ def extract_rust(path: Path) -> dict:
             return
 
         if t == "use_declaration":
+            # Collect the use for cross-file resolution in pass 2.
+            # We parse: [pub] use crate::path::seg::{Ident1, Ident2 as Alias, Ident3};
+            # or any of:
+            #   use foo::Bar;
+            #   use foo::{A, B};
+            #   pub use bar::*;
+            #   pub use module::{Ident1, Ident2};   (relative re-export in lib.rs / mod.rs)
+            #
+            # Two cases we resolve:
+            # 1. `crate::`-rooted paths (the common cross-file case)
+            # 2. relative paths in lib.rs / mod.rs that are `pub use` re-exports
+            #    of sibling modules (e.g. `pub use calculator::{Foo, Bar};`)
+            is_pub = any(c.type == "visibility_modifier" for c in node.children)
             arg = node.child_by_field_name("argument")
-            if arg:
-                raw = _read_text(arg, source)
-                clean = raw.split("{")[0].rstrip(":").rstrip("*").rstrip(":")
-                module_name = clean.split("::")[-1].strip()
-                if module_name:
-                    tgt_nid = _make_id(module_name)
-                    add_edge(file_nid, tgt_nid, "imports_from", node.start_point[0] + 1)
+            if not arg:
+                return
+
+            raw = _read_text(arg, source).rstrip(";").strip()
+
+            # Determine the "path head" and whether this is resolvable:
+            # - `crate::foo::{A,B}`  -> head="foo", resolvable always
+            # - `foo::{A,B}` in lib.rs/mod.rs with `pub use` -> head="foo", resolvable
+            # - anything else (external crate, `self::`, `super::`) -> skip
+            is_reexport_file = path.name in ("lib.rs", "mod.rs")
+            path_body: str | None = None
+
+            if raw.startswith("crate::"):
+                path_body = raw[len("crate::"):]
+            elif (
+                is_pub
+                and is_reexport_file
+                and not raw.startswith(("self::", "super::", "::"))
+                and "::" in raw
+            ):
+                # Relative `pub use foo::Bar;` in lib.rs / mod.rs is almost
+                # always a re-export of a sibling module in the same crate.
+                # (External crate re-exports exist too but are much rarer; the
+                # post-resolution heuristic will just fail to find a match for
+                # those and drop the edge, so the worst case is zero edges.)
+                path_body = raw
+
+            if path_body is None:
+                return
+
+            # Parse `path_body` into (prefix, idents)
+            if "{" in path_body:
+                prefix, _, brace = path_body.partition("{")
+                brace = brace.rstrip("}")
+                prefix = prefix.rstrip(":").strip()
+                idents = [
+                    i.strip().split(" as ")[0].strip()
+                    for i in brace.split(",")
+                    if i.strip()
+                ]
+            else:
+                parts = path_body.split("::")
+                last = parts[-1].strip()
+                if last == "*" or not last:
+                    idents = []  # glob import — cannot resolve statically
+                    prefix = "::".join(parts[:-1]) if last == "*" else path_body
+                else:
+                    idents = [last]
+                    prefix = "::".join(parts[:-1])
+
+            # Filter out reserved segments
+            idents = [i for i in idents if i and i not in ("self", "super", "*")]
+            if idents:
+                rust_uses.append({
+                    "importer_file_nid": file_nid,
+                    "source_file": str_path,
+                    "is_pub_reexport": is_pub and is_reexport_file,
+                    "module_prefix": prefix,
+                    "idents": idents,
+                    "line": node.start_point[0] + 1,
+                })
             return
 
         for child in node.children:
@@ -2043,7 +2111,7 @@ def extract_rust(path: Path) -> dict:
         if src in valid_ids and (tgt in valid_ids or edge["relation"] in ("imports", "imports_from")):
             clean_edges.append(edge)
 
-    return {"nodes": nodes, "edges": clean_edges}
+    return {"nodes": nodes, "edges": clean_edges, "_rust_uses": rust_uses}
 
 
 # ── Zig ───────────────────────────────────────────────────────────────────────
@@ -2888,6 +2956,106 @@ def _check_tree_sitter_version() -> None:
         )
 
 
+def _resolve_cross_file_rust_imports(
+    per_file: list[dict],
+    paths: list[Path],
+) -> list[dict]:
+    """
+    Resolve `use crate::...` declarations into cross-file edges.
+
+    The per-file Rust extractor records each `use` declaration in the
+    result's `_rust_uses` list but does NOT emit edges for them, because
+    the import targets live in other files and can only be resolved
+    once every file has been parsed.
+
+    This pass builds a label → [node_id] index across all Rust files,
+    then for each recorded use, resolves each imported identifier to
+    a concrete target node. When multiple files define the same label
+    (e.g. several crates each defining `Config`), the heuristic prefers
+    candidates whose `source_file` contains the use's module prefix
+    (so `use crate::types::Foo` prefers a `Foo` defined in a `types.rs`).
+
+    Returns a list of new edges:
+    - `uses` for ordinary imports (confidence 0.95, INFERRED)
+    - `reexports` for `pub use` in `lib.rs` / `mod.rs` (confidence 1.0, INFERRED)
+
+    Edges are INFERRED because tree-sitter alone cannot verify a match
+    the way rust-analyzer would — two different crates may define
+    identically-named types, and we pick a best-effort candidate.
+    """
+    # Index: lowercased label → [(node_id, source_file)]
+    label_to_ids: dict[str, list[tuple[str, str]]] = {}
+    for file_result in per_file:
+        for n in file_result.get("nodes", []):
+            label = n.get("label", "").strip()
+            nid = n.get("id", "")
+            sf = n.get("source_file", "")
+            if not label or not nid:
+                continue
+            # Strip `.method()` prefix/suffix to normalise call-site idents
+            bare = label.lstrip(".").rstrip("()").strip()
+            if bare:
+                label_to_ids.setdefault(bare.lower(), []).append((nid, sf))
+            if label.lower() != bare.lower():
+                label_to_ids.setdefault(label.lower(), []).append((nid, sf))
+
+    # Build set of all Rust file node IDs for the importer lookup
+    # (the file-level node_id of each .rs file — used as the edge source)
+    new_edges: list[dict] = []
+    seen_pairs: set[tuple[str, str, str]] = set()
+
+    for file_result, path in zip(per_file, paths):
+        if path.suffix != ".rs":
+            continue
+        for use in file_result.get("_rust_uses", []):
+            importer_nid = use["importer_file_nid"]
+            src_file = use["source_file"]
+            prefix = use.get("module_prefix", "")
+            line = use.get("line", 1)
+            is_reexport = use.get("is_pub_reexport", False)
+
+            for ident in use.get("idents", []):
+                cands = label_to_ids.get(ident.lower(), [])
+                if not cands:
+                    continue
+                # Prefer candidates whose source_file matches the module prefix
+                best_nid: str | None = None
+                if prefix:
+                    leaf = prefix.split("::")[-1] if "::" in prefix else prefix
+                    for nid, sf in cands:
+                        if leaf and leaf in sf:
+                            best_nid = nid
+                            break
+                if best_nid is None:
+                    # Fallback: pick the first candidate that's not in the same file
+                    for nid, sf in cands:
+                        if sf != src_file:
+                            best_nid = nid
+                            break
+                if best_nid is None or best_nid == importer_nid:
+                    continue
+
+                pair_key = (importer_nid, best_nid, "reexports" if is_reexport else "uses")
+                if pair_key in seen_pairs:
+                    continue
+                seen_pairs.add(pair_key)
+
+                relation = "reexports" if is_reexport else "uses"
+                confidence_score = 1.0 if is_reexport else 0.95
+                new_edges.append({
+                    "source": importer_nid,
+                    "target": best_nid,
+                    "relation": relation,
+                    "confidence": "INFERRED",
+                    "confidence_score": confidence_score,
+                    "source_file": src_file,
+                    "source_location": f"L{line}",
+                    "weight": 1.0,
+                })
+
+    return new_edges
+
+
 def extract(paths: list[Path]) -> dict:
     """Extract AST nodes and edges from a list of code files.
 
@@ -2989,6 +3157,18 @@ def extract(paths: list[Path]) -> dict:
         except Exception as exc:
             import logging
             logging.getLogger(__name__).warning("Cross-file import resolution failed, skipping: %s", exc)
+
+    # Add cross-file Rust `use crate::...` edges.
+    # Per-file extraction collects each use into result["_rust_uses"]; this pass
+    # resolves them against the global label index to emit INFERRED uses/reexports edges.
+    rs_paths = [p for p in paths if p.suffix == ".rs"]
+    if rs_paths:
+        try:
+            rust_cross_edges = _resolve_cross_file_rust_imports(per_file, paths)
+            all_edges.extend(rust_cross_edges)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("Rust cross-file import resolution failed, skipping: %s", exc)
 
     return {
         "nodes": all_nodes,
