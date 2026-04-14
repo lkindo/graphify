@@ -1,6 +1,21 @@
 """Community detection on NetworkX graphs. Uses Leiden (graspologic) if available, falls back to Louvain (networkx). Splits oversized communities. Returns cohesion scores."""
 from __future__ import annotations
+import contextlib
+import inspect
+import io
+import sys
 import networkx as nx
+
+
+def _suppress_output():
+    """Context manager to suppress stdout/stderr during library calls.
+
+    graspologic's leiden() emits ANSI escape sequences (progress bars,
+    colored warnings) that corrupt PowerShell 5.1's scroll buffer on
+    Windows (see issue #19). Redirecting stdout/stderr to devnull during
+    the call prevents this without losing any graphify output.
+    """
+    return contextlib.redirect_stdout(io.StringIO())
 
 
 def _partition(G: nx.Graph) -> dict[str, int]:
@@ -8,36 +23,34 @@ def _partition(G: nx.Graph) -> dict[str, int]:
 
     Tries Leiden (graspologic) first — best quality.
     Falls back to Louvain (built into networkx) if graspologic is not installed.
+
+    Output from graspologic is suppressed to prevent ANSI escape codes
+    from corrupting terminal scroll buffers on Windows PowerShell 5.1.
     """
     try:
         from graspologic.partition import leiden
-        return leiden(G)
+        # Suppress graspologic output to prevent ANSI escape codes from
+        # corrupting PowerShell 5.1 scroll buffer (issue #19)
+        old_stderr = sys.stderr
+        try:
+            sys.stderr = io.StringIO()
+            with _suppress_output():
+                result = leiden(G)
+        finally:
+            sys.stderr = old_stderr
+        return result
     except ImportError:
         pass
 
-    # Fallback: networkx louvain (available since networkx 2.7)
-    # max_level=10 and threshold=1e-4 prevent indefinite hangs on large sparse graphs
-    # while producing equivalent community quality to the defaults on typical corpora
-    communities = nx.community.louvain_communities(G, seed=42, max_level=10, threshold=1e-4)
+    # Fallback: networkx louvain (available since networkx 2.7).
+    # Inspect kwargs to stay compatible across NetworkX versions — max_level
+    # was added in a later release and prevents hangs on large sparse graphs.
+    kwargs: dict = {"seed": 42, "threshold": 1e-4}
+    if "max_level" in inspect.signature(nx.community.louvain_communities).parameters:
+        kwargs["max_level"] = 10
+    communities = nx.community.louvain_communities(G, **kwargs)
     return {node: cid for cid, nodes in enumerate(communities) for node in nodes}
 
-
-def build_graph(nodes: list[dict], edges: list[dict]) -> nx.Graph:
-    """Build a NetworkX graph from graphify node/edge dicts.
-
-    Preserves original edge direction as _src/_tgt attributes so that
-    display functions can show relationships in the correct direction,
-    even though the graph is undirected for structural analysis.
-    """
-    G = nx.Graph()
-    for n in nodes:
-        G.add_node(n["id"], **{k: v for k, v in n.items() if k != "id"})
-    for e in edges:
-        attrs = {k: v for k, v in e.items() if k not in ("source", "target")}
-        attrs["_src"] = e["source"]
-        attrs["_tgt"] = e["target"]
-        G.add_edge(e["source"], e["target"], **attrs)
-    return G
 
 _MAX_COMMUNITY_FRACTION = 0.25   # communities larger than 25% of graph get split
 _MIN_SPLIT_SIZE = 10             # only split if community has at least this many nodes
@@ -49,9 +62,14 @@ def cluster(G: nx.Graph) -> dict[int, list[str]]:
     Community IDs are stable across runs: 0 = largest community after splitting.
     Oversized communities (> 25% of graph nodes, min 10) are split by running
     a second Leiden pass on the subgraph.
+
+    Accepts directed or undirected graphs. DiGraphs are converted to undirected
+    internally since Louvain/Leiden require undirected input.
     """
     if G.number_of_nodes() == 0:
         return {}
+    if G.is_directed():
+        G = G.to_undirected()
     if G.number_of_edges() == 0:
         return {i: [n] for i, n in enumerate(sorted(G.nodes))}
 

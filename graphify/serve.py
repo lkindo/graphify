@@ -5,14 +5,22 @@ import sys
 from pathlib import Path
 import networkx as nx
 from networkx.readwrite import json_graph
-from graphify.security import validate_graph_path, sanitize_label
+from graphify.security import sanitize_label
 
 
 def _load_graph(graph_path: str) -> nx.Graph:
     try:
-        safe = validate_graph_path(graph_path)
+        resolved = Path(graph_path).resolve()
+        if resolved.suffix != ".json":
+            raise ValueError(f"Graph path must be a .json file, got: {graph_path!r}")
+        if not resolved.exists():
+            raise FileNotFoundError(f"Graph file not found: {resolved}")
+        safe = resolved
         data = json.loads(safe.read_text())
-        return json_graph.node_link_graph(data, edges="links")
+        try:
+            return json_graph.node_link_graph(data, edges="links")
+        except TypeError:
+            return json_graph.node_link_graph(data)
     except (ValueError, FileNotFoundError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -306,7 +314,10 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
         handler = _handlers.get(name)
         if not handler:
             return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
-        return [types.TextContent(type="text", text=handler(arguments))]
+        try:
+            return [types.TextContent(type="text", text=handler(arguments))]
+        except Exception as exc:
+            return [types.TextContent(type="text", text=f"Error executing {name}: {exc}")]
 
     import asyncio
 

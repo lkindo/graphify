@@ -13,15 +13,17 @@ class FileType(str, Enum):
     DOCUMENT = "document"
     PAPER = "paper"
     IMAGE = "image"
+    VIDEO = "video"
 
 
 _MANIFEST_PATH = "graphify-out/manifest.json"
 
-CODE_EXTENSIONS = {'.py', '.ts', '.js', '.tsx', '.go', '.rs', '.java', '.cpp', '.cc', '.cxx', '.c', '.h', '.hpp', '.rb', '.swift', '.kt', '.kts', '.cs', '.scala', '.php', '.lua', '.toc', '.zig', '.ps1', '.ex', '.exs', '.m', '.mm'}
+CODE_EXTENSIONS = {'.py', '.ts', '.js', '.jsx', '.tsx', '.go', '.rs', '.java', '.cpp', '.cc', '.cxx', '.c', '.h', '.hpp', '.rb', '.swift', '.kt', '.kts', '.cs', '.scala', '.php', '.lua', '.toc', '.zig', '.ps1', '.ex', '.exs', '.m', '.mm', '.jl'}
 DOC_EXTENSIONS = {'.md', '.txt', '.rst'}
 PAPER_EXTENSIONS = {'.pdf'}
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'}
 OFFICE_EXTENSIONS = {'.docx', '.xlsx'}
+VIDEO_EXTENSIONS = {'.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.mp3', '.wav', '.m4a', '.ogg'}
 
 CORPUS_WARN_THRESHOLD = 50_000    # words - below this, warn "you may not need a graph"
 CORPUS_UPPER_THRESHOLD = 500_000  # words - above this, warn about token cost
@@ -74,11 +76,17 @@ def _looks_like_paper(path: Path) -> bool:
         return False
 
 
+_ASSET_DIR_MARKERS = {".imageset", ".xcassets", ".appiconset", ".colorset", ".launchimage"}
+
+
 def classify_file(path: Path) -> FileType | None:
     ext = path.suffix.lower()
     if ext in CODE_EXTENSIONS:
         return FileType.CODE
     if ext in PAPER_EXTENSIONS:
+        # PDFs inside Xcode asset catalogs are vector icons, not papers
+        if any(part.endswith(tuple(_ASSET_DIR_MARKERS)) for part in path.parts):
+            return None
         return FileType.PAPER
     if ext in IMAGE_EXTENSIONS:
         return FileType.IMAGE
@@ -89,6 +97,8 @@ def classify_file(path: Path) -> FileType | None:
         return FileType.DOCUMENT
     if ext in OFFICE_EXTENSIONS:
         return FileType.DOCUMENT
+    if ext in VIDEO_EXTENSIONS:
+        return FileType.VIDEO
     return None
 
 
@@ -244,21 +254,34 @@ def _is_noise_dir(part: str) -> bool:
 
 
 def _load_graphifyignore(root: Path) -> list[str]:
-    """Read .graphifyignore from root and return a list of patterns.
+    """Read .graphifyignore from root **and ancestor directories**, returning patterns.
+
+    Walks upward from *root* towards the filesystem root, collecting patterns
+    from every ``.graphifyignore`` encountered (like ``.gitignore`` discovery).
+    The search stops at the filesystem root or at a ``.git`` directory boundary
+    so it doesn't leak outside the repository.
 
     Lines starting with # are comments. Blank lines are ignored.
     Patterns follow gitignore semantics: glob matched against the path
     relative to root. A leading slash anchors to root. A trailing slash
     matches directories only (we match both dir and file for simplicity).
     """
-    ignore_file = root / ".graphifyignore"
-    if not ignore_file.exists():
-        return []
-    patterns = []
-    for line in ignore_file.read_text(errors="ignore").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            patterns.append(line)
+    patterns: list[str] = []
+    current = root.resolve()
+    while True:
+        ignore_file = current / ".graphifyignore"
+        if ignore_file.exists():
+            for line in ignore_file.read_text(errors="ignore").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    patterns.append(line)
+        # Stop climbing once we've processed the git repo root
+        if (current / ".git").exists():
+            break
+        parent = current.parent
+        if parent == current:
+            break  # filesystem root
+        current = parent
     return patterns
 
 
@@ -299,6 +322,7 @@ def detect(root: Path, *, follow_symlinks: bool = False) -> dict:
         FileType.DOCUMENT: [],
         FileType.PAPER: [],
         FileType.IMAGE: [],
+        FileType.VIDEO: [],
     }
     total_words = 0
 
@@ -369,7 +393,8 @@ def detect(root: Path, *, follow_symlinks: bool = False) -> dict:
                     skipped_sensitive.append(str(p) + " [office conversion failed - pip install graphifyy[office]]")
                 continue
             files[ftype].append(str(p))
-            total_words += count_words(p)
+            if ftype != FileType.VIDEO:
+                total_words += count_words(p)
 
     total_files = sum(len(v) for v in files.values())
     needs_graph = total_words >= CORPUS_WARN_THRESHOLD

@@ -62,6 +62,10 @@ const RAW_NODES = {nodes_json};
 const RAW_EDGES = {edges_json};
 const LEGEND = {legend_json};
 
+function esc(s) {{
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}}
+
 const container = document.getElementById('graph');
 const infoContent = document.getElementById('info-content');
 const hiddenCommunities = new Set();
@@ -124,13 +128,13 @@ function showInfo(nodeId) {{
   const neighborItems = neighbors.slice(0, 50).map(nid => {{
     const nb = nodeById.get(nid);
     const color = nb ? nb.color.background : '#555';
-    return `<span class="neighbor-link" style="border-left-color:${{color}}">${{nb ? nb.label : nid}}</span>`;
+    return `<span class="neighbor-link" style="border-left-color:${{esc(color)}}">${{esc(nb ? nb.label : nid)}}</span>`;
   }}).join('');
   infoContent.innerHTML = `
-    <div class="field"><b>${{n.label}}</b></div>
-    <div class="field">Type: ${{n.file_type || 'unknown'}}</div>
-    <div class="field">Community: ${{n.community_name}}</div>
-    <div class="field">Source: ${{n.source_file || '-'}}</div>
+    <div class="field"><b>${{esc(n.label)}}</b></div>
+    <div class="field">Type: ${{esc(n.file_type || 'unknown')}}</div>
+    <div class="field">Community: ${{esc(n.community_name)}}</div>
+    <div class="field">Source: ${{esc(n.source_file || '-')}}</div>
     <div class="field">Degree: ${{n.degree}}</div>
     ${{neighbors.length ? `<div class="field" style="margin-top:8px;color:#aaa;font-size:11px">Neighbors (${{neighbors.length}})</div><div id="neighbors-list">${{neighborItems}}</div>` : ''}}
   `;
