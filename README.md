@@ -83,6 +83,24 @@ Then open your AI coding assistant and type:
 ```
 /graphify .
 ```
+### Run from a cloned checkout on Windows
+
+If you cloned this repo and want the deterministic code-only pass directly from a terminal, use the repo-local launchers:
+
+PowerShell:
+
+```powershell
+.\graphify.ps1 update .
+```
+
+CMD:
+
+```bat
+graphify.cmd update .
+```
+
+Both wrappers prefer a local `.venv\Scripts\python.exe` first, then fall back to `py -3`, then `python`.
+
 
 Note: Codex uses `$` instead of `/` for skill calling, so type `$graphify .` instead.
 

@@ -1,14 +1,14 @@
-# graphify CLI shell-alias improvement
+# graphify CLI shell-alias + source-run improvement
 
 ## DONE
 - 2026-04-14: Confirmed the repo has a working `graphify update` subcommand, but `graphify --update` fails in the current CLI parser.
 - 2026-04-14: Started a feature branch for the fix: `feature/windows-cli-aliases`.
 - 2026-04-14: Implemented shell-friendly top-level aliases (`--update`, `--cluster-only`) and refreshed shell-facing docs.
-- 2026-04-14: Verification passed: `python -m pytest -q` -> 435 passed.
-- 2026-04-14: Pushed branch to fork `dikotiledon/graphify` and opened PR #340 against upstream.
+- 2026-04-14: Added repo-local Windows launchers (`graphify.cmd`, `graphify.ps1`) so cloned checkouts can run the deterministic code pass directly from CMD/PowerShell.
+- 2026-04-14: Verification passed: `python -m pytest -q` -> 437 passed.
 
 ## IN PROGRESS
 - None.
 
 ## NEXT
-- Await review / merge.
+- Await review / merge, or push this source-run launcher update if needed.
