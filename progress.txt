@@ -5,10 +5,10 @@
 - 2026-04-14: Started a feature branch for the fix: `feature/windows-cli-aliases`.
 - 2026-04-14: Implemented shell-friendly top-level aliases (`--update`, `--cluster-only`) and refreshed shell-facing docs.
 - 2026-04-14: Verification passed: `python -m pytest -q` -> 435 passed.
+- 2026-04-14: Pushed branch to fork `dikotiledon/graphify` and opened PR #340 against upstream.
 
 ## IN PROGRESS
-- Ready to commit and push the branch.
+- None.
 
 ## NEXT
-- Commit the change.
-- Push the branch to origin.
+- Await review / merge.
