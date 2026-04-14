@@ -830,6 +830,8 @@ def main() -> None:
         print("  watch <path>            watch a folder and rebuild the graph on code changes")
         print("  update <path>           re-extract code files and update the graph (no LLM needed)")
         print("  cluster-only <path>     rerun clustering on an existing graph.json and regenerate report")
+        print("    --hierarchical          run multi-resolution Leiden (3 levels) + community summaries")
+        print("    --summary-backend B     summary backend: extractive (default), ollama, claude")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -1199,6 +1201,11 @@ def main() -> None:
         if not graph_json.exists():
             print(f"error: no graph found at {graph_json} — run /graphify first", file=sys.stderr)
             sys.exit(1)
+        use_hierarchical = "--hierarchical" in sys.argv
+        summary_backend = "extractive"
+        for i, a in enumerate(sys.argv):
+            if a == "--summary-backend" and i + 1 < len(sys.argv):
+                summary_backend = sys.argv[i + 1]
         from networkx.readwrite import json_graph as _jg
         from graphify.build import build_from_json
         from graphify.cluster import cluster, score_all
@@ -1221,7 +1228,19 @@ def main() -> None:
                           {}, tokens, str(watch_path), suggested_questions=questions)
         out = watch_path / "graphify-out"
         (out / "GRAPH_REPORT.md").write_text(report, encoding="utf-8")
-        to_json(G, communities, str(out / "graph.json"))
+        # Hierarchical clustering + summaries (opt-in)
+        hierarchy = None
+        summaries = None
+        if use_hierarchical:
+            from graphify.cluster import hierarchical_cluster
+            from graphify.summarize import summarize_all_communities
+            print(f"Running hierarchical clustering (3 levels)...")
+            hierarchy = hierarchical_cluster(G)
+            print(f"Generating community summaries (backend={summary_backend})...")
+            summaries = summarize_all_communities(G, communities, backend=summary_backend)
+            print(f"  {len(hierarchy)} hierarchy levels, {len(summaries)} summaries generated")
+        to_json(G, communities, str(out / "graph.json"),
+                community_hierarchy=hierarchy, community_summaries=summaries)
         print(f"Done — {len(communities)} communities. GRAPH_REPORT.md and graph.json updated.")
 
     elif cmd == "update":

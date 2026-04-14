@@ -288,7 +288,14 @@ def attach_hyperedges(G: nx.Graph, hyperedges: list) -> None:
     G.graph["hyperedges"] = existing
 
 
-def to_json(G: nx.Graph, communities: dict[int, list[str]], output_path: str) -> None:
+def to_json(
+    G: nx.Graph,
+    communities: dict[int, list[str]],
+    output_path: str,
+    *,
+    community_hierarchy: dict[int, dict[int, list[str]]] | None = None,
+    community_summaries: dict[int, str] | None = None,
+) -> None:
     node_community = _node_community_map(communities)
     try:
         data = json_graph.node_link_data(G, edges="links")
@@ -302,6 +309,11 @@ def to_json(G: nx.Graph, communities: dict[int, list[str]], output_path: str) ->
             conf = link.get("confidence", "EXTRACTED")
             link["confidence_score"] = _CONFIDENCE_SCORE_DEFAULTS.get(conf, 1.0)
     data["hyperedges"] = getattr(G, "graph", {}).get("hyperedges", [])
+    # Hierarchical community data (opt-in via --hierarchical flag)
+    if community_hierarchy is not None:
+        data["community_hierarchy"] = {str(k): v for k, v in community_hierarchy.items()}
+    if community_summaries is not None:
+        data["community_summaries"] = {str(k): v for k, v in community_summaries.items()}
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
