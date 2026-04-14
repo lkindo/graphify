@@ -135,3 +135,84 @@ def cohesion_score(G: nx.Graph, community_nodes: list[str]) -> float:
 
 def score_all(G: nx.Graph, communities: dict[int, list[str]]) -> dict[int, float]:
     return {cid: cohesion_score(G, nodes) for cid, nodes in communities.items()}
+
+
+def _partition_at_resolution(G: nx.Graph, resolution: float) -> dict[str, int]:
+    """Run community detection at a specific resolution parameter.
+
+    Higher resolution → more communities (finer granularity).
+    Lower resolution → fewer communities (coarser granularity).
+
+    Tries Leiden (graspologic) first, falls back to Louvain (networkx).
+    """
+    try:
+        from graspologic.partition import leiden
+        old_stderr = sys.stderr
+        try:
+            sys.stderr = io.StringIO()
+            with _suppress_output():
+                result = leiden(G, resolution=resolution)
+        finally:
+            sys.stderr = old_stderr
+        return result
+    except ImportError:
+        pass
+
+    # Fallback: networkx louvain with resolution parameter
+    kwargs: dict = {"seed": 42, "threshold": 1e-4, "resolution": resolution}
+    if "max_level" in inspect.signature(nx.community.louvain_communities).parameters:
+        kwargs["max_level"] = 10
+    communities = nx.community.louvain_communities(G, **kwargs)
+    return {node: cid for cid, nodes in enumerate(communities) for node in nodes}
+
+
+def hierarchical_cluster(
+    G: nx.Graph,
+    resolutions: list[float] | None = None,
+) -> dict[int, dict[int, list[str]]]:
+    """Run Leiden community detection at multiple resolution levels.
+
+    Returns {level: {community_id: [node_ids]}} where level 0 is the coarsest
+    (fewest communities) and higher levels are progressively finer.
+
+    Default resolutions are [0.5, 1.0, 2.0] — coarse, medium, fine.
+
+    Accepts directed or undirected graphs. DiGraphs are converted to undirected
+    internally since Louvain/Leiden require undirected input.
+    """
+    if resolutions is None:
+        resolutions = [0.5, 1.0, 2.0]
+
+    if G.number_of_nodes() == 0:
+        return {level: {} for level in range(len(resolutions))}
+    if G.is_directed():
+        G = G.to_undirected()
+    if G.number_of_edges() == 0:
+        singleton = {i: [n] for i, n in enumerate(sorted(G.nodes))}
+        return {level: dict(singleton) for level in range(len(resolutions))}
+
+    # Handle isolates separately (same as cluster())
+    isolates = [n for n in G.nodes() if G.degree(n) == 0]
+    connected_nodes = [n for n in G.nodes() if G.degree(n) > 0]
+    connected = G.subgraph(connected_nodes)
+
+    hierarchy: dict[int, dict[int, list[str]]] = {}
+
+    for level, res in enumerate(sorted(resolutions)):
+        raw: dict[int, list[str]] = {}
+        if connected.number_of_nodes() > 0:
+            partition = _partition_at_resolution(connected, res)
+            for node, cid in partition.items():
+                raw.setdefault(cid, []).append(node)
+
+        # Each isolate becomes its own single-node community
+        next_cid = max(raw.keys(), default=-1) + 1
+        for node in isolates:
+            raw[next_cid] = [node]
+            next_cid += 1
+
+        # Re-index by size descending for deterministic ordering
+        communities_list = sorted(raw.values(), key=len, reverse=True)
+        hierarchy[level] = {i: sorted(nodes) for i, nodes in enumerate(communities_list)}
+
+    return hierarchy
