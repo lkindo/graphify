@@ -644,8 +644,126 @@ def test_ets_preserves_line_numbers():
     r = extract_ets(FIXTURES / "sample.ets")
     for n in r["nodes"]:
         if n["label"] == "EnvCheckPage":
-            # struct declaration is on line 26 in the fixture
-            assert n["source_location"] == "L26", f"Line mismatch: {n}"
+            assert n["source_location"] == "L29", f"Line mismatch: {n}"
             break
     else:
         pytest.fail("EnvCheckPage node not found")
+
+
+# ── Enriched ArkTS semantics (V1+V2 full coverage) ───────────────────────────
+
+def test_ets_component_struct_marked_as_component():
+    """@Component / @ComponentV2 struct nodes should be tagged arkts_component."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    comps = {n["label"] for n in r["nodes"] if n.get("node_type") == "arkts_component"}
+    assert "EnvCheckPage" in comps, f"EnvCheckPage not marked as component: {comps}"
+    assert "LegacyPage" in comps, f"LegacyPage not marked as component: {comps}"
+
+
+def test_ets_observed_v2_class_marked():
+    """@ObservedV2 class should be tagged arkts_observed_v2."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    observed = {n["label"] for n in r["nodes"] if n.get("node_type") == "arkts_observed_v2"}
+    assert "CheckBean" in observed, f"CheckBean not marked as observed_v2: {observed}"
+
+
+def test_ets_lifecycle_methods_tagged():
+    """Lifecycle methods should be tagged arkts_lifecycle and linked via has_lifecycle."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    lifecycle_labels = {n["label"] for n in r["nodes"] if n.get("node_type") == "arkts_lifecycle"}
+    assert any("aboutToAppear" in l for l in lifecycle_labels)
+    assert any("onPageShow" in l for l in lifecycle_labels)
+    lifecycle_edges = [e for e in r["edges"] if e["relation"] == "has_lifecycle"]
+    assert len(lifecycle_edges) >= 2, f"Expected ≥2 has_lifecycle edges, got {lifecycle_edges}"
+
+
+def test_ets_observes_edges_for_traced_fields():
+    """@Trace fields inside @ObservedV2 class → observes edge from class."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    obs_edges = [e for e in r["edges"] if e["relation"] == "observes"]
+    assert len(obs_edges) >= 2, f"Expected ≥2 observes edges, got {obs_edges}"
+
+
+def test_ets_watch_binds_to_target_method():
+    """@Watch('onCountChange') should create a watches edge to the onCountChange method."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    watch_edges = [e for e in r["edges"] if e["relation"] == "watches"]
+    assert len(watch_edges) >= 1, f"Expected ≥1 watches edge, got {watch_edges}"
+    watch_nodes = [n for n in r["nodes"] if n.get("node_type") == "arkts_watch"]
+    assert any("onCountChange" in n["label"] for n in watch_nodes)
+
+
+def test_ets_monitor_targets_captured():
+    """@Monitor('checkState', 'model.titleName') → two monitor_target nodes + monitors edges."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    monitor_nodes = [n for n in r["nodes"] if n.get("node_type") == "arkts_monitor_target"]
+    monitor_labels = {n["label"] for n in monitor_nodes}
+    assert any("checkState" in l for l in monitor_labels)
+    assert any("model.titleName" in l for l in monitor_labels)
+    monitors_edges = [e for e in r["edges"] if e["relation"] == "monitors"]
+    assert len(monitors_edges) >= 2
+
+
+def test_ets_provide_consume_share_key_node():
+    """@Provider('sharedKey') + @Consume('sharedKey') should connect via same key node."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    provides = [e for e in r["edges"] if e["relation"] == "provides"]
+    consumes = [e for e in r["edges"] if e["relation"] == "consumes"]
+    assert len(provides) >= 1, f"No provides edges: {provides}"
+    assert len(consumes) >= 1, f"No consumes edges: {consumes}"
+    # Same target key node
+    assert {e["target"] for e in provides} == {e["target"] for e in consumes}
+
+
+def test_ets_storage_bindings_emit_key_nodes():
+    """@StorageLink('globalUser') → arkts_app_storage_key node, storage_binds edge."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    app_keys = {n["label"] for n in r["nodes"] if n.get("node_type") == "arkts_app_storage_key"}
+    local_keys = {n["label"] for n in r["nodes"] if n.get("node_type") == "arkts_local_storage_key"}
+    assert any("globalUser" in l for l in app_keys), f"globalUser not found: {app_keys}"
+    assert any("sessionId" in l for l in local_keys), f"sessionId not found: {local_keys}"
+
+
+def test_ets_ui_composition_from_build():
+    """build() body should emit uses_component edges to child components."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    ui_edges = [e for e in r["edges"] if e["relation"] == "uses_component"]
+    used_labels = set()
+    node_by_id = {n["id"]: n for n in r["nodes"]}
+    for e in ui_edges:
+        if e["target"] in node_by_id:
+            used_labels.add(node_by_id[e["target"]]["label"])
+    # EnvCheckPage uses at least: NavDestination, Column, TitleBar, Scroll, List, ForEach, ListItem, Text, Button
+    expected = {"NavDestination", "Column", "TitleBar", "Scroll", "List", "ForEach", "ListItem", "Text", "Button"}
+    missing = expected - used_labels
+    assert not missing, f"Missing UI components: {missing}; got {used_labels}"
+
+
+def test_ets_resources_extracted():
+    """$r('app.color.xxx') / $r('app.string.xxx') → arkts_resource nodes."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    resources = [n for n in r["nodes"] if n.get("node_type") == "arkts_resource"]
+    resource_keys = {n["label"] for n in resources}
+    assert any("app.media.icon" in l for l in resource_keys)
+    assert any("app.string.submit" in l for l in resource_keys)
+    assert any("app.color.color_text" in l for l in resource_keys)
+    ref_edges = [e for e in r["edges"] if e["relation"] == "references_resource"]
+    assert len(ref_edges) >= 2
+
+
+def test_ets_all_v1_state_decorators_recognized():
+    """Check @State / @Prop / @Link / @Provide / @Consume / @Watch / @Observed / @ObjectLink."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    state_labels = {n["label"] for n in r["nodes"] if n.get("node_type") == "arkts_state"}
+    # We have @State oldFashionedState, @Prop title, @Link shared in the fixture
+    v1_seen = {"State", "Prop", "Link"}
+    for needed in v1_seen:
+        assert any(f"@{needed}" in l for l in state_labels), f"Missing @{needed} state node"
+
+
+def test_ets_all_v2_state_decorators_recognized():
+    """Check @Local / @Param / @Event / @Trace / @Computed via state nodes."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    state_labels = {n["label"] for n in r["nodes"] if n.get("node_type") == "arkts_state"}
+    for needed in ("Local", "Param", "Event", "Trace", "Computed"):
+        assert any(f"@{needed}" in l for l in state_labels), f"Missing @{needed} state node: {state_labels}"
