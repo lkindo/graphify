@@ -33,6 +33,7 @@ dependencies = [
     "tree-sitter-elixir",
     "tree-sitter-objc",
     "tree-sitter-julia",
+    "tree-sitter-tree-sitter-groovy @ git+https://github.com/adibfarrasy/tree-sitter-groovy",
 ]
 
 [project.urls]

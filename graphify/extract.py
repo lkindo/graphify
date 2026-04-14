@@ -301,6 +301,42 @@ def _import_scala(node, source: bytes, file_nid: str, stem: str, edges: list, st
             break
 
 
+def _import_groovy(node, source: bytes, file_nid: str, stem: str, edges: list, str_path: str) -> None:
+    def _walk_scoped(n) -> str:
+        parts: list[str] = []
+        cur = n
+        while cur:
+            if cur.type == "scoped_identifier":
+                name_node = cur.child_by_field_name("name")
+                if name_node:
+                    parts.append(_read_text(name_node, source))
+                cur = cur.child_by_field_name("scope")
+            elif cur.type == "identifier":
+                parts.append(_read_text(cur, source))
+                break
+            else:
+                break
+        parts.reverse()
+        return ".".join(parts)
+
+    for child in node.children:
+        if child.type in ("scoped_identifier", "identifier"):
+            path_str = _walk_scoped(child)
+            module_name = path_str.split(".")[-1].strip("*").strip(".") or path_str
+            if module_name:
+                tgt_nid = _make_id(module_name)
+                edges.append({
+                    "source": file_nid,
+                    "target": tgt_nid,
+                    "relation": "imports",
+                    "confidence": "EXTRACTED",
+                    "source_file": str_path,
+                    "source_location": f"L{node.start_point[0] + 1}",
+                    "weight": 1.0,
+                })
+            break
+
+
 def _import_php(node, source: bytes, file_nid: str, stem: str, edges: list, str_path: str) -> None:
     for child in node.children:
         if child.type in ("qualified_name", "name", "identifier"):
@@ -555,6 +591,18 @@ _SCALA_CONFIG = LanguageConfig(
     body_fallback_child_types=("template_body",),
     function_boundary_types=frozenset({"function_definition"}),
     import_handler=_import_scala,
+)
+
+_GROOVY_CONFIG = LanguageConfig(
+    ts_module="tree_sitter_tree_sitter_groovy",
+    class_types=frozenset({"class_declaration", "interface_declaration", "enum_declaration"}),
+    function_types=frozenset({"function_declaration", "constructor_declaration"}),
+    import_types=frozenset({"import_declaration"}),
+    call_types=frozenset({"method_invocation"}),
+    call_function_field="name",
+    call_accessor_node_types=frozenset(),
+    function_boundary_types=frozenset({"function_declaration", "constructor_declaration"}),
+    import_handler=_import_groovy,
 )
 
 _PHP_CONFIG = LanguageConfig(
@@ -1357,6 +1405,11 @@ def extract_kotlin(path: Path) -> dict:
 def extract_scala(path: Path) -> dict:
     """Extract classes, objects, functions, and imports from a .scala file."""
     return _extract_generic(path, _SCALA_CONFIG)
+
+
+def extract_groovy(path: Path) -> dict:
+    """Extract classes, interfaces, enums, methods, constructors, and imports from a .groovy file."""
+    return _extract_generic(path, _GROOVY_CONFIG)
 
 
 def extract_php(path: Path) -> dict:
@@ -2948,6 +3001,7 @@ def extract(paths: list[Path]) -> dict:
         ".vue": extract_js,
         ".svelte": extract_js,
         ".dart": extract_dart,
+        ".groovy": extract_groovy,
     }
 
     total = len(paths)
