@@ -62,9 +62,11 @@ def _hyperedge_script(hyperedges_json: str) -> str:
     return f"""<script>
 // Render hyperedges as shaded regions
 const hyperedges = {hyperedges_json};
-function drawHyperedges() {{
-    const canvas = network.canvas.frame.canvas;
-    const ctx = canvas.getContext('2d');
+// vis-network invokes afterDrawing with a ctx that already has the view
+// transform applied (pan + zoom + devicePixelRatio), so node positions from
+// getPositions() should be drawn in raw network coordinates — the same way
+// vis-network itself draws nodes and edges.
+function drawHyperedges(ctx) {{
     hyperedges.forEach(h => {{
         const positions = h.nodes
             .map(nid => network.getPositions([nid])[nid])
@@ -77,17 +79,10 @@ function drawHyperedges() {{
         ctx.strokeStyle = '#6366f1';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        const scale = network.getScale();
-        const offset = network.getViewPosition();
-        const toCanvas = (p) => ({{
-            x: (p.x - offset.x) * scale + canvas.width / 2,
-            y: (p.y - offset.y) * scale + canvas.height / 2
-        }});
-        const pts = positions.map(toCanvas);
-        // Expand hull slightly
-        const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
-        const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
-        const expanded = pts.map(p => ({{
+        // Expand hull slightly outward from centroid so it wraps the node circles.
+        const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
+        const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
+        const expanded = positions.map(p => ({{
             x: cx + (p.x - cx) * 1.15,
             y: cy + (p.y - cy) * 1.15
         }}));
