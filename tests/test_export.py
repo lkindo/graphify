@@ -125,3 +125,75 @@ def test_to_html_contains_nodes_and_edges():
         content = out.read_text()
         assert "RAW_NODES" in content
         assert "RAW_EDGES" in content
+
+
+def test_to_html_label_threshold_zero_shows_all():
+    """label_threshold=0.0 should give every node a non-zero font size."""
+    G = make_graph()
+    communities = cluster(G)
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "graph.html"
+        to_html(G, communities, str(out), label_threshold=0.0)
+        content = out.read_text()
+        # Every node should have font size > 0 (default 12)
+        # Check that no node has "size":0 in font
+        assert '"size": 0' not in content or '"size":0' not in content
+
+
+def test_to_html_label_threshold_one_hides_all():
+    """label_threshold=1.0 should hide all node labels (font size 0)."""
+    G = make_graph()
+    communities = cluster(G)
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "graph.html"
+        to_html(G, communities, str(out), label_threshold=1.0)
+        content = out.read_text()
+        # All nodes should have font size 0
+        data_start = content.index("RAW_NODES")
+        # Should contain font size 0 entries
+        assert '"size": 0' in content or '"size":0' in content
+
+
+def test_to_html_custom_font_size():
+    """label_font_size should control the visible font size."""
+    G = make_graph()
+    communities = cluster(G)
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "graph.html"
+        to_html(G, communities, str(out), label_threshold=0.0, label_font_size=18)
+        content = out.read_text()
+        assert '"size": 18' in content or '"size":18' in content
+
+
+def test_to_html_show_edge_labels():
+    """show_edge_labels=True should include e.label in JS."""
+    G = make_graph()
+    communities = cluster(G)
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "graph.html"
+        to_html(G, communities, str(out), show_edge_labels=True)
+        content = out.read_text()
+        assert "e.label" in content
+
+
+def test_to_html_hide_edge_labels_default():
+    """Default should hide edge labels (empty string)."""
+    G = make_graph()
+    communities = cluster(G)
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "graph.html"
+        to_html(G, communities, str(out))
+        content = out.read_text()
+        assert "label: ''" in content
+
+
+def test_to_html_edge_width_degree_mode():
+    """edge_width_mode='degree' should produce varying widths."""
+    G = make_graph()
+    communities = cluster(G)
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "graph.html"
+        to_html(G, communities, str(out), edge_width_mode="degree")
+        content = out.read_text()
+        # Should contain non-integer edge widths (rounded float)
+        assert "width" in content

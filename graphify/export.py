@@ -110,7 +110,9 @@ network.on('afterDrawing', drawHyperedges);
 </script>"""
 
 
-def _html_script(nodes_json: str, edges_json: str, legend_json: str) -> str:
+def _html_script(nodes_json: str, edges_json: str, legend_json: str,
+                  show_edge_labels: bool = False) -> str:
+    edge_label_field = "e.label" if show_edge_labels else "''"
     return f"""<script>
 const RAW_NODES = {nodes_json};
 const RAW_EDGES = {edges_json};
@@ -131,7 +133,7 @@ const nodesDS = new vis.DataSet(RAW_NODES.map(n => ({{
 
 const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => ({{
   id: i, from: e.from, to: e.to,
-  label: '',
+  label: {edge_label_field},
   title: e.title,
   dashes: e.dashes,
   width: e.width,
@@ -353,12 +355,29 @@ def to_html(
     communities: dict[int, list[str]],
     output_path: str,
     community_labels: dict[int, str] | None = None,
+    *,
+    label_threshold: float = 0.15,
+    label_font_size: int = 12,
+    show_edge_labels: bool = False,
+    edge_width_mode: str = "confidence",
 ) -> None:
     """Generate an interactive vis.js HTML visualization of the graph.
 
     Features: node size by degree, click-to-inspect panel, search box,
     community filter, physics clustering by community, confidence-styled edges.
     Raises ValueError if graph exceeds MAX_NODES_FOR_VIZ.
+
+    Args:
+        G: NetworkX graph to visualize.
+        communities: Community membership dict from cluster step.
+        output_path: Where to write the HTML file.
+        community_labels: Optional human-readable names per community ID.
+        label_threshold: Fraction of max_degree below which node labels are
+            hidden (0.0 = show all, 0.15 = show top 15%, 1.0 = hide all).
+        label_font_size: Font size in pixels for visible node labels.
+        show_edge_labels: If True, display edge relation names on edges.
+        edge_width_mode: "confidence" (default, width by confidence level)
+            or "degree" (width scales with average degree of endpoints).
     """
     if G.number_of_nodes() > MAX_NODES_FOR_VIZ:
         raise ValueError(
@@ -378,8 +397,8 @@ def to_html(
         label = sanitize_label(data.get("label", node_id))
         deg = degree.get(node_id, 1)
         size = 10 + 30 * (deg / max_deg)
-        # Only show label for high-degree nodes by default; others show on hover
-        font_size = 12 if deg >= max_deg * 0.15 else 0
+        # Show label for nodes above the degree threshold; others show on hover
+        font_size = label_font_size if deg >= max_deg * label_threshold else 0
         vis_nodes.append({
             "id": node_id,
             "label": label,
@@ -399,13 +418,18 @@ def to_html(
     for u, v, data in G.edges(data=True):
         confidence = data.get("confidence", "EXTRACTED")
         relation = data.get("relation", "")
+        if edge_width_mode == "degree":
+            avg_deg = (degree.get(u, 1) + degree.get(v, 1)) / 2
+            edge_width = max(1, min(5, 1 + 4 * (avg_deg / max_deg)))
+        else:
+            edge_width = 2 if confidence == "EXTRACTED" else 1
         vis_edges.append({
             "from": u,
             "to": v,
             "label": relation,
             "title": _html.escape(f"{relation} [{confidence}]"),
             "dashes": confidence != "EXTRACTED",
-            "width": 2 if confidence == "EXTRACTED" else 1,
+            "width": edge_width,
             "color": {"opacity": 0.7 if confidence == "EXTRACTED" else 0.35},
             "confidence": confidence,
         })
@@ -454,7 +478,7 @@ def to_html(
   </div>
   <div id="stats">{stats}</div>
 </div>
-{_html_script(nodes_json, edges_json, legend_json)}
+{_html_script(nodes_json, edges_json, legend_json, show_edge_labels=show_edge_labels)}
 {_hyperedge_script(hyperedges_json)}
 </body>
 </html>"""
