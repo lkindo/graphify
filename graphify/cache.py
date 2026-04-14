@@ -7,6 +7,19 @@ import os
 from pathlib import Path
 
 
+# Bump this string whenever the extractor's output schema changes in a way that
+# requires old cache entries to be invalidated. The tag is mixed into every
+# cache key, so pre-existing cache files silently stop matching and get
+# re-extracted on the next run. No manual `rm -rf graphify-out/cache` needed.
+#
+# History:
+#   (unversioned) — initial cache format
+#   v2            — Rust extractor now records `_rust_uses` for cross-file
+#                   import resolution; entries missing this field must be
+#                   re-extracted to get the new cross-file edges.
+_CACHE_SCHEMA_TAG = b"v2"
+
+
 def _body_content(content: bytes) -> bytes:
     """Strip YAML frontmatter from Markdown content, returning only the body."""
     text = content.decode(errors="replace")
@@ -31,6 +44,8 @@ def file_hash(path: Path, root: Path = Path(".")) -> str:
     raw = p.read_bytes()
     content = _body_content(raw) if p.suffix.lower() == ".md" else raw
     h = hashlib.sha256()
+    h.update(_CACHE_SCHEMA_TAG)
+    h.update(b"\x00")
     h.update(content)
     h.update(b"\x00")
     try:
