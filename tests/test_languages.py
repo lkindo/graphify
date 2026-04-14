@@ -5,7 +5,7 @@ import pytest
 from graphify.extract import (
     extract_java, extract_c, extract_cpp, extract_ruby,
     extract_csharp, extract_kotlin, extract_scala, extract_php,
-    extract_swift, extract_go, extract_julia,
+    extract_swift, extract_go, extract_julia, extract_groovy,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -208,6 +208,45 @@ def test_scala_finds_methods():
     labels = _labels(r)
     assert any("get" in l for l in labels)
     assert any("post" in l for l in labels)
+
+
+# ── Groovy ────────────────────────────────────────────────────────────────────
+
+def test_groovy_no_error():
+    r = extract_groovy(FIXTURES / "sample.groovy")
+    assert "error" not in r
+
+def test_groovy_finds_class():
+    r = extract_groovy(FIXTURES / "sample.groovy")
+    assert any("HttpClient" in l for l in _labels(r))
+
+def test_groovy_finds_interface():
+    r = extract_groovy(FIXTURES / "sample.groovy")
+    assert any("Processor" in l for l in _labels(r))
+
+def test_groovy_finds_enum():
+    r = extract_groovy(FIXTURES / "sample.groovy")
+    assert any("Status" in l for l in _labels(r))
+
+def test_groovy_finds_methods():
+    r = extract_groovy(FIXTURES / "sample.groovy")
+    labels = _labels(r)
+    assert any("get" in l for l in labels)
+    assert any("post" in l for l in labels)
+
+def test_groovy_finds_top_level_function():
+    r = extract_groovy(FIXTURES / "sample.groovy")
+    assert any("createClient" in l for l in _labels(r))
+
+def test_groovy_finds_imports():
+    r = extract_groovy(FIXTURES / "sample.groovy")
+    assert "imports" in _relations(r)
+
+def test_groovy_no_dangling_edges():
+    r = extract_groovy(FIXTURES / "sample.groovy")
+    node_ids = {n["id"] for n in r["nodes"]}
+    for e in r["edges"]:
+        assert e["source"] in node_ids or e["target"] in node_ids
 
 
 # ── PHP ───────────────────────────────────────────────────────────────────────
