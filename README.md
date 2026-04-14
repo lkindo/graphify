@@ -20,7 +20,7 @@ Fully multimodal. Drop in code, PDFs, markdown, screenshots, diagrams, whiteboar
 
 ```
 graphify-out/
-├── graph.html       interactive graph - click nodes, search, filter by community
+├── graph.html       interactive graph (cosmos.gl) - click nodes, search, filter by community
 ├── GRAPH_REPORT.md  god nodes, surprising connections, suggested questions
 ├── graph.json       persistent graph - query weeks later without re-reading
 └── cache/           SHA256 cache - re-runs only process changed files
@@ -40,7 +40,7 @@ Same syntax as `.gitignore`. You can keep a single `.graphifyignore` at your rep
 
 ## How it works
 
-graphify runs in three passes. First, a deterministic AST pass extracts structure from code files (classes, functions, imports, call graphs, docstrings, rationale comments) with no LLM needed. Second, video and audio files are transcribed locally with faster-whisper using a domain-aware prompt derived from corpus god nodes — transcripts are cached so re-runs are instant. Third, Claude subagents run in parallel over docs, papers, images, and transcripts to extract concepts, relationships, and design rationale. The results are merged into a NetworkX graph, clustered with Leiden community detection, and exported as interactive HTML, queryable JSON, and a plain-language audit report.
+graphify runs in three passes. First, a deterministic AST pass extracts structure from code files (classes, functions, imports, call graphs, docstrings, rationale comments) with no LLM needed. Second, video and audio files are transcribed locally with faster-whisper using a domain-aware prompt derived from corpus god nodes — transcripts are cached so re-runs are instant. Third, Claude subagents run in parallel over docs, papers, images, and transcripts to extract concepts, relationships, and design rationale. The results are merged into a NetworkX graph, clustered with Leiden community detection, and exported as interactive HTML, queryable JSON, and a plain-language audit report. HTML rendering uses cosmos.gl for GPU-accelerated graph interaction.
 
 **Clustering is graph-topology-based — no embeddings.** Leiden finds communities by edge density. The semantic similarity edges that Claude extracts (`semantically_similar_to`, marked INFERRED) are already in the graph, so they influence community detection directly. The graph structure is the similarity signal — no separate embedding step or vector database needed.
 
@@ -341,6 +341,8 @@ Audio never leaves your machine. All transcription runs locally.
 
 **Wiki** (`--wiki`) - Wikipedia-style markdown articles per community and god node, with an `index.md` entry point. Point any agent at `index.md` and it can navigate the knowledge base by reading files instead of parsing JSON.
 
+**Large-graph HTML visualization** - no hard 5,000-node cap. For very large graphs, browser/GPU memory can reduce interactivity, so `--no-viz` remains useful for report/JSON-only workflows.
+
 ## Worked examples
 
 | Corpus | Files | Reduction | Output |
@@ -357,6 +359,7 @@ graphify sends file contents to your AI coding assistant's underlying model API 
 
 ## Tech stack
 
+<<<<<<< HEAD
 NetworkX + Leiden (graspologic) + tree-sitter + vis.js. Semantic extraction via Claude (Claude Code), GPT-4 (Codex), or whichever model your platform runs. Video transcription via faster-whisper + yt-dlp (optional, `pip install graphifyy[video]`). No Neo4j required, no server, runs entirely locally.
 
 ## Built on graphify — Penpax
@@ -374,6 +377,9 @@ NetworkX + Leiden (graspologic) + tree-sitter + vis.js. Semantic extraction via 
 Built for lawyers, consultants, executives, doctors, researchers — anyone whose work lives across hundreds of conversations and documents they can never fully reconstruct.
 
 **Free trial launching soon.** [Join the waitlist →](https://safishamsi.github.io/penpax.ai)
+=======
+NetworkX + Leiden (graspologic) + tree-sitter + cosmos.gl. Semantic extraction via Claude (Claude Code), GPT-4 (Codex), or whichever model your platform runs. No Neo4j required, no server, runs entirely locally.
+>>>>>>> f6d94f3 (Update README for cosmos.gl HTML visualization behavior.)
 
 ## What we are building next
 
