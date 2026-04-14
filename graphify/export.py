@@ -15,9 +15,6 @@ COMMUNITY_COLORS = [
     "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC",
 ]
 
-MAX_NODES_FOR_VIZ = 5_000
-
-
 def _html_styles() -> str:
     return """<style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -52,140 +49,92 @@ def _html_styles() -> str:
 
 
 def _hyperedge_script(hyperedges_json: str) -> str:
-    return f"""<script>
-// Render hyperedges as shaded regions
-const hyperedges = {hyperedges_json};
-function drawHyperedges() {{
-    const canvas = network.canvas.frame.canvas;
-    const ctx = canvas.getContext('2d');
-    hyperedges.forEach(h => {{
-        const positions = h.nodes
-            .map(nid => network.getPositions([nid])[nid])
-            .filter(p => p !== undefined);
-        if (positions.length < 2) return;
-        // Draw convex hull as filled polygon
-        ctx.save();
-        ctx.globalAlpha = 0.12;
-        ctx.fillStyle = '#6366f1';
-        ctx.strokeStyle = '#6366f1';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        const scale = network.getScale();
-        const offset = network.getViewPosition();
-        const toCanvas = (p) => ({{
-            x: (p.x - offset.x) * scale + canvas.width / 2,
-            y: (p.y - offset.y) * scale + canvas.height / 2
-        }});
-        const pts = positions.map(toCanvas);
-        // Expand hull slightly
-        const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
-        const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
-        const expanded = pts.map(p => ({{
-            x: cx + (p.x - cx) * 1.15,
-            y: cy + (p.y - cy) * 1.15
-        }}));
-        ctx.moveTo(expanded[0].x, expanded[0].y);
-        expanded.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
-        ctx.closePath();
-        ctx.fill();
-        ctx.globalAlpha = 0.4;
-        ctx.stroke();
-        // Label
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = '#4f46e5';
-        ctx.font = 'bold 11px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(h.label, cx, cy - 5);
-        ctx.restore();
-    }});
-}}
-network.on('afterDrawing', drawHyperedges);
-</script>"""
+    # Legacy no-op: hyperedge overlays were tied to the previous HTML engine.
+    _ = hyperedges_json
+    return ""
 
 
 def _html_script(nodes_json: str, edges_json: str, legend_json: str) -> str:
-    return f"""<script>
+    return f"""<script type="module">
+import {{ Graph }} from "https://cdn.jsdelivr.net/npm/@cosmos.gl/graph@3.0.0-beta.7/dist/index.js";
+
 const RAW_NODES = {nodes_json};
 const RAW_EDGES = {edges_json};
 const LEGEND = {legend_json};
 
-// Build vis datasets
-const nodesDS = new vis.DataSet(RAW_NODES.map(n => ({{
-  id: n.id, label: n.label, color: n.color, size: n.size,
-  font: n.font, title: n.title,
-  _community: n.community, _community_name: n.community_name,
-  _source_file: n.source_file, _file_type: n.file_type, _degree: n.degree,
-}})));
-
-const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => ({{
-  id: i, from: e.from, to: e.to,
-  label: '',
-  title: e.title,
-  dashes: e.dashes,
-  width: e.width,
-  color: e.color,
-  arrows: {{ to: {{ enabled: true, scaleFactor: 0.5 }} }},
-}})));
-
 const container = document.getElementById('graph');
-const network = new vis.Network(container, {{ nodes: nodesDS, edges: edgesDS }}, {{
-  physics: {{
-    enabled: true,
-    solver: 'forceAtlas2Based',
-    forceAtlas2Based: {{
-      gravitationalConstant: -60,
-      centralGravity: 0.005,
-      springLength: 120,
-      springConstant: 0.08,
-      damping: 0.4,
-      avoidOverlap: 0.8,
-    }},
-    stabilization: {{ iterations: 200, fit: true }},
+const infoContent = document.getElementById('info-content');
+const hiddenCommunities = new Set();
+const nodeById = new Map(RAW_NODES.map(n => [n.id, n]));
+
+const fullNeighbors = new Map();
+for (const e of RAW_EDGES) {{
+  if (!fullNeighbors.has(e.from)) fullNeighbors.set(e.from, new Set());
+  if (!fullNeighbors.has(e.to)) fullNeighbors.set(e.to, new Set());
+  fullNeighbors.get(e.from).add(e.to);
+  fullNeighbors.get(e.to).add(e.from);
+}}
+
+let visibleNodes = [];
+const graph = new Graph(container, {{
+  simulationFriction: 0.15,
+  simulationRepulsion: 0.7,
+  simulationGravity: 0.03,
+  fitViewOnInit: true,
+  fitViewPadding: 0.2,
+  curvedLinks: true,
+  enableDrag: true,
+  backgroundColor: "#0f0f1a",
+  onClick: (pointIndex) => {{
+    const node = visibleNodes[pointIndex];
+    if (!node) return;
+    showInfo(node.id);
   }},
-  interaction: {{
-    hover: true,
-    tooltipDelay: 100,
-    hideEdgesOnDrag: true,
-    navigationButtons: false,
-    keyboard: false,
-  }},
-  nodes: {{ shape: 'dot', borderWidth: 1.5 }},
-  edges: {{ smooth: {{ type: 'continuous', roundness: 0.2 }}, selectionWidth: 3 }},
 }});
 
-network.once('stabilizationIterationsDone', () => {{
-  network.setOptions({{ physics: {{ enabled: false }} }});
-}});
+function buildVisibleGraph() {{
+  visibleNodes = RAW_NODES.filter(n => !hiddenCommunities.has(n.community));
+  const idToIndex = new Map();
+  visibleNodes.forEach((n, idx) => idToIndex.set(n.id, idx));
+
+  const positions = new Float32Array(visibleNodes.length * 2);
+  for (let i = 0; i < visibleNodes.length; i++) {{
+    const n = visibleNodes[i];
+    positions[i * 2] = Number(n.x || 0);
+    positions[i * 2 + 1] = Number(n.y || 0);
+  }}
+
+  const linksFlat = [];
+  for (const e of RAW_EDGES) {{
+    const from = idToIndex.get(e.from);
+    const to = idToIndex.get(e.to);
+    if (from === undefined || to === undefined) continue;
+    linksFlat.push(from, to);
+  }}
+
+  graph.setPointPositions(positions);
+  graph.setLinks(new Float32Array(linksFlat));
+  graph.render();
+}}
 
 function showInfo(nodeId) {{
-  const n = nodesDS.get(nodeId);
+  const n = nodeById.get(nodeId);
   if (!n) return;
-  const neighborIds = network.getConnectedNodes(nodeId);
-  const neighborItems = neighborIds.map(nid => {{
-    const nb = nodesDS.get(nid);
+  const neighbors = Array.from(fullNeighbors.get(nodeId) || []);
+  const neighborItems = neighbors.slice(0, 50).map(nid => {{
+    const nb = nodeById.get(nid);
     const color = nb ? nb.color.background : '#555';
-    return `<span class="neighbor-link" style="border-left-color:${{color}}" onclick="focusNode('${{nid}}')">${{nb ? nb.label : nid}}</span>`;
+    return `<span class="neighbor-link" style="border-left-color:${{color}}">${{nb ? nb.label : nid}}</span>`;
   }}).join('');
-  document.getElementById('info-content').innerHTML = `
+  infoContent.innerHTML = `
     <div class="field"><b>${{n.label}}</b></div>
-    <div class="field">Type: ${{n._file_type || 'unknown'}}</div>
-    <div class="field">Community: ${{n._community_name}}</div>
-    <div class="field">Source: ${{n._source_file || '-'}}</div>
-    <div class="field">Degree: ${{n._degree}}</div>
-    ${{neighborIds.length ? `<div class="field" style="margin-top:8px;color:#aaa;font-size:11px">Neighbors (${{neighborIds.length}})</div><div id="neighbors-list">${{neighborItems}}</div>` : ''}}
+    <div class="field">Type: ${{n.file_type || 'unknown'}}</div>
+    <div class="field">Community: ${{n.community_name}}</div>
+    <div class="field">Source: ${{n.source_file || '-'}}</div>
+    <div class="field">Degree: ${{n.degree}}</div>
+    ${{neighbors.length ? `<div class="field" style="margin-top:8px;color:#aaa;font-size:11px">Neighbors (${{neighbors.length}})</div><div id="neighbors-list">${{neighborItems}}</div>` : ''}}
   `;
 }}
-
-function focusNode(nodeId) {{
-  network.focus(nodeId, {{ scale: 1.4, animation: true }});
-  network.selectNodes([nodeId]);
-  showInfo(nodeId);
-}}
-
-network.on('click', params => {{
-  if (params.nodes.length > 0) showInfo(params.nodes[0]);
-  else document.getElementById('info-content').innerHTML = '<span class="empty">Click a node to inspect it</span>';
-}});
 
 const searchInput = document.getElementById('search');
 const searchResults = document.getElementById('search-results');
@@ -203,8 +152,6 @@ searchInput.addEventListener('input', () => {{
     el.style.borderLeft = `3px solid ${{n.color.background}}`;
     el.style.paddingLeft = '8px';
     el.onclick = () => {{
-      network.focus(n.id, {{ scale: 1.5, animation: true }});
-      network.selectNodes([n.id]);
       showInfo(n.id);
       searchResults.style.display = 'none';
       searchInput.value = '';
@@ -212,12 +159,12 @@ searchInput.addEventListener('input', () => {{
     searchResults.appendChild(el);
   }});
 }});
-document.addEventListener('click', e => {{
-  if (!searchResults.contains(e.target) && e.target !== searchInput)
+document.addEventListener('click', (e) => {{
+  if (!searchResults.contains(e.target) && e.target !== searchInput) {{
     searchResults.style.display = 'none';
+  }}
 }});
 
-const hiddenCommunities = new Set();
 const legendEl = document.getElementById('legend');
 LEGEND.forEach(c => {{
   const item = document.createElement('div');
@@ -233,13 +180,12 @@ LEGEND.forEach(c => {{
       hiddenCommunities.add(c.cid);
       item.classList.add('dimmed');
     }}
-    const updates = RAW_NODES
-      .filter(n => n.community === c.cid)
-      .map(n => ({{ id: n.id, hidden: hiddenCommunities.has(c.cid) }}));
-    nodesDS.update(updates);
+    buildVisibleGraph();
   }};
   legendEl.appendChild(item);
 }});
+
+buildVisibleGraph();
 </script>"""
 
 
@@ -303,21 +249,18 @@ def to_html(
     output_path: str,
     community_labels: dict[int, str] | None = None,
 ) -> None:
-    """Generate an interactive vis.js HTML visualization of the graph.
+    """Generate an interactive cosmos.gl HTML visualization of the graph.
 
     Features: node size by degree, click-to-inspect panel, search box,
     community filter, physics clustering by community, confidence-styled edges.
-    Raises ValueError if graph exceeds MAX_NODES_FOR_VIZ.
     """
-    if G.number_of_nodes() > MAX_NODES_FOR_VIZ:
-        raise ValueError(
-            f"Graph has {G.number_of_nodes()} nodes - too large for HTML viz. "
-            f"Use --no-viz or reduce input size."
-        )
-
     node_community = _node_community_map(communities)
     degree = dict(G.degree())
     max_deg = max(degree.values()) if degree else 1
+    if G.number_of_nodes() > 15_000:
+        pos = nx.random_layout(G, seed=42)
+    else:
+        pos = nx.spring_layout(G, seed=42, k=2.0 / (G.number_of_nodes() ** 0.5 + 1))
 
     # Build nodes list for vis.js
     vis_nodes = []
@@ -341,6 +284,8 @@ def to_html(
             "source_file": sanitize_label(data.get("source_file", "")),
             "file_type": data.get("file_type", ""),
             "degree": deg,
+            "x": float(pos[node_id][0]),
+            "y": float(pos[node_id][1]),
         })
 
     # Build edges list
@@ -379,7 +324,6 @@ def to_html(
 <head>
 <meta charset="UTF-8">
 <title>graphify - {title}</title>
-<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 {_html_styles()}
 </head>
 <body>

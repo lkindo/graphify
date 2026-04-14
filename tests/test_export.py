@@ -88,14 +88,14 @@ def test_to_html_creates_file():
         to_html(G, communities, str(out))
         assert out.exists()
 
-def test_to_html_contains_visjs():
+def test_to_html_contains_cosmos_engine():
     G = make_graph()
     communities = cluster(G)
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "graph.html"
         to_html(G, communities, str(out))
         content = out.read_text()
-        assert "vis-network" in content
+        assert "@cosmos.gl/graph" in content
 
 def test_to_html_contains_search():
     G = make_graph()
