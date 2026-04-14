@@ -93,6 +93,8 @@ Codex ユーザーは並列抽出のために `~/.codex/config.toml` の `[featu
 
 **Codex、OpenCode、OpenClaw、Factory Droid** は同じルールをプロジェクトルートの `AGENTS.md` に書き込みます。これらのプラットフォームは PreToolUse フックをサポートしていないため、AGENTS.md が常時有効のメカニズムとなります。
 
+**Qoder** は `.qoder/rules/graphify.md` にルール（Always Apply タイプ）を書き込み、`.qoder/settings.json` に PreToolUse フックを登録します。どちらも Qoder にコードベースの質問に答える前にグラフをチェックするよう指示します。`graphify-out/graph.json` が存在する場合、フックはツール呼び出しの前に自動的に発火します。
+
 アンインストールは対応するアンインストールコマンドで行います（例：`graphify claude uninstall`）。
 
 **常時有効 vs 明示的トリガー――何が違うのか？**

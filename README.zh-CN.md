@@ -85,6 +85,8 @@ Codex 用户还需要在 `~/.codex/config.toml` 的 `[features]` 下打开 `mult
 
 **Codex、OpenCode、OpenClaw、Factory Droid、Trae** 会把同样的规则写进项目根目录的 `AGENTS.md`。这些平台没有 PreToolUse hook，所以 `AGENTS.md` 是它们的常驻机制。
 
+**Qoder** 会向 `.qoder/rules/graphify.md` 写入规则（Always Apply 类型），并在 `.qoder/settings.json` 中注册 PreToolUse hook。两者都指示 Qoder 在回答代码库问题前先检查图谱。当 `graphify-out/graph.json` 存在时，hook 会在每次工具调用前自动触发。
+
 卸载时使用对应平台的 uninstall 命令即可（例如 `graphify claude uninstall`）。
 
 **常驻模式和显式触发有什么区别？**

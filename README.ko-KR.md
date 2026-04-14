@@ -99,6 +99,8 @@ Codex 사용자는 병렬 추출을 위해 `~/.codex/config.toml`의 `[features]
 
 **OpenCode, OpenClaw, Factory Droid, Trae**는 프로젝트 루트의 `AGENTS.md`에 동일한 규칙을 작성합니다. 이 플랫폼들은 PreToolUse 훅을 지원하지 않으므로 AGENTS.md가 상시 작동 메커니즘입니다.
 
+**Qoder**는 `.qoder/rules/graphify.md`에 규칙(Always Apply 타입)을 작성하고 `.qoder/settings.json`에 PreToolUse 훅을 등록합니다. 둘 다 Qoder에게 코드베이스 질문에 답하기 전에 그래프를 확인하도록 지시합니다. `graphify-out/graph.json`이 존재하면 훅은 모든 도구 호출 전에 자동으로 실행됩니다.
+
 제거는 대응하는 uninstall 명령으로 수행합니다(예: `graphify claude uninstall`).
 
 **상시 작동 vs 명시적 트리거 — 차이점은?**
