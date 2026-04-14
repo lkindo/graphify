@@ -6,6 +6,7 @@ from graphify.extract import (
     extract_java, extract_c, extract_cpp, extract_ruby,
     extract_csharp, extract_kotlin, extract_scala, extract_php,
     extract_swift, extract_go, extract_julia, extract_ets,
+    extract_harmony_config,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -767,3 +768,73 @@ def test_ets_all_v2_state_decorators_recognized():
     state_labels = {n["label"] for n in r["nodes"] if n.get("node_type") == "arkts_state"}
     for needed in ("Local", "Param", "Event", "Trace", "Computed"):
         assert any(f"@{needed}" in l for l in state_labels), f"Missing @{needed} state node: {state_labels}"
+
+
+# ── HarmonyOS config files ───────────────────────────────────────────────────
+
+def test_harmony_module_json5_no_error():
+    r = extract_harmony_config(FIXTURES / "module.json5")
+    assert "error" not in r or r.get("nodes"), f"Failed: {r}"
+
+
+def test_harmony_module_finds_abilities():
+    r = extract_harmony_config(FIXTURES / "module.json5")
+    abilities = [n for n in r["nodes"] if n.get("node_type") == "harmony_ability"]
+    assert any("EntryAbility" in n["label"] for n in abilities), f"Missing EntryAbility: {abilities}"
+    # declares_ability edge
+    assert any(e["relation"] == "declares_ability" for e in r["edges"])
+
+
+def test_harmony_module_finds_permissions():
+    r = extract_harmony_config(FIXTURES / "module.json5")
+    perms = [n for n in r["nodes"] if n.get("node_type") == "harmony_permission"]
+    perm_names = {n["label"] for n in perms}
+    assert "ohos.permission.CAMERA" in perm_names
+    assert "ohos.permission.MICROPHONE" in perm_names
+    assert "ohos.permission.INTERNET" in perm_names
+    assert any(e["relation"] == "requires_permission" for e in r["edges"])
+
+
+def test_harmony_router_map():
+    r = extract_harmony_config(FIXTURES / "router_map.json")
+    routes = [n for n in r["nodes"] if n.get("node_type") == "harmony_route"]
+    route_names = {n["label"] for n in routes}
+    assert "Route:GuidePage" in route_names
+    assert "Route:EnvCheckPage" in route_names
+    assert "Route:UploadPage" in route_names
+    # route_maps_to inferred edges
+    map_edges = [e for e in r["edges"] if e["relation"] == "route_maps_to"]
+    assert len(map_edges) >= 3
+
+
+def test_harmony_oh_package():
+    r = extract_harmony_config(FIXTURES / "oh-package.json5")
+    deps = [n for n in r["nodes"] if n.get("node_type") == "harmony_dependency"]
+    dep_names = {n["label"] for n in deps}
+    assert "@ohzrtc/lib_zrtc_sdk" in dep_names
+    assert "@ohos/axios" in dep_names
+    # devDependencies should come through too
+    assert "@ohos/hypium" in dep_names
+    # depends_on vs dev_depends_on distinction
+    rels = {e["relation"] for e in r["edges"]}
+    assert "depends_on" in rels
+    assert "dev_depends_on" in rels
+
+
+def test_harmony_json5_handles_comments_and_trailing_commas():
+    """Fixture uses both // comments and trailing commas — must not choke."""
+    r = extract_harmony_config(FIXTURES / "module.json5")
+    assert "error" not in r or r.get("nodes")
+    # metadata object has a trailing comma; file must still parse
+    assert any(n.get("node_type") == "harmony_module" for n in r["nodes"])
+
+
+def test_harmony_config_file_detection():
+    """classify_file should return CODE for HarmonyOS config files."""
+    from graphify.detect import classify_file, FileType, HARMONY_CONFIG_FILES
+    assert "module.json5" in HARMONY_CONFIG_FILES
+    assert "oh-package.json5" in HARMONY_CONFIG_FILES
+    assert "router_map.json" in HARMONY_CONFIG_FILES
+    assert classify_file(FIXTURES / "module.json5") == FileType.CODE
+    assert classify_file(FIXTURES / "router_map.json") == FileType.CODE
+    assert classify_file(FIXTURES / "oh-package.json5") == FileType.CODE

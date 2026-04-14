@@ -1959,6 +1959,299 @@ def extract_ets(path: Path) -> dict:
     return result
 
 
+# ── HarmonyOS project config files ───────────────────────────────────────────
+#
+# Parses module.json5, oh-package.json5, router_map.json, build-profile.json5
+# into structured graph nodes/edges. Gives the KG real HarmonyOS project
+# semantics: abilities, permissions, routes, HAR dependencies.
+
+
+_JSON5_LINE_COMMENT_RE = re.compile(r"""(?m)(?<!:)//[^\n]*""")
+_JSON5_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+_JSON5_TRAILING_COMMA_RE = re.compile(r",(\s*[\]}])")
+
+
+def _parse_json5(text: str) -> dict | list | None:
+    """Parse a JSON5-ish document (comments + trailing commas allowed).
+
+    No external dependency — just strips the two non-JSON features HarmonyOS
+    config files use and hands the rest to json.loads. Returns None on failure.
+    """
+    try:
+        # Strip // comments (but keep URL schemes like "https://…")
+        t = _JSON5_LINE_COMMENT_RE.sub("", text)
+        # Strip /* ... */ block comments
+        t = _JSON5_BLOCK_COMMENT_RE.sub("", t)
+        # Drop trailing commas before ] or }
+        t = _JSON5_TRAILING_COMMA_RE.sub(r"\1", t)
+        return json.loads(t)
+    except Exception:
+        return None
+
+
+def _extract_module_json5(data: dict, path: Path, stem: str, str_path: str,
+                           nodes: list, edges: list, seen: set) -> None:
+    """module.json5 → harmony_module + harmony_ability + harmony_permission nodes."""
+    mod = data.get("module") or {}
+    mod_name = mod.get("name") or stem
+    mod_nid = _make_id("harmony_module", mod_name)
+    if mod_nid not in seen:
+        seen.add(mod_nid)
+        nodes.append({
+            "id": mod_nid,
+            "label": f"module:{mod_name}",
+            "file_type": "code",
+            "node_type": "harmony_module",
+            "source_file": str_path,
+            "source_location": "L1",
+            "module_type": mod.get("type", ""),
+        })
+
+    # Abilities
+    for a in (mod.get("abilities") or []):
+        a_name = a.get("name") or ""
+        if not a_name:
+            continue
+        a_nid = _make_id("harmony_ability", mod_name, a_name)
+        if a_nid not in seen:
+            seen.add(a_nid)
+            nodes.append({
+                "id": a_nid,
+                "label": f"Ability:{a_name}",
+                "file_type": "code",
+                "node_type": "harmony_ability",
+                "source_file": str_path,
+                "source_location": "L1",
+                "srcEntry": a.get("srcEntry", ""),
+                "launchType": a.get("launchType", ""),
+            })
+        edges.append({
+            "source": mod_nid, "target": a_nid, "relation": "declares_ability",
+            "confidence": "EXTRACTED", "source_file": str_path,
+            "source_location": "L1", "weight": 1.0,
+        })
+
+    # extensionAbilities
+    for a in (mod.get("extensionAbilities") or []):
+        a_name = a.get("name") or ""
+        if not a_name:
+            continue
+        a_nid = _make_id("harmony_extension_ability", mod_name, a_name)
+        if a_nid not in seen:
+            seen.add(a_nid)
+            nodes.append({
+                "id": a_nid,
+                "label": f"ExtensionAbility:{a_name}",
+                "file_type": "code",
+                "node_type": "harmony_extension_ability",
+                "source_file": str_path,
+                "source_location": "L1",
+                "type": a.get("type", ""),
+            })
+        edges.append({
+            "source": mod_nid, "target": a_nid, "relation": "declares_extension_ability",
+            "confidence": "EXTRACTED", "source_file": str_path,
+            "source_location": "L1", "weight": 1.0,
+        })
+
+    # Permissions
+    for p in (mod.get("requestPermissions") or []):
+        p_name = p.get("name") if isinstance(p, dict) else p
+        if not p_name:
+            continue
+        p_nid = _make_id("harmony_permission", p_name)
+        if p_nid not in seen:
+            seen.add(p_nid)
+            nodes.append({
+                "id": p_nid,
+                "label": p_name,
+                "file_type": "code",
+                "node_type": "harmony_permission",
+                "source_file": str_path,
+                "source_location": "L1",
+            })
+        edges.append({
+            "source": mod_nid, "target": p_nid, "relation": "requires_permission",
+            "confidence": "EXTRACTED", "source_file": str_path,
+            "source_location": "L1", "weight": 1.0,
+        })
+
+
+def _extract_router_map(data: dict, path: Path, stem: str, str_path: str,
+                         nodes: list, edges: list, seen: set) -> None:
+    """router_map.json → harmony_route nodes + route_maps_to edges to page components."""
+    routes = data.get("routerMap") if isinstance(data, dict) else data
+    if not isinstance(routes, list):
+        return
+    for r in routes:
+        if not isinstance(r, dict):
+            continue
+        r_name = r.get("name") or ""
+        page_source = r.get("pageSourceFile") or ""
+        if not r_name:
+            continue
+        r_nid = _make_id("harmony_route", r_name)
+        if r_nid not in seen:
+            seen.add(r_nid)
+            nodes.append({
+                "id": r_nid,
+                "label": f"Route:{r_name}",
+                "file_type": "code",
+                "node_type": "harmony_route",
+                "source_file": str_path,
+                "source_location": "L1",
+                "page_source_file": page_source,
+                "build_function": r.get("buildFunction", ""),
+            })
+        if page_source:
+            # Infer the page component's node ID by file stem
+            page_stem = Path(page_source).stem
+            page_nid = _make_id(page_stem, r_name)  # struct conventionally named same as route
+            edges.append({
+                "source": r_nid, "target": page_nid, "relation": "route_maps_to",
+                "confidence": "INFERRED", "source_file": str_path,
+                "source_location": "L1", "weight": 1.0,
+            })
+
+
+def _extract_oh_package(data: dict, path: Path, stem: str, str_path: str,
+                         nodes: list, edges: list, seen: set) -> None:
+    """oh-package.json5 → harmony_package + harmony_dependency nodes."""
+    name = data.get("name") or stem
+    pkg_nid = _make_id("harmony_package", name)
+    if pkg_nid not in seen:
+        seen.add(pkg_nid)
+        nodes.append({
+            "id": pkg_nid,
+            "label": f"Package:{name}",
+            "file_type": "code",
+            "node_type": "harmony_package",
+            "source_file": str_path,
+            "source_location": "L1",
+            "version": data.get("version", ""),
+            "main": data.get("main", ""),
+        })
+    for dep_section in ("dependencies", "devDependencies", "dynamicDependencies"):
+        deps = data.get(dep_section) or {}
+        for dep_name, dep_version in deps.items():
+            d_nid = _make_id("harmony_dependency", dep_name)
+            if d_nid not in seen:
+                seen.add(d_nid)
+                nodes.append({
+                    "id": d_nid,
+                    "label": dep_name,
+                    "file_type": "code",
+                    "node_type": "harmony_dependency",
+                    "source_file": str_path,
+                    "source_location": "L1",
+                    "version": str(dep_version),
+                })
+            rel = {
+                "dependencies": "depends_on",
+                "devDependencies": "dev_depends_on",
+                "dynamicDependencies": "dynamic_depends_on",
+            }[dep_section]
+            edges.append({
+                "source": pkg_nid, "target": d_nid, "relation": rel,
+                "confidence": "EXTRACTED", "source_file": str_path,
+                "source_location": "L1", "weight": 1.0,
+            })
+
+
+def _extract_build_profile(data: dict, path: Path, stem: str, str_path: str,
+                            nodes: list, edges: list, seen: set) -> None:
+    """build-profile.json5 → harmony_build_profile with module targets as sub-nodes."""
+    profile_nid = _make_id("harmony_build_profile", stem, path.parent.name)
+    if profile_nid not in seen:
+        seen.add(profile_nid)
+        nodes.append({
+            "id": profile_nid,
+            "label": f"BuildProfile:{path.parent.name}",
+            "file_type": "code",
+            "node_type": "harmony_build_profile",
+            "source_file": str_path,
+            "source_location": "L1",
+        })
+    for m in (data.get("modules") or []):
+        if not isinstance(m, dict):
+            continue
+        m_name = m.get("name") or ""
+        if not m_name:
+            continue
+        m_nid = _make_id("harmony_module", m_name)
+        if m_nid not in seen:
+            seen.add(m_nid)
+            nodes.append({
+                "id": m_nid,
+                "label": f"module:{m_name}",
+                "file_type": "code",
+                "node_type": "harmony_module",
+                "source_file": str_path,
+                "source_location": "L1",
+            })
+        edges.append({
+            "source": profile_nid, "target": m_nid, "relation": "configures_module",
+            "confidence": "EXTRACTED", "source_file": str_path,
+            "source_location": "L1", "weight": 1.0,
+        })
+
+
+def extract_harmony_config(path: Path) -> dict:
+    """Extract nodes/edges from HarmonyOS project config files.
+
+    Dispatches by filename — module.json5 / router_map.json / oh-package.json5
+    / build-profile.json5 each have a different schema.
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except Exception as e:
+        return {"nodes": [], "edges": [], "error": str(e)}
+
+    data = _parse_json5(text)
+    if data is None:
+        return {"nodes": [], "edges": [], "error": "Failed to parse JSON5"}
+
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    seen: set[str] = set()
+    str_path = str(path)
+    stem = path.stem
+
+    # File node so edges always have a rooted anchor
+    file_nid = _make_id(str_path)
+    seen.add(file_nid)
+    nodes.append({
+        "id": file_nid,
+        "label": path.name,
+        "file_type": "code",
+        "node_type": "harmony_config",
+        "source_file": str_path,
+        "source_location": "L1",
+    })
+
+    name = path.name
+    if name == "module.json5":
+        _extract_module_json5(data, path, stem, str_path, nodes, edges, seen)
+    elif name == "router_map.json":
+        _extract_router_map(data, path, stem, str_path, nodes, edges, seen)
+    elif name == "oh-package.json5":
+        _extract_oh_package(data, path, stem, str_path, nodes, edges, seen)
+    elif name == "build-profile.json5":
+        _extract_build_profile(data, path, stem, str_path, nodes, edges, seen)
+
+    # Link every top-level harmony_* node back to the file for traceability
+    for n in nodes:
+        if n["id"] == file_nid:
+            continue
+        edges.append({
+            "source": file_nid, "target": n["id"], "relation": "contains",
+            "confidence": "EXTRACTED", "source_file": str_path,
+            "source_location": "L1", "weight": 0.5,
+        })
+
+    return {"nodes": nodes, "edges": edges}
+
+
 def extract_java(path: Path) -> dict:
     """Extract classes, interfaces, methods, constructors, and imports from a .java file."""
     return _extract_generic(path, _JAVA_CONFIG)
@@ -3692,14 +3985,19 @@ def extract(paths: list[Path]) -> dict:
         ".sv": extract_verilog,
     }
 
+    # HarmonyOS project config files — dispatched by full filename
+    from .detect import HARMONY_CONFIG_FILES
+
     total = len(paths)
     _PROGRESS_INTERVAL = 100
     for i, path in enumerate(paths):
         if total >= _PROGRESS_INTERVAL and i % _PROGRESS_INTERVAL == 0 and i > 0:
             print(f"  AST extraction: {i}/{total} files ({i * 100 // total}%)", flush=True)
-        # .blade.php must be checked before suffix lookup since Path.suffix returns .php
+        # Filename-based dispatch (checked before suffix-based dispatch)
         if path.name.endswith(".blade.php"):
             extractor = extract_blade
+        elif path.name in HARMONY_CONFIG_FILES:
+            extractor = extract_harmony_config
         else:
             extractor = _DISPATCH.get(path.suffix)
         if extractor is None:
