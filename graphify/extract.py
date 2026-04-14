@@ -937,6 +937,12 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
     seen_helper_ref_pairs: set[tuple[str, str, str]] = set()
     seen_bind_pairs: set[tuple[str, str, str]] = set()
 
+    # Unresolved call sites: callees whose name did not match any local symbol.
+    # A cross-file resolver (e.g. _resolve_cross_file_csharp) may turn these
+    # into edges later once it has a global symbol table.
+    unresolved_calls: list[dict] = []
+    unresolved_instantiations: list[dict] = []
+
     def _php_class_const_scope(n) -> str | None:
         scope = n.child_by_field_name("scope")
         if scope is None:
@@ -1059,6 +1065,14 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
                             "source_location": f"L{line}",
                             "weight": 1.0,
                         })
+                elif tgt_nid is None:
+                    # Callee is not a symbol defined in this file. A cross-file
+                    # resolver may match it against a global symbol table.
+                    unresolved_calls.append({
+                        "caller_nid": caller_nid,
+                        "callee_name": callee_name,
+                        "source_location": f"L{node.start_point[0] + 1}",
+                    })
 
             # Helper function calls: config('foo.bar') → uses_config edge to "foo"
             if (callee_name and callee_name in config.helper_fn_names):
@@ -1199,7 +1213,13 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
         if src in valid_ids and (tgt in valid_ids or edge["relation"] in ("imports", "imports_from")):
             clean_edges.append(edge)
 
-    return {"nodes": nodes, "edges": clean_edges}
+    return {
+        "nodes": nodes,
+        "edges": clean_edges,
+        "_unresolved_calls": unresolved_calls,
+        "_unresolved_instantiations": unresolved_instantiations,
+        "_file_path": str_path,
+    }
 
 
 # ── Python rationale extraction ───────────────────────────────────────────────
@@ -2463,6 +2483,774 @@ def extract_powershell(path: Path) -> dict:
 
 # ── Cross-file import resolution ──────────────────────────────────────────────
 
+# ── C# cross-file resolution (full spec) ─────────────────────────────────────
+#
+# The C# cross-file resolver parses each .cs file with tree-sitter to build a
+# global type registry (classes, interfaces, structs, records with their
+# methods, fields, properties, and base types), then re-walks each method body
+# with a type-tracking scope to resolve call receivers through field,
+# parameter, and local variable types. Inheritance chains are followed for
+# method lookup and file-scoped `using` directives are respected for
+# namespace-aware type resolution.
+
+_CS_TYPE_DECL_TYPES = frozenset({
+    "class_declaration",
+    "interface_declaration",
+    "struct_declaration",
+    "record_declaration",
+})
+
+
+@dataclass
+class _CSharpType:
+    nid: str
+    name: str
+    namespace: str = ""
+    source_file: str = ""
+    base_types: list[str] = field(default_factory=list)
+    methods: dict[str, str] = field(default_factory=dict)          # method_name → method_nid
+    fields: dict[str, str] = field(default_factory=dict)            # field_name → declared type (stripped)
+    properties: dict[str, str] = field(default_factory=dict)        # property_name → declared type
+    type_node: Any = None                                           # tree-sitter Node for body walking
+
+
+@dataclass
+class _CSharpRegistry:
+    types_by_short: dict[str, list[_CSharpType]] = field(default_factory=dict)
+    types_by_fqn: dict[str, _CSharpType] = field(default_factory=dict)
+    by_file: dict[str, list[_CSharpType]] = field(default_factory=dict)
+    usings_by_file: dict[str, list[str]] = field(default_factory=dict)
+    ns_by_file: dict[str, str] = field(default_factory=dict)
+    trees_by_file: dict[str, tuple] = field(default_factory=dict)   # path → (tree, source_bytes)
+
+    def resolve(self, name: str, visible_namespaces: list[str]) -> "_CSharpType | None":
+        name = _cs_strip_generics(name)
+        if not name:
+            return None
+        if name in self.types_by_fqn:
+            return self.types_by_fqn[name]
+        short = name.split(".")[-1]
+        candidates = self.types_by_short.get(short)
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+        for ns in visible_namespaces:
+            for c in candidates:
+                if c.namespace == ns:
+                    return c
+        return None
+
+
+def _cs_strip_generics(name: str) -> str:
+    """Drop <...> generic args, [] array markers, and ? nullable markers."""
+    if not name:
+        return ""
+    depth = 0
+    out = []
+    for ch in name.strip():
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            if depth > 0:
+                depth -= 1
+        elif depth == 0:
+            out.append(ch)
+    result = "".join(out).replace("[]", "").replace("?", "")
+    return result.strip()
+
+
+def _cs_text(node, source: bytes) -> str:
+    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+
+
+def _cs_compute_visible_namespaces(file_ns: str, usings: list[str]) -> list[str]:
+    visible: list[str] = []
+    if file_ns:
+        visible.append(file_ns)
+        parts = file_ns.split(".")
+        for i in range(len(parts) - 1, 0, -1):
+            visible.append(".".join(parts[:i]))
+    visible.extend(usings)
+    visible.append("")
+    seen: set[str] = set()
+    out: list[str] = []
+    for ns in visible:
+        if ns not in seen:
+            seen.add(ns)
+            out.append(ns)
+    return out
+
+
+class _CSScope:
+    __slots__ = ("parent", "vars")
+
+    def __init__(self, parent: "_CSScope | None" = None):
+        self.parent = parent
+        self.vars: dict[str, str] = {}
+
+    def lookup(self, name: str) -> "str | None":
+        if name in self.vars:
+            return self.vars[name]
+        if self.parent is not None:
+            return self.parent.lookup(name)
+        return None
+
+    def push(self) -> "_CSScope":
+        return _CSScope(parent=self)
+
+
+def _cs_parse_file_structure(root, source: bytes) -> tuple[list[str], str, list[tuple[str, Any]]]:
+    """Walk a compilation_unit. Returns (usings, file_scoped_namespace, [(ns, type_node)])."""
+    usings: list[str] = []
+    file_ns = ""
+    type_nodes: list[tuple[str, Any]] = []
+
+    def walk(node, enclosing_ns: str) -> None:
+        nonlocal file_ns
+        current_ns = enclosing_ns
+        for child in node.children:
+            t = child.type
+            if t == "using_directive":
+                for c in child.children:
+                    if c.type in ("qualified_name", "identifier"):
+                        usings.append(_cs_text(c, source).strip())
+                        break
+            elif t == "file_scoped_namespace_declaration":
+                name_node = child.child_by_field_name("name")
+                if name_node is not None:
+                    ns_name = _cs_text(name_node, source).strip()
+                    if not file_ns:
+                        file_ns = ns_name
+                    current_ns = ns_name
+            elif t == "namespace_declaration":
+                name_node = child.child_by_field_name("name")
+                ns_name = _cs_text(name_node, source).strip() if name_node is not None else ""
+                body_node = child.child_by_field_name("body")
+                if body_node is not None:
+                    walk(body_node, ns_name)
+            elif t in _CS_TYPE_DECL_TYPES:
+                type_nodes.append((current_ns, child))
+                body_node = child.child_by_field_name("body")
+                if body_node is not None:
+                    walk(body_node, current_ns)
+            elif t == "declaration_list":
+                walk(child, current_ns)
+
+    walk(root, "")
+    # Dedupe usings preserving order
+    seen: set[str] = set()
+    clean_usings: list[str] = []
+    for u in usings:
+        if u and u not in seen:
+            seen.add(u)
+            clean_usings.append(u)
+    return clean_usings, file_ns, type_nodes
+
+
+def _cs_build_type(type_node, source: bytes, str_path: str, namespace: str, nid_index: dict) -> "_CSharpType | None":
+    name_node = type_node.child_by_field_name("name")
+    if name_node is None:
+        return None
+    type_name = _cs_text(name_node, source).strip()
+    nid = nid_index.get((str_path, type_name.lower()))
+    if not nid:
+        return None
+
+    ti = _CSharpType(nid=nid, name=type_name, namespace=namespace, source_file=str_path)
+    ti.type_node = type_node
+
+    # Base types: look for base_list or colon-prefixed inheritance children
+    bases_node = type_node.child_by_field_name("bases")
+    base_candidates = []
+    if bases_node is not None:
+        base_candidates.append(bases_node)
+    for c in type_node.children:
+        if c.type == "base_list":
+            base_candidates.append(c)
+    for bn in base_candidates:
+        for bc in bn.children:
+            if bc.type in ("identifier", "qualified_name", "generic_name", "predefined_type"):
+                raw = _cs_text(bc, source).strip()
+                if raw:
+                    ti.base_types.append(_cs_strip_generics(raw))
+
+    body = type_node.child_by_field_name("body")
+    if body is None:
+        return ti
+
+    for member in body.children:
+        mt = member.type
+        if mt == "method_declaration":
+            m_name = member.child_by_field_name("name")
+            if m_name is not None:
+                mname = _cs_text(m_name, source).strip().split("<")[0]
+                mnid = nid_index.get((str_path, mname.lower()))
+                if mnid:
+                    ti.methods[mname] = mnid
+        elif mt == "field_declaration" or mt == "event_field_declaration":
+            # type sits on the inner variable_declaration, not on field_declaration
+            for c in member.children:
+                if c.type == "variable_declaration":
+                    type_child = c.child_by_field_name("type")
+                    if type_child is None:
+                        continue
+                    ftype = _cs_strip_generics(_cs_text(type_child, source))
+                    for vd in c.children:
+                        if vd.type == "variable_declarator":
+                            id_node = vd.child_by_field_name("name")
+                            if id_node is None:
+                                for cc in vd.children:
+                                    if cc.type == "identifier":
+                                        id_node = cc
+                                        break
+                            if id_node is not None:
+                                ti.fields[_cs_text(id_node, source).strip()] = ftype
+        elif mt == "property_declaration":
+            type_child = member.child_by_field_name("type")
+            name_child = member.child_by_field_name("name")
+            if type_child is not None and name_child is not None:
+                ti.properties[_cs_text(name_child, source).strip()] = _cs_strip_generics(_cs_text(type_child, source))
+
+    return ti
+
+
+def _cs_build_registry(per_file: list[dict], paths: list[Path]) -> "_CSharpRegistry | None":
+    try:
+        import tree_sitter_c_sharp as tscs
+        from tree_sitter import Language, Parser
+    except ImportError:
+        return None
+
+    language = Language(tscs.language())
+    parser = Parser(language)
+
+    nid_index: dict[tuple[str, str], str] = {}
+    for result, path in zip(per_file, paths):
+        if path.suffix != ".cs":
+            continue
+        str_path = str(path)
+        for n in result.get("nodes", []):
+            if n.get("source_file") != str_path:
+                continue
+            label = (n.get("label") or "").strip().lstrip(".").split("(")[0].strip().lower()
+            if label:
+                nid_index[(str_path, label)] = n.get("id")
+
+    registry = _CSharpRegistry()
+
+    for path in paths:
+        if path.suffix != ".cs":
+            continue
+        str_path = str(path)
+        try:
+            source = path.read_bytes()
+            tree = parser.parse(source)
+        except Exception:
+            continue
+
+        registry.trees_by_file[str_path] = (tree, source)
+        usings, file_ns, type_decls = _cs_parse_file_structure(tree.root_node, source)
+        registry.usings_by_file[str_path] = usings
+
+        file_types: list[_CSharpType] = []
+        for ns, tnode in type_decls:
+            ti = _cs_build_type(tnode, source, str_path, ns, nid_index)
+            if ti is None:
+                continue
+            file_types.append(ti)
+            registry.types_by_short.setdefault(ti.name, []).append(ti)
+            fqn = f"{ti.namespace}.{ti.name}" if ti.namespace else ti.name
+            registry.types_by_fqn[fqn] = ti
+        registry.by_file[str_path] = file_types
+
+        # Fall back to the namespace of the first type if there was no file-scoped decl
+        if not file_ns and file_types:
+            file_ns = file_types[0].namespace
+        registry.ns_by_file[str_path] = file_ns
+
+    return registry
+
+
+def _cs_lookup_method(type_info: "_CSharpType | None", method_name: str, registry: _CSharpRegistry,
+                       visited: "set[str] | None" = None) -> "str | None":
+    if type_info is None:
+        return None
+    if visited is None:
+        visited = set()
+    if type_info.nid in visited:
+        return None
+    visited.add(type_info.nid)
+    if method_name in type_info.methods:
+        return type_info.methods[method_name]
+    visible = _cs_compute_visible_namespaces(
+        registry.ns_by_file.get(type_info.source_file, ""),
+        registry.usings_by_file.get(type_info.source_file, []),
+    )
+    for base_name in type_info.base_types:
+        base = registry.resolve(base_name, visible)
+        if base is not None:
+            result = _cs_lookup_method(base, method_name, registry, visited)
+            if result:
+                return result
+    return None
+
+
+def _cs_lookup_member_type(type_info: "_CSharpType | None", member_name: str, registry: _CSharpRegistry,
+                            visited: "set[str] | None" = None) -> "str | None":
+    """Walk inheritance chain looking for a field or property named `member_name`."""
+    if type_info is None:
+        return None
+    if visited is None:
+        visited = set()
+    if type_info.nid in visited:
+        return None
+    visited.add(type_info.nid)
+    if member_name in type_info.fields:
+        return type_info.fields[member_name]
+    if member_name in type_info.properties:
+        return type_info.properties[member_name]
+    visible = _cs_compute_visible_namespaces(
+        registry.ns_by_file.get(type_info.source_file, ""),
+        registry.usings_by_file.get(type_info.source_file, []),
+    )
+    for base_name in type_info.base_types:
+        base = registry.resolve(base_name, visible)
+        if base is not None:
+            result = _cs_lookup_member_type(base, member_name, registry, visited)
+            if result:
+                return result
+    return None
+
+
+def _cs_infer_expr_type(node, source: bytes, scope: _CSScope, type_resolver: Callable,
+                         current_type: "_CSharpType | None", registry: _CSharpRegistry) -> "str | None":
+    if node is None:
+        return None
+    t = node.type
+    if t == "this_expression":
+        return current_type.name if current_type else None
+    if t == "base_expression":
+        if current_type and current_type.base_types:
+            return current_type.base_types[0]
+        return None
+    if t == "identifier":
+        name = _cs_text(node, source).strip()
+        local = scope.lookup(name)
+        if local:
+            return local
+        if current_type is not None:
+            member = _cs_lookup_member_type(current_type, name, registry)
+            if member:
+                return member
+        resolved = type_resolver(name)
+        if resolved is not None:
+            return resolved.name
+        return None
+    if t == "object_creation_expression":
+        type_child = node.child_by_field_name("type")
+        if type_child is None:
+            for c in node.children:
+                if c.is_named and c.type in ("identifier", "qualified_name", "generic_name", "predefined_type"):
+                    type_child = c
+                    break
+        if type_child is not None:
+            return _cs_strip_generics(_cs_text(type_child, source))
+        return None
+    if t == "member_access_expression":
+        name_node = node.child_by_field_name("name")
+        obj_node = node.child_by_field_name("expression")
+        if name_node is None or obj_node is None:
+            named = [c for c in node.children if c.is_named]
+            if len(named) >= 2:
+                obj_node = obj_node or named[0]
+                name_node = name_node or named[-1]
+        if name_node is None or obj_node is None:
+            return None
+        member_name = _cs_text(name_node, source).strip()
+        if obj_node.type == "this_expression":
+            if current_type is not None:
+                return _cs_lookup_member_type(current_type, member_name, registry)
+            return None
+        recv_type_name = _cs_infer_expr_type(obj_node, source, scope, type_resolver, current_type, registry)
+        if not recv_type_name:
+            return None
+        recv_type = type_resolver(recv_type_name)
+        if recv_type is None:
+            return None
+        return _cs_lookup_member_type(recv_type, member_name, registry)
+    if t == "parenthesized_expression":
+        for c in node.children:
+            if c.is_named:
+                return _cs_infer_expr_type(c, source, scope, type_resolver, current_type, registry)
+        return None
+    if t == "cast_expression":
+        type_child = node.child_by_field_name("type")
+        if type_child is None:
+            for c in node.children:
+                if c.is_named and c.type in ("identifier", "qualified_name", "generic_name", "predefined_type"):
+                    type_child = c
+                    break
+        if type_child is not None:
+            return _cs_strip_generics(_cs_text(type_child, source))
+        return None
+    if t == "as_expression" or t == "binary_expression":
+        # Look for 'as Type' pattern
+        named = [c for c in node.children if c.is_named]
+        if len(named) >= 2:
+            last = named[-1]
+            if last.type in ("identifier", "qualified_name", "generic_name"):
+                # Only trust this for as_expression
+                if t == "as_expression":
+                    return _cs_strip_generics(_cs_text(last, source))
+        return None
+    if t == "invocation_expression":
+        return None
+    return None
+
+
+def _cs_emit_call_edge(node, source: bytes, scope: _CSScope, caller_nid: str,
+                        current_type: "_CSharpType | None", type_resolver: Callable,
+                        registry: _CSharpRegistry, edges: list, seen_pairs: set,
+                        str_path: str) -> None:
+    func_node = node.child_by_field_name("function")
+    if func_node is None:
+        return
+
+    method_name: "str | None" = None
+    receiver_type: "_CSharpType | None" = None
+
+    if func_node.type == "identifier":
+        method_name = _cs_text(func_node, source).strip()
+        receiver_type = current_type
+    elif func_node.type == "generic_name":
+        name_node = func_node.child_by_field_name("name")
+        if name_node is None:
+            for c in func_node.children:
+                if c.type == "identifier":
+                    name_node = c
+                    break
+        if name_node is not None:
+            method_name = _cs_text(name_node, source).strip()
+            receiver_type = current_type
+    elif func_node.type == "member_access_expression":
+        name_node = func_node.child_by_field_name("name")
+        obj_node = func_node.child_by_field_name("expression")
+        if name_node is None or obj_node is None:
+            named = [c for c in func_node.children if c.is_named]
+            if len(named) >= 2:
+                obj_node = obj_node or named[0]
+                name_node = name_node or named[-1]
+        if name_node is None or obj_node is None:
+            return
+        method_name = _cs_text(name_node, source).strip().split("<")[0]
+        if obj_node.type == "this_expression":
+            receiver_type = current_type
+        elif obj_node.type == "base_expression":
+            if current_type and current_type.base_types:
+                visible = _cs_compute_visible_namespaces(
+                    registry.ns_by_file.get(str_path, ""),
+                    registry.usings_by_file.get(str_path, []),
+                )
+                receiver_type = registry.resolve(current_type.base_types[0], visible)
+        else:
+            recv_name = _cs_infer_expr_type(obj_node, source, scope, type_resolver, current_type, registry)
+            if recv_name:
+                receiver_type = type_resolver(recv_name)
+    else:
+        return
+
+    if not method_name or receiver_type is None:
+        return
+
+    method_name = method_name.split("<")[0]
+    target_nid = _cs_lookup_method(receiver_type, method_name, registry)
+    if not target_nid or target_nid == caller_nid:
+        return
+    # Skip same-file calls — the per-file extractor already captures those.
+    if receiver_type.source_file == str_path:
+        return
+    pair = (caller_nid, target_nid, "calls")
+    if pair in seen_pairs:
+        return
+    seen_pairs.add(pair)
+    line = node.start_point[0] + 1
+    edges.append({
+        "source": caller_nid,
+        "target": target_nid,
+        "relation": "calls",
+        "confidence": "INFERRED",
+        "confidence_score": 0.9,
+        "source_file": str_path,
+        "source_location": f"L{line}",
+        "weight": 1.0,
+    })
+
+
+def _cs_emit_instantiate_edge(node, source: bytes, caller_nid: str, type_resolver: Callable,
+                                registry: _CSharpRegistry, edges: list, seen_pairs: set,
+                                str_path: str) -> None:
+    type_node = node.child_by_field_name("type")
+    if type_node is None:
+        for c in node.children:
+            if c.is_named and c.type in ("identifier", "qualified_name", "generic_name", "predefined_type"):
+                type_node = c
+                break
+    if type_node is None:
+        return
+    type_name = _cs_strip_generics(_cs_text(type_node, source))
+    if not type_name:
+        return
+    resolved = type_resolver(type_name)
+    if resolved is None or resolved.nid == caller_nid:
+        return
+    # Skip same-file instantiations — reduce noise, per-file extractor handles
+    # strong coupling within a file already.
+    if resolved.source_file == str_path:
+        return
+    pair = (caller_nid, resolved.nid, "instantiates")
+    if pair in seen_pairs:
+        return
+    seen_pairs.add(pair)
+    line = node.start_point[0] + 1
+    edges.append({
+        "source": caller_nid,
+        "target": resolved.nid,
+        "relation": "instantiates",
+        "confidence": "INFERRED",
+        "confidence_score": 0.9,
+        "source_file": str_path,
+        "source_location": f"L{line}",
+        "weight": 1.0,
+    })
+
+
+def _cs_add_params_to_scope(method_node, source: bytes, scope: _CSScope) -> None:
+    params_node = method_node.child_by_field_name("parameters")
+    if params_node is None:
+        return
+    for c in params_node.children:
+        if c.type == "parameter":
+            type_child = c.child_by_field_name("type")
+            name_child = c.child_by_field_name("name")
+            if type_child is not None and name_child is not None:
+                scope.vars[_cs_text(name_child, source).strip()] = _cs_strip_generics(_cs_text(type_child, source))
+
+
+def _cs_process_local_declaration(node, source: bytes, scope: _CSScope, type_resolver: Callable,
+                                    current_type: "_CSharpType | None", registry: _CSharpRegistry) -> None:
+    # local_declaration_statement wraps variable_declaration
+    for c in node.children:
+        if c.type != "variable_declaration":
+            continue
+        declared_type_node = c.child_by_field_name("type")
+        declared_type_str: "str | None" = None
+        if declared_type_node is not None:
+            txt = _cs_text(declared_type_node, source).strip()
+            if txt and txt != "var" and declared_type_node.type != "implicit_type":
+                declared_type_str = _cs_strip_generics(txt)
+        for vd in c.children:
+            if vd.type != "variable_declarator":
+                continue
+            name_node = vd.child_by_field_name("name")
+            if name_node is None:
+                for cc in vd.children:
+                    if cc.type == "identifier":
+                        name_node = cc
+                        break
+            if name_node is None:
+                continue
+            var_name = _cs_text(name_node, source).strip()
+            var_type = declared_type_str
+            if var_type is None:
+                init_node = None
+                for cc in vd.children:
+                    if cc.is_named and cc.type != "identifier":
+                        init_node = cc
+                        break
+                if init_node is not None:
+                    inferred = _cs_infer_expr_type(init_node, source, scope, type_resolver, current_type, registry)
+                    if inferred:
+                        var_type = inferred
+            if var_type:
+                scope.vars[var_name] = var_type
+
+
+def _cs_walk_body(node, source: bytes, scope: _CSScope, caller_nid: str,
+                   current_type: "_CSharpType | None", type_resolver: Callable,
+                   registry: _CSharpRegistry, edges: list, seen_pairs: set,
+                   str_path: str) -> None:
+    t = node.type
+
+    if t == "local_declaration_statement":
+        _cs_process_local_declaration(node, source, scope, type_resolver, current_type, registry)
+        for c in node.children:
+            _cs_walk_body(c, source, scope, caller_nid, current_type, type_resolver, registry, edges, seen_pairs, str_path)
+        return
+
+    if t == "foreach_statement":
+        # foreach (Type var in expr)  — tree-sitter exposes 'type', 'left' (name), 'right' (collection)
+        type_node = node.child_by_field_name("type")
+        name_node = node.child_by_field_name("left")
+        right_node = node.child_by_field_name("right")
+        var_type: "str | None" = None
+        if type_node is not None:
+            txt = _cs_text(type_node, source).strip()
+            if txt and txt != "var":
+                var_type = _cs_strip_generics(txt)
+        if var_type is None and right_node is not None:
+            # Try to infer from collection: if collection is List<Foo>, get Foo
+            coll_type = _cs_infer_expr_type(right_node, source, scope, type_resolver, current_type, registry)
+            if coll_type and "<" in coll_type:
+                inner = coll_type[coll_type.index("<") + 1:coll_type.rindex(">")]
+                var_type = _cs_strip_generics(inner.split(",")[0])
+        if name_node is not None and var_type:
+            scope.vars[_cs_text(name_node, source).strip()] = var_type
+        for c in node.children:
+            _cs_walk_body(c, source, scope, caller_nid, current_type, type_resolver, registry, edges, seen_pairs, str_path)
+        return
+
+    if t == "using_statement":
+        # using (Type name = expr) — same variable-binding shape as local decl
+        for c in node.children:
+            if c.type == "variable_declaration":
+                _cs_process_local_declaration_wrap(c, source, scope, type_resolver, current_type, registry)
+        for c in node.children:
+            _cs_walk_body(c, source, scope, caller_nid, current_type, type_resolver, registry, edges, seen_pairs, str_path)
+        return
+
+    if t == "invocation_expression":
+        _cs_emit_call_edge(node, source, scope, caller_nid, current_type, type_resolver, registry, edges, seen_pairs, str_path)
+
+    if t == "object_creation_expression":
+        _cs_emit_instantiate_edge(node, source, caller_nid, type_resolver, registry, edges, seen_pairs, str_path)
+
+    for c in node.children:
+        _cs_walk_body(c, source, scope, caller_nid, current_type, type_resolver, registry, edges, seen_pairs, str_path)
+
+
+def _cs_process_local_declaration_wrap(vd_node, source: bytes, scope: _CSScope, type_resolver: Callable,
+                                         current_type: "_CSharpType | None", registry: _CSharpRegistry) -> None:
+    """Handle a bare variable_declaration (inside using_statement etc.)."""
+    declared_type_node = vd_node.child_by_field_name("type")
+    declared_type_str: "str | None" = None
+    if declared_type_node is not None:
+        txt = _cs_text(declared_type_node, source).strip()
+        if txt and txt != "var" and declared_type_node.type != "implicit_type":
+            declared_type_str = _cs_strip_generics(txt)
+    for vd in vd_node.children:
+        if vd.type != "variable_declarator":
+            continue
+        name_node = vd.child_by_field_name("name")
+        if name_node is None:
+            for cc in vd.children:
+                if cc.type == "identifier":
+                    name_node = cc
+                    break
+        if name_node is None:
+            continue
+        var_name = _cs_text(name_node, source).strip()
+        var_type = declared_type_str
+        if var_type is None:
+            init_node = None
+            for cc in vd.children:
+                if cc.is_named and cc.type != "identifier":
+                    init_node = cc
+                    break
+            if init_node is not None:
+                inferred = _cs_infer_expr_type(init_node, source, scope, type_resolver, current_type, registry)
+                if inferred:
+                    var_type = inferred
+        if var_type:
+            scope.vars[var_name] = var_type
+
+
+def _resolve_cross_file_csharp(per_file: list[dict], paths: list[Path]) -> list[dict]:
+    """
+    Type-aware cross-file call and instantiation resolution for C#.
+
+    Builds a global type registry from all .cs files (classes, interfaces,
+    structs, records with their methods, fields, properties, and base types),
+    then re-walks each method body with a type-tracking scope to resolve call
+    receivers through:
+
+      • fields and properties (including inherited ones)
+      • method parameters
+      • local variables (including `var x = new Foo()`)
+      • `this` and `base`
+      • static calls `ClassName.Method()`
+
+    Inheritance chains are followed for method lookup. `using` directives
+    drive namespace-scoped disambiguation.
+
+    Emits `calls` edges for resolved invocations and `instantiates` edges for
+    `new Foo(...)` expressions.
+    """
+    if not any(p.suffix == ".cs" for p in paths):
+        return []
+    registry = _cs_build_registry(per_file, paths)
+    if registry is None:
+        return []
+
+    edges: list[dict] = []
+    seen_pairs: set[tuple[str, str, str]] = set()
+
+    for path in paths:
+        if path.suffix != ".cs":
+            continue
+        str_path = str(path)
+        tree_entry = registry.trees_by_file.get(str_path)
+        if tree_entry is None:
+            continue
+        tree, source = tree_entry
+
+        file_ns = registry.ns_by_file.get(str_path, "")
+        usings = registry.usings_by_file.get(str_path, [])
+        visible = _cs_compute_visible_namespaces(file_ns, usings)
+
+        def make_resolver(v):
+            def resolver(name: str):
+                return registry.resolve(name, v)
+            return resolver
+
+        type_resolver = make_resolver(visible)
+
+        for ti in registry.by_file.get(str_path, []):
+            type_node = ti.type_node
+            if type_node is None:
+                continue
+            body = type_node.child_by_field_name("body")
+            if body is None:
+                continue
+            for member in body.children:
+                mt = member.type
+                if mt == "method_declaration":
+                    m_name = member.child_by_field_name("name")
+                    if m_name is None:
+                        continue
+                    mname = _cs_text(m_name, source).strip().split("<")[0]
+                    method_nid = ti.methods.get(mname)
+                    if not method_nid:
+                        continue
+                    body_node = member.child_by_field_name("body")
+                    if body_node is None:
+                        continue
+                    scope = _CSScope()
+                    _cs_add_params_to_scope(member, source, scope)
+                    _cs_walk_body(body_node, source, scope, method_nid, ti,
+                                   type_resolver, registry, edges, seen_pairs, str_path)
+                elif mt == "constructor_declaration":
+                    body_node = member.child_by_field_name("body")
+                    if body_node is None:
+                        continue
+                    scope = _CSScope()
+                    _cs_add_params_to_scope(member, source, scope)
+                    _cs_walk_body(body_node, source, scope, ti.nid, ti,
+                                   type_resolver, registry, edges, seen_pairs, str_path)
+
+    return edges
+
+
 def _resolve_cross_file_imports(
     per_file: list[dict],
     paths: list[Path],
@@ -3095,6 +3883,15 @@ def extract(paths: list[Path]) -> dict:
         except Exception as exc:
             import logging
             logging.getLogger(__name__).warning("Cross-file import resolution failed, skipping: %s", exc)
+
+    # Add cross-file call edges for C#
+    if any(p.suffix == ".cs" for p in paths):
+        try:
+            cs_cross_edges = _resolve_cross_file_csharp(per_file, paths)
+            all_edges.extend(cs_cross_edges)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("C# cross-file resolution failed, skipping: %s", exc)
 
     return {
         "nodes": all_nodes,
