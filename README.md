@@ -277,6 +277,7 @@ graphify add https://... --author "Name" --contributor "Name"
 # incremental update and maintenance
 graphify watch ./src                         # auto-rebuild on code changes
 graphify update ./src                        # re-extract code files, no LLM needed
+graphify --update ./src                      # same thing, PowerShell/CMD-friendly alias
 graphify cluster-only ./my-project           # rerun clustering on existing graph.json
 ```
 

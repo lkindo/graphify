@@ -1,0 +1,14 @@
+# graphify CLI shell-alias improvement
+
+## DONE
+- 2026-04-14: Confirmed the repo has a working `graphify update` subcommand, but `graphify --update` fails in the current CLI parser.
+- 2026-04-14: Started a feature branch for the fix: `feature/windows-cli-aliases`.
+- 2026-04-14: Implemented shell-friendly top-level aliases (`--update`, `--cluster-only`) and refreshed shell-facing docs.
+- 2026-04-14: Verification passed: `python -m pytest -q` -> 435 passed.
+
+## IN PROGRESS
+- Ready to commit and push the branch.
+
+## NEXT
+- Commit the change.
+- Push the branch to origin.
