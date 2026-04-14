@@ -5,7 +5,7 @@ import pytest
 from graphify.extract import (
     extract_java, extract_c, extract_cpp, extract_ruby,
     extract_csharp, extract_kotlin, extract_scala, extract_php,
-    extract_swift, extract_go, extract_julia,
+    extract_swift, extract_go, extract_julia, extract_ets,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -560,3 +560,92 @@ def test_julia_no_dangling_edges():
     node_ids = {n["id"] for n in r["nodes"]}
     for e in r["edges"]:
         assert e["source"] in node_ids, f"Dangling source: {e}"
+
+
+# ── ArkTS / .ets (HarmonyOS) ─────────────────────────────────────────────────
+
+def test_ets_no_error():
+    r = extract_ets(FIXTURES / "sample.ets")
+    assert "error" not in r or r.get("nodes"), f"Unexpected failure: {r}"
+
+
+def test_ets_struct_parsed_as_class():
+    """struct should be preprocessed → class so AST picks it up."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    labels = _labels(r)
+    assert any("EnvCheckPage" in l for l in labels), f"Missing EnvCheckPage struct: {labels}"
+    assert any("LegacyPage" in l for l in labels), f"Missing LegacyPage struct: {labels}"
+
+
+def test_ets_finds_regular_class():
+    """Plain `class` still works alongside struct."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    assert any("CheckBean" in l for l in _labels(r))
+
+
+def test_ets_finds_methods():
+    r = extract_ets(FIXTURES / "sample.ets")
+    labels = _labels(r)
+    assert any("build" in l for l in labels)
+    assert any("aboutToAppear" in l for l in labels)
+    assert any("startCheck" in l for l in labels)
+
+
+def test_ets_finds_imports():
+    r = extract_ets(FIXTURES / "sample.ets")
+    rels = _relations(r)
+    assert "imports" in rels or "imports_from" in rels, f"No import relation in {rels}"
+
+
+def test_ets_component_decorator_is_recognized():
+    """@Entry / @ComponentV2 / @Component should become arkts_decorator nodes."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    deco_nodes = [n for n in r["nodes"] if n.get("node_type") == "arkts_decorator"]
+    deco_labels = {n["label"] for n in deco_nodes}
+    assert "@Entry" in deco_labels, f"Expected @Entry, got {deco_labels}"
+    assert "@ComponentV2" in deco_labels, f"Expected @ComponentV2, got {deco_labels}"
+    assert "@Component" in deco_labels, f"Expected @Component, got {deco_labels}"
+
+
+def test_ets_decorator_edges_target_struct():
+    r = extract_ets(FIXTURES / "sample.ets")
+    deco_edges = [e for e in r["edges"] if e["relation"] == "decorates"]
+    assert len(deco_edges) >= 2, f"Expected ≥2 decorates edges, got {deco_edges}"
+
+
+def test_ets_state_decorators_create_state_nodes():
+    """@Local / @State / @Prop / @Link / @Trace etc. → arkts_state nodes."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    state_nodes = [n for n in r["nodes"] if n.get("node_type") == "arkts_state"]
+    state_labels = {n["label"] for n in state_nodes}
+    # V2 decorators
+    assert any("@Local" in l for l in state_labels), f"No @Local in {state_labels}"
+    assert any("@Trace" in l for l in state_labels), f"No @Trace in {state_labels}"
+    # V1 decorators
+    assert any("@State" in l for l in state_labels), f"No @State in {state_labels}"
+    assert any("@Prop" in l for l in state_labels), f"No @Prop in {state_labels}"
+    assert any("@Link" in l for l in state_labels), f"No @Link in {state_labels}"
+
+
+def test_ets_no_dangling_edges():
+    """Source endpoints must always exist as nodes. Import targets may legitimately
+    point at external modules that are not nodes until cross-file resolution."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    node_ids = {n["id"] for n in r["nodes"]}
+    for e in r["edges"]:
+        assert e["source"] in node_ids, f"Dangling source: {e}"
+        if e["relation"] in ("imports_from", "imports"):
+            continue  # external-module targets are OK
+        assert e["target"] in node_ids, f"Dangling target: {e}"
+
+
+def test_ets_preserves_line_numbers():
+    """struct→class preprocessing must keep byte offsets so line numbers match."""
+    r = extract_ets(FIXTURES / "sample.ets")
+    for n in r["nodes"]:
+        if n["label"] == "EnvCheckPage":
+            # struct declaration is on line 26 in the fixture
+            assert n["source_location"] == "L26", f"Line mismatch: {n}"
+            break
+    else:
+        pytest.fail("EnvCheckPage node not found")

@@ -650,8 +650,16 @@ _SWIFT_CONFIG = LanguageConfig(
 
 # ── Generic extractor ─────────────────────────────────────────────────────────
 
-def _extract_generic(path: Path, config: LanguageConfig) -> dict:
-    """Generic AST extractor driven by LanguageConfig."""
+def _extract_generic(path: Path, config: LanguageConfig, source_override: bytes | None = None) -> dict:
+    """Generic AST extractor driven by LanguageConfig.
+
+    Args:
+        path: Real file path (used for metadata, node IDs, source_file fields).
+        config: LanguageConfig driving the traversal.
+        source_override: If provided, parse these bytes instead of reading path.
+            Used by extract_ets() to inject pre-processed (struct→class) source
+            while keeping metadata tied to the original .ets file.
+    """
     try:
         mod = importlib.import_module(config.ts_module)
         from tree_sitter import Language, Parser
@@ -669,7 +677,7 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
 
     try:
         parser = Parser(language)
-        source = path.read_bytes()
+        source = source_override if source_override is not None else path.read_bytes()
         tree = parser.parse(source)
         root = tree.root_node
     except Exception as e:
@@ -1322,6 +1330,207 @@ def extract_js(path: Path) -> dict:
     """Extract classes, functions, arrow functions, and imports from a .js/.ts/.tsx file."""
     config = _TS_CONFIG if path.suffix in (".ts", ".tsx") else _JS_CONFIG
     return _extract_generic(path, config)
+
+
+# ── ArkTS (.ets) support ─────────────────────────────────────────────────────
+#
+# ArkTS is HarmonyOS's UI language — a strict superset of TypeScript with two
+# non-TS syntactic additions:
+#   1. The `struct` keyword for UI components: `@Component struct Foo { ... }`
+#   2. Decorators with V1/V2 flavors: @Component/@ComponentV2, @State/@Local,
+#      @Observed/@ObservedV2, @Prop, @Link, @Provide, @Consume, @Watch,
+#      @Builder, @Styles, @Extend, @StorageLink, @StorageProp, @Param, @Event, etc.
+#
+# Decorators are already valid TypeScript syntax (experimentalDecorators), so
+# tree-sitter-typescript handles them fine. Only `struct` needs preprocessing:
+# we substitute `struct` → `class ` (both 6 chars — keeps byte offsets stable,
+# so line numbers in AST match the original .ets file).
+#
+# After AST extraction, we post-process the *original* source text to recognize
+# ArkTS-specific decorators and emit:
+#   • arkts_decorator nodes (e.g. "@Entry", "@ComponentV2") linked to the struct
+#   • arkts_state nodes for @State/@Prop/@Link/@Local/etc. fields
+# This gives the knowledge graph real ArkTS semantics instead of plain TS.
+
+_ARKTS_COMPONENT_DECORATORS = frozenset({
+    "Component", "ComponentV2", "Entry", "Preview", "CustomDialog",
+    "Reusable", "ReusableV2",
+})
+
+_ARKTS_STATE_DECORATORS = frozenset({
+    # V1 reactive decorators
+    "State", "Prop", "Link", "Provide", "Consume", "Observed", "ObjectLink",
+    "StorageLink", "StorageProp", "LocalStorageLink", "LocalStorageProp",
+    "Watch", "BuilderParam", "Require",
+    # V2 reactive decorators
+    "ObservedV2", "Local", "Param", "Event", "Once", "Trace", "Monitor", "Computed",
+})
+
+_ARKTS_BUILDER_DECORATORS = frozenset({
+    "Builder", "Styles", "Extend", "AnimatableExtend", "Concurrent",
+})
+
+# Match a decorator line: @Name, @Name(...), or @Name({ ...  (multi-line start)
+# We capture the name; balancing parens/braces is handled in _enrich_arkts.
+_ETS_DECORATOR_RE = re.compile(r"^\s*@(\w+)\b")
+# Match a struct/class head that is the declaration being decorated
+_ETS_STRUCT_HEAD_RE = re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:struct|class)\s+(\w+)")
+# Match a decorated field: `@State foo: Type = ...` or `@Local foo =`
+_ETS_DECORATED_FIELD_RE = re.compile(
+    r"^\s*@(\w+)\s*(?:\([^)]*\))?\s+"
+    r"(?:private\s+|public\s+|protected\s+|readonly\s+)*"
+    r"(\w+)\s*[:=?]"
+)
+
+
+def _enrich_arkts(source_text: str, path: Path, result: dict) -> None:
+    """Post-process extraction result with ArkTS-specific semantic nodes/edges.
+
+    Mutates ``result`` in place. Recognizes component / state / builder
+    decorators and wires them to the struct or field they annotate.
+    """
+    str_path = str(path)
+    file_nid = _make_id(str(path))
+    nodes = result["nodes"]
+    edges = result["edges"]
+    seen = {n["id"] for n in nodes}
+
+    def add_node(nid: str, label: str, line: int, node_type: str) -> None:
+        if nid in seen:
+            return
+        seen.add(nid)
+        nodes.append({
+            "id": nid,
+            "label": label,
+            "file_type": "code",
+            "node_type": node_type,
+            "source_file": str_path,
+            "source_location": f"L{line}",
+        })
+
+    def add_edge(src: str, tgt: str, relation: str, line: int) -> None:
+        edges.append({
+            "source": src,
+            "target": tgt,
+            "relation": relation,
+            "confidence": "EXTRACTED",
+            "source_file": str_path,
+            "source_location": f"L{line}",
+            "weight": 1.0,
+        })
+
+    lines = source_text.splitlines()
+    pending: list[tuple[str, int]] = []  # (decorator_name, lineno)
+    # Tracks unbalanced ( depth inside multi-line decorator args like @Entry({ ... })
+    paren_depth = 0
+
+    for idx, raw_line in enumerate(lines):
+        lineno = idx + 1
+        stripped = raw_line.rstrip()
+        stripped_lead = stripped.lstrip()
+
+        # Inside multi-line decorator args: just update depth, don't parse
+        if paren_depth > 0:
+            paren_depth += raw_line.count("(") - raw_line.count(")")
+            if paren_depth < 0:
+                paren_depth = 0
+            continue
+
+        # Skip blanks and comment-only lines without resetting pending
+        if not stripped_lead or stripped_lead.startswith("//") or stripped_lead.startswith("*") or stripped_lead.startswith("/*"):
+            continue
+
+        # Order matters: decorated-field BEFORE standalone decorator
+        # because "@State foo: T" also matches the decorator regex.
+
+        # Case 1: decorated field on one line → "@State foo: T = ..."
+        m_field = _ETS_DECORATED_FIELD_RE.match(stripped)
+        if m_field:
+            deco_name, field_name = m_field.group(1), m_field.group(2)
+            if deco_name in _ARKTS_STATE_DECORATORS:
+                state_nid = _make_id(str_path, f"@{deco_name}", field_name)
+                add_node(state_nid, f"@{deco_name} {field_name}", lineno, "arkts_state")
+                add_edge(file_nid, state_nid, "contains_state", lineno)
+            # One-line decorated field does NOT contribute to pending.
+            continue
+
+        # Case 2: standalone decorator line → queue it, track multi-line args
+        m_deco = _ETS_DECORATOR_RE.match(stripped)
+        if m_deco:
+            deco_name = m_deco.group(1)
+            rest = stripped[m_deco.end():]
+            paren_depth = rest.count("(") - rest.count(")")
+            if paren_depth < 0:
+                paren_depth = 0
+            pending.append((deco_name, lineno))
+            continue
+
+        # Case 3: struct/class declaration → consume pending component decorators
+        m_struct = _ETS_STRUCT_HEAD_RE.match(stripped)
+        if m_struct and pending:
+            target_name = m_struct.group(1)
+            target_nid = _make_id(path.stem, target_name)
+            for deco_name, deco_line in pending:
+                if deco_name in _ARKTS_COMPONENT_DECORATORS:
+                    deco_nid = _make_id(str_path, target_name, f"@{deco_name}")
+                    add_node(deco_nid, f"@{deco_name}", deco_line, "arkts_decorator")
+                    add_edge(deco_nid, target_nid, "decorates", deco_line)
+            pending.clear()
+            continue
+
+        # Case 4: field declaration after pending decorator on prev line
+        if pending:
+            field_match = re.match(
+                r"^\s*(?:private\s+|public\s+|protected\s+|readonly\s+)*(\w+)\s*[:=?]",
+                stripped,
+            )
+            if field_match:
+                field_name = field_match.group(1)
+                for deco_name, deco_line in pending:
+                    if deco_name in _ARKTS_STATE_DECORATORS:
+                        state_nid = _make_id(str_path, f"@{deco_name}", field_name)
+                        add_node(state_nid, f"@{deco_name} {field_name}", deco_line, "arkts_state")
+                        add_edge(file_nid, state_nid, "contains_state", deco_line)
+                pending.clear()
+                continue
+
+        # Any other meaningful code line clears pending
+        pending.clear()
+
+
+# Preprocess "struct X" → "class  X" preserving byte offsets (both 6 chars + space).
+# This lets tree-sitter-typescript parse ArkTS component declarations as classes
+# without breaking line/column info in the AST.
+_ETS_STRUCT_PATTERN = re.compile(rb"\bstruct\b")
+
+
+def extract_ets(path: Path) -> dict:
+    """Extract from an ArkTS (.ets) file.
+
+    ArkTS = TypeScript + `struct` keyword + HarmonyOS-specific decorators.
+    We preprocess struct → class (same byte length, line numbers preserved)
+    then run the standard TypeScript extractor, then enrich the result with
+    ArkTS decorator semantics.
+    """
+    try:
+        raw = path.read_bytes()
+    except Exception as e:
+        return {"nodes": [], "edges": [], "error": str(e)}
+
+    # struct (6 bytes) → class  (6 bytes: c-l-a-s-s-space), preserves offsets
+    preprocessed = _ETS_STRUCT_PATTERN.sub(b"class ", raw)
+    result = _extract_generic(path, _TS_CONFIG, source_override=preprocessed)
+    if "error" in result and not result.get("nodes"):
+        return result
+
+    try:
+        source_text = raw.decode("utf-8", errors="replace")
+        _enrich_arkts(source_text, path, result)
+    except Exception:
+        # Enrichment failure shouldn't kill the base extraction
+        pass
+
+    return result
 
 
 def extract_java(path: Path) -> dict:
@@ -3024,6 +3233,7 @@ def extract(paths: list[Path]) -> dict:
         ".jsx": extract_js,
         ".ts": extract_js,
         ".tsx": extract_js,
+        ".ets": extract_ets,
         ".go": extract_go,
         ".rs": extract_rust,
         ".java": extract_java,
