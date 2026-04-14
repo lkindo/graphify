@@ -2,6 +2,15 @@
 
 Full release notes with details on each version: [GitHub Releases](https://github.com/safishamsi/graphify/releases)
 
+## Unreleased
+
+- Add: `to_html()` gains keyword-only options for visualization tuning:
+  - `label_threshold` (float, default 0.15) — fraction of max_degree below which node labels are hidden. Set to 0.0 to show all labels, or increase to hide more.
+  - `label_font_size` (int, default 12) — font size in pixels for visible node labels.
+  - `show_edge_labels` (bool, default False) — display edge relation names as labels on edges.
+  - `edge_width_mode` (str, default "confidence") — "confidence" for width by confidence level, "degree" for width scaling with average degree of endpoints.
+- All new parameters are keyword-only with backward-compatible defaults; existing code calling `to_html(G, communities, path)` is unaffected.
+
 ## 0.4.12 (2026-04-13)
 
 - Add: Kiro IDE/CLI support — `graphify kiro install` writes `.kiro/skills/graphify/SKILL.md` (invoked via `/graphify`) and `.kiro/steering/graphify.md` (`inclusion: always` — always-on context before every conversation) (#319, #321)
