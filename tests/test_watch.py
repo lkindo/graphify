@@ -1,9 +1,8 @@
 """Tests for watch.py - file watcher helpers (no watchdog required)."""
-import time
 from pathlib import Path
 import pytest
 
-from graphify.watch import _notify_only, _WATCHED_EXTENSIONS
+from graphify.watch import _notify_only, _WATCHED_EXTENSIONS, _observer_mode
 
 
 # --- _notify_only ---
@@ -66,3 +65,23 @@ def test_watch_raises_without_watchdog(tmp_path, monkeypatch):
     from graphify.watch import watch
     with pytest.raises(ImportError, match="watchdog not installed"):
         watch(tmp_path)
+
+
+def test_observer_mode_defaults_to_auto(monkeypatch):
+    monkeypatch.delenv("GRAPHIFY_WATCH_OBSERVER", raising=False)
+    assert _observer_mode() == "auto"
+
+
+def test_observer_mode_invalid_falls_back_to_auto(monkeypatch):
+    monkeypatch.setenv("GRAPHIFY_WATCH_OBSERVER", "banana")
+    assert _observer_mode() == "auto"
+
+
+def test_observer_mode_accepts_native(monkeypatch):
+    monkeypatch.setenv("GRAPHIFY_WATCH_OBSERVER", "native")
+    assert _observer_mode() == "native"
+
+
+def test_observer_mode_accepts_polling(monkeypatch):
+    monkeypatch.setenv("GRAPHIFY_WATCH_OBSERVER", "polling")
+    assert _observer_mode() == "polling"

@@ -1,6 +1,8 @@
 # monitor a folder and auto-trigger --update when files change
 from __future__ import annotations
 import json
+import os
+import platform
 import time
 from pathlib import Path
 
@@ -9,6 +11,38 @@ from graphify.detect import CODE_EXTENSIONS, DOC_EXTENSIONS, PAPER_EXTENSIONS, I
 
 _WATCHED_EXTENSIONS = CODE_EXTENSIONS | DOC_EXTENSIONS | PAPER_EXTENSIONS | IMAGE_EXTENSIONS
 _CODE_EXTENSIONS = CODE_EXTENSIONS
+
+
+def _observer_mode() -> str:
+    """
+    Choose which watchdog observer to use.
+
+    Modes:
+    - auto    : PollingObserver on macOS, native Observer elsewhere
+    - native  : always use native Observer
+    - polling : always use PollingObserver
+    """
+    mode = os.environ.get("GRAPHIFY_WATCH_OBSERVER", "auto").strip().lower()
+    if mode not in {"auto", "native", "polling"}:
+        mode = "auto"
+    return mode
+
+
+def _observer_class():
+    try:
+        from watchdog.observers import Observer
+        from watchdog.observers.polling import PollingObserver
+    except ImportError as e:
+        raise ImportError("watchdog not installed. Run: pip install watchdog") from e
+
+    mode = _observer_mode()
+    if mode == "polling":
+        return PollingObserver, "polling"
+    if mode == "native":
+        return Observer, "native"
+    if platform.system() == "Darwin":
+        return PollingObserver, "polling"
+    return Observer, "native"
 
 
 def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
@@ -119,7 +153,6 @@ def watch(watch_path: Path, debounce: float = 3.0) -> None:
     running on every keystroke when many files are saved at once).
     """
     try:
-        from watchdog.observers import Observer
         from watchdog.events import FileSystemEventHandler
     except ImportError as e:
         raise ImportError("watchdog not installed. Run: pip install watchdog") from e
@@ -145,11 +178,13 @@ def watch(watch_path: Path, debounce: float = 3.0) -> None:
             changed.add(path)
 
     handler = Handler()
-    observer = Observer()
+    ObserverClass, observer_kind = _observer_class()
+    observer = ObserverClass()
     observer.schedule(handler, str(watch_path), recursive=True)
     observer.start()
 
     print(f"[graphify watch] Watching {watch_path.resolve()} - press Ctrl+C to stop")
+    print(f"[graphify watch] Observer: {observer_kind}")
     print(f"[graphify watch] Code changes rebuild graph automatically. "
           f"Doc/image changes require /graphify --update.")
     print(f"[graphify watch] Debounce: {debounce}s")
