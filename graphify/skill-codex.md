@@ -230,7 +230,7 @@ Load files from `.graphify_uncached.txt`. Split into chunks of 20-25 files each.
 
 **Step B2 - Dispatch ALL subagents in a single message (Codex)**
 
-> **Codex platform:** Uses `spawn_agent` + `wait` + `close_agent` instead of the Agent tool.
+> **Codex platform:** Uses `spawn_agent` + `wait_agent` + `close_agent` instead of the Agent tool.
 > Requires `multi_agent = true` under `[features]` in `~/.codex/config.toml`.
 > If `spawn_agent` is unavailable, tell the user to add that config and restart Codex.
 
