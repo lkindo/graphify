@@ -7,7 +7,10 @@ import networkx as nx
 
 
 def _safe_filename(name: str) -> str:
-    return name.replace("/", "-").replace(" ", "_").replace(":", "-")
+    cleaned = name.replace("/", "-").replace(" ", "_").replace(":", "-")
+    # Strip path traversal components
+    cleaned = cleaned.replace("..", "")
+    return cleaned[:200] or "unnamed"
 
 
 def _cross_community_links(G: nx.Graph, nodes: list[str], own_cid: int, labels: dict[int, str]) -> list[tuple[str, int]]:
@@ -191,11 +194,18 @@ def to_wiki(
 
     count = 0
 
+    resolved_out = out.resolve()
+
+    def _safe_write(filename: str, content: str) -> None:
+        target = (out / filename).resolve()
+        target.relative_to(resolved_out)  # raises ValueError if path escapes
+        target.write_text(content)
+
     # Community articles
     for cid, nodes in communities.items():
         label = labels.get(cid, f"Community {cid}")
         article = _community_article(G, cid, nodes, label, labels, cohesion.get(cid))
-        (out / f"{_safe_filename(label)}.md").write_text(article)
+        _safe_write(f"{_safe_filename(label)}.md", article)
         count += 1
 
     # God node articles
@@ -203,7 +213,7 @@ def to_wiki(
         nid = node_data.get("id")
         if nid and nid in G:
             article = _god_node_article(G, nid, labels)
-            (out / f"{_safe_filename(node_data['label'])}.md").write_text(article)
+            _safe_write(f"{_safe_filename(node_data['label'])}.md", article)
             count += 1
 
     # Index

@@ -356,7 +356,8 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
         try:
             return [types.TextContent(type="text", text=handler(arguments))]
         except Exception as exc:
-            return [types.TextContent(type="text", text=f"Error executing {name}: {exc}")]
+            print(f"error: tool {name} failed: {exc}", file=sys.stderr)
+            return [types.TextContent(type="text", text=f"Internal error executing {name}. Check server logs.")]
 
     import asyncio
 

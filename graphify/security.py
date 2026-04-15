@@ -16,7 +16,11 @@ _MAX_FETCH_BYTES = 52_428_800   # 50 MB hard cap for binary downloads
 _MAX_TEXT_BYTES  = 10_485_760   # 10 MB hard cap for HTML / text
 
 # AWS metadata, link-local, and common cloud metadata endpoints
-_BLOCKED_HOSTS = {"metadata.google.internal", "metadata.google.com"}
+_BLOCKED_HOSTS = {
+    "metadata.google.internal", "metadata.google.com",
+    "instance-data.ec2.internal",
+    "metadata.azure.com",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -53,13 +57,19 @@ def validate_url(url: str) -> str:
             for info in infos:
                 addr = info[4][0]
                 ip = ipaddress.ip_address(addr)
+                # Normalize IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
+                if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+                    ip = ip.ipv4_mapped
                 if ip.is_private or ip.is_reserved or ip.is_loopback or ip.is_link_local:
                     raise ValueError(
                         f"Blocked private/internal IP {addr} (resolved from '{hostname}'). "
                         f"Got: {url!r}"
                     )
         except socket.gaierror:
-            pass  # DNS failure will surface later during fetch
+            raise ValueError(
+                f"Could not resolve hostname '{hostname}' for URL validation. "
+                f"Got: {url!r}"
+            )
 
     return url
 

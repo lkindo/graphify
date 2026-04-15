@@ -479,11 +479,19 @@ def to_obsidian(
 
     # Map node_id → safe filename so wikilinks stay consistent.
     # Deduplicate: if two nodes produce the same filename, append a numeric suffix.
+    resolved_out = out.resolve()
+
     def safe_name(label: str) -> str:
         cleaned = re.sub(r'[\\/*?:"<>|#^[\]]', "", label.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")).strip()
         # Strip trailing .md/.mdx/.markdown so "CLAUDE.md" doesn't become "CLAUDE.md.md"
         cleaned = re.sub(r"\.(md|mdx|markdown)$", "", cleaned, flags=re.IGNORECASE)
-        return cleaned or "unnamed"
+        cleaned = cleaned.replace("..", "")
+        return cleaned[:200] or "unnamed"
+
+    def _safe_write(filename: str, content: str) -> None:
+        target = (out / filename).resolve()
+        target.relative_to(resolved_out)  # raises ValueError if path escapes
+        target.write_text(content, encoding="utf-8")
 
     node_filename: dict[str, str] = {}
     seen_names: dict[str, int] = {}
@@ -565,7 +573,7 @@ def to_obsidian(
         lines.append(inline_tags)
 
         fname = node_filename[node_id] + ".md"
-        (out / fname).write_text("\n".join(lines), encoding="utf-8")
+        _safe_write(fname, "\n".join(lines))
 
     # Write one _COMMUNITY_name.md overview note per community
     # Build inter-community edge counts for "Connections to other communities"
@@ -682,7 +690,7 @@ def to_obsidian(
 
         community_safe = safe_name(community_name)
         fname = f"_COMMUNITY_{community_safe}.md"
-        (out / fname).write_text("\n".join(lines), encoding="utf-8")
+        _safe_write(fname, "\n".join(lines))
         community_notes_written += 1
 
     # Improvement 4: write .obsidian/graph.json to color nodes by community in graph view
