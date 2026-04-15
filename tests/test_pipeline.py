@@ -4,6 +4,8 @@ Uses the existing test fixtures (code + markdown). No LLM calls - AST extraction
 Catches regressions in how modules connect, not just individual module behaviour.
 """
 import json
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -156,3 +158,23 @@ def test_pipeline_no_self_loops(tmp_path):
     G = result["graph"]
     for u, v in G.edges():
         assert u != v, f"Self-loop found on node {u!r}"
+
+
+def test_cluster_only_cli_succeeds_after_update(tmp_path):
+    code = tmp_path / "a.py"
+    code.write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    update = subprocess.run(
+        [sys.executable, "-m", "graphify", "update", str(tmp_path)],
+        capture_output=True,
+        text=True,
+    )
+    assert update.returncode == 0, update.stderr
+
+    cluster_only = subprocess.run(
+        [sys.executable, "-m", "graphify", "cluster-only", str(tmp_path)],
+        capture_output=True,
+        text=True,
+    )
+    assert cluster_only.returncode == 0, cluster_only.stderr
+    assert (tmp_path / "graphify-out" / "GRAPH_REPORT.md").exists()
