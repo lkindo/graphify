@@ -970,14 +970,16 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
                                     if sc.type == "simple_identifier":
                                         callee_name = _read_text(sc, source)
             elif config.ts_module == "tree_sitter_kotlin":
-                # Kotlin: first child may be simple_identifier or navigation_expression
+                # Kotlin: first child may be simple_identifier/identifier or navigation_expression
+                # tree-sitter-kotlin uses "identifier" (not "simple_identifier") in call
+                # positions, so we accept both to avoid silently dropping all call edges.
                 first = node.children[0] if node.children else None
                 if first:
-                    if first.type == "simple_identifier":
+                    if first.type in ("simple_identifier", "identifier"):
                         callee_name = _read_text(first, source)
                     elif first.type == "navigation_expression":
                         for child in reversed(first.children):
-                            if child.type == "simple_identifier":
+                            if child.type in ("simple_identifier", "identifier"):
                                 callee_name = _read_text(child, source)
                                 break
             elif config.ts_module == "tree_sitter_scala":

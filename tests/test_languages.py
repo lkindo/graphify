@@ -188,6 +188,42 @@ def test_kotlin_finds_function():
     r = extract_kotlin(FIXTURES / "sample.kt")
     assert any("createClient" in l for l in _labels(r))
 
+def test_kotlin_call_edges_direct():
+    """Direct calls (simple_identifier / identifier) must produce 'calls' edges.
+
+    sample.kt: get() and post() both call buildRequest() — a same-file callee.
+    tree-sitter-kotlin emits "identifier" nodes here, not "simple_identifier",
+    so this test would produce zero call edges before the fix.
+    """
+    r = extract_kotlin(FIXTURES / "sample.kt")
+    call_edges = [e for e in r["edges"] if e["relation"] == "calls"]
+    callees = [e["target"] for e in call_edges]
+    assert any("buildrequest" in t for t in callees), (
+        "buildRequest call not found — Kotlin 'identifier' node type not handled"
+    )
+
+def test_kotlin_call_edges_navigation_expression():
+    """navigation_expression calls (obj.method()) must also produce 'calls' edges.
+
+    sample.kt: createClient() calls Config(...) and HttpClient(...).
+    The last 'identifier' child of the navigation_expression is the callee.
+    """
+    r = extract_kotlin(FIXTURES / "sample.kt")
+    call_edges = [e for e in r["edges"] if e["relation"] == "calls"]
+    callees = [e["target"] for e in call_edges]
+    assert any("httpclient" in t for t in callees), (
+        "HttpClient call not found — navigation_expression identifier not handled"
+    )
+
+def test_kotlin_call_count():
+    """All four expected calls in sample.kt must be resolved: get→buildRequest,
+    post→buildRequest, createClient→Config, createClient→HttpClient."""
+    r = extract_kotlin(FIXTURES / "sample.kt")
+    call_edges = [e for e in r["edges"] if e["relation"] == "calls"]
+    assert len(call_edges) >= 4, (
+        f"Expected ≥4 call edges, got {len(call_edges)}: {[e['target'] for e in call_edges]}"
+    )
+
 
 # ── Scala ─────────────────────────────────────────────────────────────────────
 
