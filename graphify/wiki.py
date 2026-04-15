@@ -89,12 +89,18 @@ def _community_article(
     return "\n".join(lines)
 
 
-def _god_node_article(G: nx.Graph, nid: str, labels: dict[int, str]) -> str:
+def _god_node_article(
+    G: nx.Graph,
+    nid: str,
+    labels: dict[int, str],
+    article_labels: set[str] | None = None,
+) -> str:
     d = G.nodes[nid]
     node_label = d.get("label", nid)
     src = d.get("source_file", "")
     cid = d.get("community")
     community_name = labels.get(cid, f"Community {cid}") if cid is not None else None
+    article_labels = article_labels or set()
 
     lines: list[str] = []
     lines += [f"# {node_label}", ""]
@@ -103,7 +109,10 @@ def _god_node_article(G: nx.Graph, nid: str, labels: dict[int, str]) -> str:
     if community_name:
         lines += [f"**Community:** [[{community_name}]]", ""]
 
-    # Group neighbors by relation type
+    # Group neighbors by relation type. Only wikilink neighbors that actually
+    # have their own article; otherwise bold the label and route the reader
+    # to the community page containing that neighbor, so every entry leads
+    # somewhere real instead of dead-ending as an unresolved wikilink.
     by_relation: dict[str, list[str]] = {}
     for neighbor in sorted(G.neighbors(nid), key=lambda n: G.degree(n), reverse=True):
         nd = G.nodes[neighbor]
@@ -112,7 +121,16 @@ def _god_node_article(G: nx.Graph, nid: str, labels: dict[int, str]) -> str:
         neighbor_label = nd.get("label", neighbor)
         conf = ed.get("confidence", "")
         conf_str = f" `{conf}`" if conf else ""
-        by_relation.setdefault(rel, []).append(f"[[{neighbor_label}]]{conf_str}")
+        if neighbor_label in article_labels:
+            entry = f"[[{neighbor_label}]]{conf_str}"
+        else:
+            ncid = nd.get("community")
+            community_label = labels.get(ncid) if ncid is not None else None
+            if community_label and community_label in article_labels:
+                entry = f"**{neighbor_label}** (in [[{community_label}]]){conf_str}"
+            else:
+                entry = f"**{neighbor_label}**{conf_str}"
+        by_relation.setdefault(rel, []).append(entry)
 
     lines += ["## Connections by Relation", ""]
     for rel, targets in sorted(by_relation.items()):
@@ -198,11 +216,16 @@ def to_wiki(
         (out / f"{_safe_filename(label)}.md").write_text(article)
         count += 1
 
+    # Collect the labels that will have their own article so god-node
+    # connection lists can distinguish live wikilinks from dead ones.
+    article_labels: set[str] = set(labels.values())
+    article_labels.update(n["label"] for n in god_nodes_data if n.get("label"))
+
     # God node articles
     for node_data in god_nodes_data:
         nid = node_data.get("id")
         if nid and nid in G:
-            article = _god_node_article(G, nid, labels)
+            article = _god_node_article(G, nid, labels, article_labels=article_labels)
             (out / f"{_safe_filename(node_data['label'])}.md").write_text(article)
             count += 1
 
