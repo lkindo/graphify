@@ -24,6 +24,7 @@ def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
         from graphify.analyze import god_nodes, surprising_connections, suggest_questions
         from graphify.report import generate
         from graphify.export import to_json
+        from graphify.wiki import to_wiki
 
         detected = detect(watch_path, follow_symlinks=follow_symlinks)
         code_files = [Path(f) for f in detected['files']['code']]
@@ -77,6 +78,18 @@ def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
         (out / "GRAPH_REPORT.md").write_text(report, encoding="utf-8")
         to_json(G, communities, str(out / "graph.json"))
 
+        # Keep wiki/ in sync on every rebuild so GRAPH_REPORT.md wikilinks
+        # ([[_COMMUNITY_...]], [[<god-node>]]) actually resolve. Without this
+        # the report's navigation section dead-ends and agents fall back to
+        # reading raw source files — exactly what the graph is meant to avoid.
+        god_articles = [
+            {"id": g.get("id"), "label": g.get("label", ""), "edges": g.get("edges", 0)}
+            for g in gods if g.get("id")
+        ]
+        to_wiki(G, communities, out / "wiki",
+                community_labels=labels, cohesion=cohesion,
+                god_nodes_data=god_articles)
+
         # clear stale needs_update flag if present
         flag = out / "needs_update"
         if flag.exists():
@@ -84,7 +97,7 @@ def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
 
         print(f"[graphify watch] Rebuilt: {G.number_of_nodes()} nodes, "
               f"{G.number_of_edges()} edges, {len(communities)} communities")
-        print(f"[graphify watch] graph.json and GRAPH_REPORT.md updated in {out}")
+        print(f"[graphify watch] graph.json, GRAPH_REPORT.md, and wiki/ updated in {out}")
         return True
 
     except Exception as exc:

@@ -1208,6 +1208,7 @@ def main() -> None:
         from graphify.analyze import god_nodes, surprising_connections, suggest_questions
         from graphify.report import generate
         from graphify.export import to_json
+        from graphify.wiki import to_wiki
         print("Loading existing graph...")
         _raw = json.loads(graph_json.read_text(encoding="utf-8"))
         G = build_from_json(_raw)
@@ -1225,7 +1226,14 @@ def main() -> None:
         out = watch_path / "graphify-out"
         (out / "GRAPH_REPORT.md").write_text(report, encoding="utf-8")
         to_json(G, communities, str(out / "graph.json"))
-        print(f"Done — {len(communities)} communities. GRAPH_REPORT.md and graph.json updated.")
+        god_articles = [
+            {"id": g.get("id"), "label": g.get("label", ""), "edges": g.get("edges", 0)}
+            for g in gods if g.get("id")
+        ]
+        to_wiki(G, communities, out / "wiki",
+                community_labels=labels, cohesion=cohesion,
+                god_nodes_data=god_articles)
+        print(f"Done — {len(communities)} communities. GRAPH_REPORT.md, graph.json, and wiki/ updated.")
 
     elif cmd == "update":
         watch_path = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(".")
