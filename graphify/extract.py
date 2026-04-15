@@ -3063,6 +3063,7 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
         ".py": extract_python,
         ".js": extract_js,
         ".jsx": extract_js,
+        ".mjs": extract_js,
         ".ts": extract_js,
         ".tsx": extract_js,
         ".go": extract_go,
@@ -3180,7 +3181,7 @@ def collect_files(target: Path, *, follow_symlinks: bool = False, root: Path | N
     if target.is_file():
         return [target]
     _EXTENSIONS = {
-        ".py", ".js", ".ts", ".tsx", ".go", ".rs",
+        ".py", ".js", ".mjs", ".ts", ".tsx", ".go", ".rs",
         ".java", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp",
         ".rb", ".cs", ".kt", ".kts", ".scala", ".php", ".swift",
         ".lua", ".toc", ".zig", ".ps1",
