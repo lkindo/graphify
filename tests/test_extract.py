@@ -1,5 +1,5 @@
 from pathlib import Path
-from graphify.extract import extract_python, extract, collect_files, _make_id
+from graphify.extract import extract_python, extract_sql, extract, collect_files, _make_id
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -62,7 +62,7 @@ def test_collect_files_from_dir():
                  ".java", ".c", ".cpp", ".cc", ".cxx", ".rb",
                  ".cs", ".kt", ".kts", ".scala", ".php", ".h", ".hpp",
                  ".swift", ".lua", ".toc", ".zig", ".ps1", ".ex", ".exs",
-                 ".m", ".mm"}
+                 ".m", ".mm", ".sql"}
     assert all(f.suffix in supported for f in files)
     assert len(files) > 0
 
@@ -168,3 +168,66 @@ def test_calls_deduplication():
     result = extract_python(FIXTURES / "sample_calls.py")
     call_pairs = [(e["source"], e["target"]) for e in result["edges"] if e["relation"] == "calls"]
     assert len(call_pairs) == len(set(call_pairs)), "Duplicate calls edges found"
+
+
+# ── SQL / dbt extraction tests ───────────────────────────────────────────────
+
+
+def test_extract_sql_creates_model_node():
+    """SQL extractor should create a node for the model file."""
+    result = extract_sql(FIXTURES / "sample.sql")
+    labels = [n["label"] for n in result["nodes"]]
+    assert "sample" in labels
+
+
+def test_extract_sql_finds_refs():
+    """ref('model_name') calls should produce refs edges."""
+    result = extract_sql(FIXTURES / "sample.sql")
+    refs = [e for e in result["edges"] if e["relation"] == "refs"]
+    ref_targets = {e["target"] for e in refs}
+    assert _make_id("stg_orders") in ref_targets
+    assert _make_id("dim_customers") in ref_targets
+    assert len(refs) == 2
+
+
+def test_extract_sql_finds_sources():
+    """source('group', 'table') should produce reads_from edges + source nodes."""
+    result = extract_sql(FIXTURES / "sample.sql")
+    sources = [e for e in result["edges"] if e["relation"] == "reads_from"]
+    assert len(sources) == 2
+    source_nodes = [n for n in result["nodes"] if n["label"].startswith("source:")]
+    assert len(source_nodes) == 2
+    source_labels = {n["label"] for n in source_nodes}
+    assert "source:raw_schema.orders_table" in source_labels
+    assert "source:external.payments" in source_labels
+
+
+def test_extract_sql_materialization():
+    """config(materialized='table') should be captured in source_location."""
+    result = extract_sql(FIXTURES / "sample.sql")
+    model_node = [n for n in result["nodes"] if n["label"] == "sample"][0]
+    assert "materialized=table" in model_node["source_location"]
+
+
+def test_extract_sql_ref_edges_are_extracted():
+    """All ref() edges must have EXTRACTED confidence with score 1.0."""
+    result = extract_sql(FIXTURES / "sample.sql")
+    for edge in result["edges"]:
+        if edge["relation"] == "refs" and edge["confidence"] != "AMBIGUOUS":
+            assert edge["confidence"] == "EXTRACTED"
+            assert edge["confidence_score"] == 1.0
+
+
+def test_extract_sql_no_dangling_sources():
+    """All edge sources must reference a known node."""
+    result = extract_sql(FIXTURES / "sample.sql")
+    node_ids = {n["id"] for n in result["nodes"]}
+    for edge in result["edges"]:
+        assert edge["source"] in node_ids, f"Dangling source: {edge['source']}"
+
+
+def test_collect_files_includes_sql():
+    """collect_files should discover .sql files."""
+    files = collect_files(FIXTURES)
+    sql_files = [f for f in files if f.suffix == ".sql"]
+    assert len(sql_files) >= 1

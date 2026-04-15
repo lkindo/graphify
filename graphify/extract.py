@@ -3006,6 +3006,105 @@ def extract_elixir(path: Path) -> dict:
     return {"nodes": nodes, "edges": clean_edges, "input_tokens": 0, "output_tokens": 0}
 
 
+# ── SQL / dbt extractor (regex-based, no tree-sitter) ────────────────────────
+
+
+def extract_sql(path: Path) -> dict:
+    """Extract dbt model nodes and ref()/source() edges from a SQL file.
+
+    Regex-based: scans raw text for ref('model') and source('group', 'table').
+    Does not evaluate Jinja — just finds the patterns. Handles:
+      - ref('model_name') and ref("model_name")
+      - source('group', 'table') and source("group", "table")
+      - {{ config(materialized='table') }} for metadata
+      - Variable refs like ref(var_name) emitted as AMBIGUOUS
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except Exception as exc:
+        return {"nodes": [], "edges": [], "error": str(exc)}
+
+    stem = path.stem
+    file_str = str(path)
+    model_id = _make_id(stem)
+
+    # Extract materialization from config
+    mat_match = re.search(r"\{\{\s*config\s*\([^)]*materialized\s*=\s*['\"](\w+)['\"]", text)
+    materialization = mat_match.group(1) if mat_match else "view"
+
+    # Create node for this model
+    nodes = [{
+        "id": model_id,
+        "label": stem,
+        "file_type": "code",
+        "source_file": file_str,
+        "source_location": f"materialized={materialization}",
+        "source_url": None,
+        "captured_at": None,
+        "author": None,
+        "contributor": None,
+    }]
+    edges = []
+
+    # Extract ref() calls
+    for m in re.finditer(r"""ref\(\s*['"](\w+)['"]\s*\)""", text):
+        ref_model = m.group(1)
+        ref_id = _make_id(ref_model)
+        edges.append({
+            "source": model_id,
+            "target": ref_id,
+            "relation": "refs",
+            "confidence": "EXTRACTED",
+            "confidence_score": 1.0,
+            "source_file": file_str,
+            "source_location": f"ref('{ref_model}')",
+            "weight": 1.0,
+        })
+
+    # Extract source() calls
+    for m in re.finditer(r"""source\(\s*['"](\w+)['"]\s*,\s*['"](\w+)['"]\s*\)""", text):
+        group_name, table_name = m.group(1), m.group(2)
+        source_id = _make_id("source", group_name, table_name)
+        nodes.append({
+            "id": source_id,
+            "label": f"source:{group_name}.{table_name}",
+            "file_type": "code",
+            "source_file": file_str,
+            "source_location": f"source('{group_name}', '{table_name}')",
+            "source_url": None,
+            "captured_at": None,
+            "author": None,
+            "contributor": None,
+        })
+        edges.append({
+            "source": model_id,
+            "target": source_id,
+            "relation": "reads_from",
+            "confidence": "EXTRACTED",
+            "confidence_score": 1.0,
+            "source_file": file_str,
+            "source_location": f"source('{group_name}', '{table_name}')",
+            "weight": 1.0,
+        })
+
+    # Detect variable refs (dynamic — can't resolve)
+    for m in re.finditer(r"""ref\(\s*([a-zA-Z_]\w*)\s*\)""", text):
+        var_name = m.group(1)
+        if var_name not in ("true", "false", "none", "null"):
+            edges.append({
+                "source": model_id,
+                "target": _make_id("dynamic_ref", var_name),
+                "relation": "refs",
+                "confidence": "AMBIGUOUS",
+                "confidence_score": 0.3,
+                "source_file": file_str,
+                "source_location": f"ref({var_name}) — dynamic, unresolved",
+                "weight": 0.5,
+            })
+
+    return {"nodes": nodes, "edges": edges}
+
+
 # ── Main extract and collect_files ────────────────────────────────────────────
 
 
@@ -3095,6 +3194,7 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
         ".dart": extract_dart,
         ".v": extract_verilog,
         ".sv": extract_verilog,
+        ".sql": extract_sql,
     }
 
     total = len(paths)
@@ -3184,7 +3284,7 @@ def collect_files(target: Path, *, follow_symlinks: bool = False, root: Path | N
         ".java", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp",
         ".rb", ".cs", ".kt", ".kts", ".scala", ".php", ".swift",
         ".lua", ".toc", ".zig", ".ps1",
-        ".m", ".mm",
+        ".m", ".mm", ".sql",
     }
     from graphify.detect import _load_graphifyignore, _is_ignored
     ignore_root = root if root is not None else target
