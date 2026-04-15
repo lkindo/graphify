@@ -3,6 +3,94 @@ from __future__ import annotations
 import networkx as nx
 
 
+# ---------------------------------------------------------------------------
+# Fast betweenness centrality: igraph (C) → NetworkX sampled approximation
+# ---------------------------------------------------------------------------
+_SAMPLE_THRESHOLD = 5_000   # use exact below this; sampled above
+_MAX_SAMPLE_K = 500         # cap on sampled source nodes
+
+
+def _nx_to_igraph(G: nx.Graph):
+    """Convert a NetworkX graph to an igraph Graph, returning (ig, node_list).
+
+    node_list maps igraph integer vertex ids back to NetworkX node ids.
+    """
+    import igraph as ig
+    node_list = list(G.nodes())
+    node_index = {n: i for i, n in enumerate(node_list)}
+    edges = [(node_index[u], node_index[v]) for u, v in G.edges()]
+    g = ig.Graph(n=len(node_list), edges=edges, directed=G.is_directed())
+    return g, node_list
+
+
+def _fast_betweenness_centrality(G: nx.Graph) -> dict[str, float]:
+    """Compute node betweenness centrality using the fastest available backend.
+
+    Priority:
+    1. igraph (C implementation) — exact, ~100x faster than pure-Python NX.
+    2. NetworkX with sampled approximation (k source nodes) for large graphs.
+    3. NetworkX exact for small graphs.
+    """
+    n = G.number_of_nodes()
+    if n == 0:
+        return {}
+
+    # --- igraph path (preferred) -------------------------------------------
+    try:
+        ig_graph, node_list = _nx_to_igraph(G)
+        raw = ig_graph.betweenness(directed=G.is_directed())
+        # igraph returns un-normalized values; normalize like NetworkX:
+        # BC_norm = BC_raw / ((n-1)*(n-2))  for undirected
+        # BC_norm = BC_raw / ((n-1)*(n-2)/2) — but NX uses (n-1)(n-2) for both
+        scale = (n - 1) * (n - 2) if n > 2 else 1
+        if not G.is_directed():
+            scale /= 2  # igraph counts each path once; NX normalizes by (n-1)(n-2)
+        return {node_list[i]: (raw[i] / scale if scale else 0.0) for i in range(n)}
+    except Exception:
+        pass  # igraph not installed or conversion error — fall back
+
+    # --- NetworkX path (fallback) ------------------------------------------
+    if n <= _SAMPLE_THRESHOLD:
+        return nx.betweenness_centrality(G)
+
+    k = min(_MAX_SAMPLE_K, n)
+    return nx.betweenness_centrality(G, k=k)
+
+
+def _fast_edge_betweenness_centrality(G: nx.Graph) -> dict[tuple, float]:
+    """Compute edge betweenness centrality using the fastest available backend.
+
+    Same tiered strategy as _fast_betweenness_centrality.
+    """
+    n = G.number_of_nodes()
+    if n == 0 or G.number_of_edges() == 0:
+        return {}
+
+    # --- igraph path -------------------------------------------------------
+    try:
+        ig_graph, node_list = _nx_to_igraph(G)
+        raw = ig_graph.edge_betweenness(directed=G.is_directed())
+        scale = (n - 1) * (n - 2) if n > 2 else 1
+        if not G.is_directed():
+            scale /= 2
+        result = {}
+        for idx, eb in enumerate(raw):
+            edge = ig_graph.es[idx]
+            u = node_list[edge.source]
+            v = node_list[edge.target]
+            result[(u, v)] = eb / scale if scale else 0.0
+        return result
+    except Exception:
+        pass
+
+    # --- NetworkX path -----------------------------------------------------
+    if n <= _SAMPLE_THRESHOLD:
+        return nx.edge_betweenness_centrality(G)
+
+    k = min(_MAX_SAMPLE_K, n)
+    return nx.edge_betweenness_centrality(G, k=k)
+
+
 def _node_community_map(communities: dict[int, list[str]]) -> dict[str, int]:
     """Invert communities dict: node_id -> community_id."""
     return {n: cid for cid, nodes in communities.items() for n in nodes}
@@ -262,9 +350,7 @@ def _cross_community_surprises(
         # No community info - use edge betweenness centrality
         if G.number_of_edges() == 0:
             return []
-        if G.number_of_nodes() > 5000:
-            return []
-        betweenness = nx.edge_betweenness_centrality(G)
+        betweenness = _fast_edge_betweenness_centrality(G)
         top_edges = sorted(betweenness.items(), key=lambda x: x[1], reverse=True)[:top_n]
         result = []
         for (u, v), score in top_edges:
@@ -362,8 +448,7 @@ def suggest_questions(
 
     # 2. Bridge nodes (high betweenness) → cross-cutting concern questions
     if G.number_of_edges() > 0:
-        k = min(100, G.number_of_nodes()) if G.number_of_nodes() > 1000 else None
-        betweenness = nx.betweenness_centrality(G, k=k)
+        betweenness = _fast_betweenness_centrality(G)
         # Top bridge nodes that are NOT file-level hubs
         bridges = sorted(
             [(n, s) for n, s in betweenness.items()
