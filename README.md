@@ -54,6 +54,11 @@ Every relationship is tagged `EXTRACTED` (found directly in source), `INFERRED` 
 pip install graphifyy && graphify install
 ```
 
+> **macOS tip:** If you see `error: externally-managed-environment`, use [pipx](https://pipx.pypa.io/) instead:
+> ```bash
+> brew install pipx && pipx install graphifyy && graphify install
+> ```
+
 > **Official package:** The PyPI package is named `graphifyy` (install with `pip install graphifyy`). Other packages named `graphify*` on PyPI are not affiliated with this project. The only official repository is [safishamsi/graphify](https://github.com/safishamsi/graphify). The CLI and skill command are still `graphify`.
 
 ### Platform support
