@@ -18,7 +18,17 @@ class FileType(str, Enum):
 
 _MANIFEST_PATH = "graphify-out/manifest.json"
 
-CODE_EXTENSIONS = {'.py', '.ts', '.js', '.jsx', '.tsx', '.go', '.rs', '.java', '.cpp', '.cc', '.cxx', '.c', '.h', '.hpp', '.rb', '.swift', '.kt', '.kts', '.cs', '.scala', '.php', '.lua', '.toc', '.zig', '.ps1', '.ex', '.exs', '.m', '.mm', '.jl', '.vue', '.svelte', '.dart', '.v', '.sv'}
+CODE_EXTENSIONS = {'.py', '.ts', '.tsx', '.ets', '.js', '.jsx', '.go', '.rs', '.java', '.cpp', '.cc', '.cxx', '.c', '.h', '.hpp', '.rb', '.swift', '.kt', '.kts', '.cs', '.scala', '.php', '.lua', '.toc', '.zig', '.ps1', '.ex', '.exs', '.m', '.mm', '.jl', '.vue', '.svelte', '.dart', '.v', '.sv'}
+
+# Specific HarmonyOS project config files parsed structurally by extract_harmony_config.
+# Classified as CODE so they flow through the extraction pipeline; the extract() dispatch
+# picks them up by filename instead of suffix.
+HARMONY_CONFIG_FILES = frozenset({
+    'module.json5',        # module metadata: abilities, permissions, deviceTypes, routerMap
+    'oh-package.json5',    # package manifest: name, main, dependencies
+    'build-profile.json5', # build configuration
+    'router_map.json',     # runtime route table: name → pageSourceFile
+})
 DOC_EXTENSIONS = {'.md', '.txt', '.rst'}
 PAPER_EXTENSIONS = {'.pdf'}
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'}
@@ -82,6 +92,9 @@ _ASSET_DIR_MARKERS = {".imageset", ".xcassets", ".appiconset", ".colorset", ".la
 def classify_file(path: Path) -> FileType | None:
     # Compound extensions must be checked before simple suffix lookup
     if path.name.lower().endswith(".blade.php"):
+        return FileType.CODE
+    # HarmonyOS project config files (module.json5, oh-package.json5, router_map.json, …)
+    if path.name in HARMONY_CONFIG_FILES:
         return FileType.CODE
     ext = path.suffix.lower()
     if ext in CODE_EXTENSIONS:
