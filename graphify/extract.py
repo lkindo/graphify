@@ -3170,27 +3170,57 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
             callee = rc.get("callee", "")
             if not callee:
                 continue
+            caller = rc["caller_nid"]
             # ``dict.fromkeys`` preserves order while deduping — belt-and-braces
-            # on top of the per-bucket dedup above.
+            # on top of the per-bucket dedup above. Self-reference is filtered
+            # out: a node never calls itself through its own normalised label.
             candidates = list(dict.fromkeys(
-                global_label_to_nids.get(callee.lower(), [])
+                c for c in global_label_to_nids.get(callee.lower(), [])
+                if c != caller
             ))
             if not candidates:
                 continue
-            tgt = candidates[0]
-            caller = rc["caller_nid"]
-            if tgt != caller and (caller, tgt) not in existing_pairs:
-                existing_pairs.add((caller, tgt))
-                all_edges.append({
-                    "source": caller,
-                    "target": tgt,
-                    "relation": "calls",
-                    "confidence": "INFERRED",
-                    "confidence_score": 0.8,
-                    "source_file": rc.get("source_file", ""),
-                    "source_location": rc.get("source_location"),
-                    "weight": 1.0,
-                })
+
+            # Invariant: ambiguity_degree MUST equal len(candidates). If this
+            # ever fires, the upstream dedup guarantees have been broken.
+            assert len(set(candidates)) == len(candidates), (
+                f"duplicate nids in candidates for callee={callee!r}: {candidates}"
+            )
+
+            if len(candidates) == 1:
+                tgt = candidates[0]
+                if (caller, tgt) not in existing_pairs:
+                    existing_pairs.add((caller, tgt))
+                    all_edges.append({
+                        "source": caller,
+                        "target": tgt,
+                        "relation": "calls",
+                        "confidence": "INFERRED",
+                        "confidence_score": 0.8,
+                        "source_file": rc.get("source_file", ""),
+                        "source_location": rc.get("source_location"),
+                        "weight": 1.0,
+                    })
+            else:
+                # Multi-candidate → fan out one AMBIGUOUS edge per candidate.
+                # Picking an arbitrary winner here is indistinguishable from the
+                # old dict-overwrite bug; the downstream consumers need the
+                # ``ambiguity_degree`` signal to triage the result.
+                degree = len(candidates)
+                for tgt in candidates:
+                    if (caller, tgt) not in existing_pairs:
+                        existing_pairs.add((caller, tgt))
+                        all_edges.append({
+                            "source": caller,
+                            "target": tgt,
+                            "relation": "calls",
+                            "confidence": "AMBIGUOUS",
+                            "confidence_score": 0.2,
+                            "source_file": rc.get("source_file", ""),
+                            "source_location": rc.get("source_location"),
+                            "ambiguity_degree": degree,
+                            "weight": 1.0,
+                        })
 
     return {
         "nodes": all_nodes,
