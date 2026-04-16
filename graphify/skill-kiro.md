@@ -1,6 +1,6 @@
 ---
 name: graphify
-description: Turn any folder of files (code, docs, papers, images, video) into a queryable knowledge graph with community detection, an honest audit trail, and three outputs: interactive HTML, GraphRAG-ready JSON, and a plain-language GRAPH_REPORT.md. Use when asked to analyze a codebase, understand architecture, map dependencies, or build a knowledge graph.
+description: "Turn any folder of files (code, docs, papers, images, video) into a queryable knowledge graph with community detection, an honest audit trail, and three outputs - interactive HTML, GraphRAG-ready JSON, and a plain-language GRAPH_REPORT.md. Use when asked to analyze a codebase, understand architecture, map dependencies, or build a knowledge graph."
 ---
 
 # /graphify
