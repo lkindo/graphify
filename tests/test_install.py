@@ -12,6 +12,7 @@ PLATFORMS = {
     "droid": (".factory/skills/graphify/SKILL.md",),
     "trae": (".trae/skills/graphify/SKILL.md",),
     "trae-cn": (".trae-cn/skills/graphify/SKILL.md",),
+    "pi": (".pi/agent/skills/graphify/SKILL.md",),
     "windows": (".claude/skills/graphify/SKILL.md",),
 }
 
@@ -57,6 +58,15 @@ def test_install_trae_cn(tmp_path):
     assert (tmp_path / ".trae-cn" / "skills" / "graphify" / "SKILL.md").exists()
 
 
+def test_install_pi(tmp_path):
+    _install(tmp_path, "pi")
+    skill = tmp_path / ".pi" / "agent" / "skills" / "graphify" / "SKILL.md"
+    assert skill.exists()
+    content = skill.read_text()
+    assert "Pi platform" in content
+    assert "graphify pi install" in content
+
+
 def test_install_windows(tmp_path):
     _install(tmp_path, "windows")
     assert (tmp_path / ".claude" / "skills" / "graphify" / "SKILL.md").exists()
@@ -94,7 +104,7 @@ def test_all_skill_files_exist_in_package():
     """All installable platform skill files must be present in the installed package."""
     import graphify
     pkg = Path(graphify.__file__).parent
-    for name in ("skill.md", "skill-codex.md", "skill-opencode.md", "skill-claw.md", "skill-windows.md", "skill-droid.md", "skill-trae.md"):
+    for name in ("skill.md", "skill-codex.md", "skill-opencode.md", "skill-claw.md", "skill-pi.md", "skill-windows.md", "skill-droid.md", "skill-trae.md"):
         assert (pkg / name).exists(), f"Missing: {name}"
 
 
@@ -136,6 +146,11 @@ def test_opencode_agents_install_writes_agents_md(tmp_path):
 
 def test_claw_agents_install_writes_agents_md(tmp_path):
     _agents_install(tmp_path, "claw")
+    assert (tmp_path / "AGENTS.md").exists()
+
+
+def test_pi_agents_install_writes_agents_md(tmp_path):
+    _agents_install(tmp_path, "pi")
     assert (tmp_path / "AGENTS.md").exists()
 
 
@@ -318,3 +333,32 @@ def test_gemini_uninstall_removes_hook(tmp_path):
 def test_gemini_uninstall_noop_if_not_installed(tmp_path):
     from graphify.__main__ import gemini_uninstall
     gemini_uninstall(tmp_path)  # should not raise
+
+
+# --- Pi ---------------------------------------------------------------------
+
+def test_pi_install_writes_prompt_alias_and_agents(tmp_path):
+    from graphify.__main__ import _pi_install
+    with patch("graphify.__main__.Path.home", return_value=tmp_path):
+        _pi_install(tmp_path)
+
+    prompt = tmp_path / ".pi" / "prompts" / "graphify.md"
+    agents_md = tmp_path / "AGENTS.md"
+    skill = tmp_path / ".pi" / "agent" / "skills" / "graphify" / "SKILL.md"
+
+    assert prompt.exists()
+    assert "graphify pi prompt alias" in prompt.read_text()
+    assert agents_md.exists()
+    assert "graphify-out/GRAPH_REPORT.md" in agents_md.read_text()
+    assert skill.exists()
+
+
+def test_pi_uninstall_removes_prompt_alias_and_skill(tmp_path):
+    from graphify.__main__ import _pi_install, _pi_uninstall
+    with patch("graphify.__main__.Path.home", return_value=tmp_path):
+        _pi_install(tmp_path)
+        _pi_uninstall(tmp_path)
+
+    assert not (tmp_path / ".pi" / "prompts" / "graphify.md").exists()
+    assert not (tmp_path / ".pi" / "agent" / "skills" / "graphify" / "SKILL.md").exists()
+    assert not (tmp_path / "AGENTS.md").exists()
