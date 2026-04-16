@@ -1,6 +1,7 @@
 # monitor a folder and auto-trigger --update when files change
 from __future__ import annotations
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -43,7 +44,7 @@ def _rebuild_code(watch_path: Path, *, follow_symlinks: bool = False) -> bool:
                 existing = json.loads(existing_graph.read_text(encoding="utf-8"))
                 code_ids = {n["id"] for n in existing.get("nodes", []) if n.get("file_type") == "code"}
                 sem_nodes = [n for n in existing.get("nodes", []) if n.get("file_type") != "code"]
-                sem_edges = [e for e in existing.get("edges", [])
+                sem_edges = [e for e in existing.get("links", existing.get("edges", []))
                              if e.get("confidence") in ("INFERRED", "AMBIGUOUS")
                              or (e.get("source") not in code_ids and e.get("target") not in code_ids)]
                 result = {
@@ -120,6 +121,7 @@ def watch(watch_path: Path, debounce: float = 3.0) -> None:
     """
     try:
         from watchdog.observers import Observer
+        from watchdog.observers.polling import PollingObserver
         from watchdog.events import FileSystemEventHandler
     except ImportError as e:
         raise ImportError("watchdog not installed. Run: pip install watchdog") from e
@@ -145,7 +147,8 @@ def watch(watch_path: Path, debounce: float = 3.0) -> None:
             changed.add(path)
 
     handler = Handler()
-    observer = Observer()
+    # Use polling observer on macOS — FSEvents can miss rapid saves in some editors
+    observer = PollingObserver() if sys.platform == "darwin" else Observer()
     observer.schedule(handler, str(watch_path), recursive=True)
     observer.start()
 

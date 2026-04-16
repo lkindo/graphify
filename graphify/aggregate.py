@@ -198,7 +198,7 @@ def _llm_summarize(G_parent: nx.Graph, params: dict) -> nx.Graph:
         labels = [G_parent.nodes[n].get("label", n) for n in nodes if n in G_parent]
         comm_summary_lines.append(f"  Community {cid}: {', '.join(labels[:10])}")
 
-    god_lines = [f"  {g['label']} ({g['edges']} edges)" for g in gods[:15]]
+    god_lines = [f"  {g['label']} (degree {g.get('degree', g.get('edges', '?'))})" for g in gods[:15]]
     surprise_lines = [
         f"  {s.get('source', '?')} --{s.get('relation', '?')}--> {s.get('target', '?')}"
         for s in surprises[:10]
