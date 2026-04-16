@@ -102,6 +102,11 @@ _PLATFORM_CONFIG: dict[str, dict] = {
         "skill_dst": Path(".kiro") / "skills" / "graphify" / "SKILL.md",
         "claude_md": False,
     },
+    "pi": {
+        "skill_file": "skill-pi.md",
+        "skill_dst": Path(".pi") / "agent" / "skills" / "graphify" / "SKILL.md",
+        "claude_md": False,
+    },
     "antigravity": {
         "skill_file": "skill.md",
         "skill_dst": Path(".agent") / "skills" / "graphify" / "SKILL.md",
@@ -162,7 +167,14 @@ def install(platform: str = "claude") -> None:
     print()
     print("Done. Open your AI coding assistant and type:")
     print()
-    print("  /graphify .")
+    if platform == "pi":
+        print("  /skill:graphify .")
+        print()
+        print("For a native /graphify alias inside a project, run:")
+        print()
+        print("  graphify pi install")
+    else:
+        print("  /graphify .")
     print()
 
 
@@ -594,6 +606,24 @@ def _cursor_uninstall(project_dir: Path) -> None:
     print(f"graphify Cursor rule removed from {rule_path.resolve()}")
 
 
+_PI_PROMPT_PATH = Path(".pi") / "prompts" / "graphify.md"
+_PI_PROMPT_MARKER = "<!-- graphify pi prompt alias -->"
+_PI_PROMPT = """\
+---
+description: Build, update, or query the graphify knowledge graph for this project
+---
+<!-- graphify pi prompt alias -->
+Use the installed `graphify` skill now.
+
+Original `/graphify` arguments: $ARGUMENTS
+
+Rules:
+- If no arguments were provided, use `.`
+- Treat the arguments exactly like the graphify CLI syntax
+- Follow the graphify skill instructions rather than improvising a different workflow
+"""
+
+
 # OpenCode tool.execute.before plugin — fires before every tool call.
 # Injects a graph reminder into bash command output when graph.json exists.
 _OPENCODE_PLUGIN_JS = """\
@@ -733,7 +763,7 @@ def _uninstall_codex_hook(project_dir: Path) -> None:
 
 
 def _agents_install(project_dir: Path, platform: str) -> None:
-    """Write the graphify section to the local AGENTS.md (Codex/OpenCode/OpenClaw)."""
+    """Write the graphify section to the local AGENTS.md for harnesses that read it."""
     target = (project_dir or Path(".")) / "AGENTS.md"
 
     if target.exists():
@@ -885,6 +915,63 @@ def claude_uninstall(project_dir: Path | None = None) -> None:
     _uninstall_claude_hook(project_dir or Path("."))
 
 
+def _remove_platform_skill(platform_name: str) -> list[str]:
+    cfg = _PLATFORM_CONFIG[platform_name]
+    skill_dst = Path.home() / cfg["skill_dst"]
+    removed = []
+    if skill_dst.exists():
+        skill_dst.unlink()
+        removed.append(f"skill removed: {skill_dst}")
+    version_file = skill_dst.parent / ".graphify_version"
+    if version_file.exists():
+        version_file.unlink()
+    for d in (skill_dst.parent, skill_dst.parent.parent, skill_dst.parent.parent.parent):
+        try:
+            d.rmdir()
+        except OSError:
+            break
+    return removed
+
+
+def _pi_install(project_dir: Path | None = None) -> None:
+    """Install graphify for Pi: global skill + local AGENTS + /graphify prompt alias."""
+    install(platform="pi")
+    _agents_install(project_dir or Path("."), "pi")
+
+    prompt_path = (project_dir or Path(".")) / _PI_PROMPT_PATH
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    if prompt_path.exists():
+        content = prompt_path.read_text(encoding="utf-8")
+        if _PI_PROMPT_MARKER in content:
+            print(f"  {_PI_PROMPT_PATH}  ->  already configured")
+        else:
+            print(f"  {_PI_PROMPT_PATH}  ->  already exists, preserving existing prompt")
+    else:
+        prompt_path.write_text(_PI_PROMPT, encoding="utf-8")
+        print(f"  {_PI_PROMPT_PATH}  ->  /graphify prompt alias written")
+
+    print()
+    print("Pi will now read the knowledge graph before answering codebase questions.")
+    print("Use /graphify inside this project, or /skill:graphify anywhere the skill is installed.")
+
+
+def _pi_uninstall(project_dir: Path | None = None) -> None:
+    """Remove graphify Pi integration: skill, AGENTS.md section, and prompt alias."""
+    removed = _remove_platform_skill("pi")
+    print("; ".join(removed) if removed else "nothing to remove from global Pi skill install")
+
+    prompt_path = (project_dir or Path(".")) / _PI_PROMPT_PATH
+    if prompt_path.exists():
+        content = prompt_path.read_text(encoding="utf-8")
+        if _PI_PROMPT_MARKER in content:
+            prompt_path.unlink()
+            print(f"  {_PI_PROMPT_PATH}  ->  removed")
+        else:
+            print(f"  {_PI_PROMPT_PATH}  ->  preserved (not managed by graphify)")
+
+    _agents_uninstall(project_dir or Path("."), platform="pi")
+
+
 def main() -> None:
     # Check all known skill install locations for a stale version stamp.
     # Skip during install/uninstall (hook writes trigger a fresh check anyway).
@@ -897,7 +984,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor|antigravity|hermes|kiro)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor|antigravity|hermes|kiro|pi)")
         print("  path \"A\" \"B\"            shortest path between two nodes in graph.json")
         print("    --graph <path>          path to graph.json (default graphify-out/graph.json)")
         print("  explain \"X\"             plain-language explanation of a node and its neighbors")
@@ -953,6 +1040,8 @@ def main() -> None:
         print("  hermes uninstall        remove skill from ~/.hermes/skills/graphify/")
         print("  kiro install            write skill to .kiro/skills/graphify/ + steering file (Kiro IDE/CLI)")
         print("  kiro uninstall          remove skill + steering file")
+        print("  pi install              install Pi skill + write AGENTS.md + .pi/prompts/graphify.md")
+        print("  pi uninstall            remove Pi skill + AGENTS.md section + /graphify prompt alias")
         print()
         return
 
@@ -1014,19 +1103,7 @@ def main() -> None:
         if subcmd == "install":
             install(platform="copilot")
         elif subcmd == "uninstall":
-            skill_dst = Path.home() / _PLATFORM_CONFIG["copilot"]["skill_dst"]
-            removed = []
-            if skill_dst.exists():
-                skill_dst.unlink()
-                removed.append(f"skill removed: {skill_dst}")
-            version_file = skill_dst.parent / ".graphify_version"
-            if version_file.exists():
-                version_file.unlink()
-            for d in (skill_dst.parent, skill_dst.parent.parent, skill_dst.parent.parent.parent):
-                try:
-                    d.rmdir()
-                except OSError:
-                    break
+            removed = _remove_platform_skill("copilot")
             print("; ".join(removed) if removed else "nothing to remove")
         else:
             print("Usage: graphify copilot [install|uninstall]", file=sys.stderr)
@@ -1039,6 +1116,15 @@ def main() -> None:
             _kiro_uninstall(Path("."))
         else:
             print("Usage: graphify kiro [install|uninstall]", file=sys.stderr)
+            sys.exit(1)
+    elif cmd == "pi":
+        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
+        if subcmd == "install":
+            _pi_install(Path("."))
+        elif subcmd == "uninstall":
+            _pi_uninstall(Path("."))
+        else:
+            print("Usage: graphify pi [install|uninstall]", file=sys.stderr)
             sys.exit(1)
     elif cmd in ("aider", "codex", "opencode", "claw", "droid", "trae", "trae-cn", "hermes"):
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
