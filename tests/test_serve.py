@@ -6,6 +6,7 @@ from networkx.readwrite import json_graph
 
 from graphify.serve import (
     _communities_from_graph,
+    _community_relevance_score,
     _score_nodes,
     _bfs,
     _dfs,
@@ -151,3 +152,44 @@ def test_load_graph_missing_file(tmp_path):
     graphify_dir.mkdir()
     with pytest.raises(SystemExit):
         _load_graph(str(graphify_dir / "nonexistent.json"))
+
+
+# --- _community_relevance_score ---
+
+def test_community_relevance_score_full_match():
+    score = _community_relevance_score("Transformer model with attention mechanism", ["transformer", "attention"])
+    assert score == 1.0
+
+def test_community_relevance_score_partial_match():
+    score = _community_relevance_score("Transformer model with layers", ["transformer", "attention"])
+    assert score == 0.5
+
+def test_community_relevance_score_no_match():
+    score = _community_relevance_score("Database schema tables", ["transformer", "attention"])
+    assert score == 0.0
+
+def test_community_relevance_score_empty_terms():
+    score = _community_relevance_score("Anything here", [])
+    assert score == 0.0
+
+def test_community_relevance_score_empty_summary():
+    score = _community_relevance_score("", ["transformer"])
+    assert score == 0.0
+
+def test_community_relevance_score_case_insensitive():
+    score = _community_relevance_score("TRANSFORMER Model", ["transformer"])
+    assert score == 1.0
+
+
+# --- graph.json with community_summaries roundtrip ---
+
+def test_load_graph_with_summaries(tmp_path):
+    """Graph file with community_summaries loads successfully."""
+    G = _make_graph()
+    data = json_graph.node_link_data(G, edges="links")
+    data["community_summaries"] = {"0": "Extract and cluster", "1": "Build and report"}
+    data["community_hierarchy"] = {"0": {"0": ["n1", "n2"], "1": ["n3"]}}
+    p = tmp_path / "graph.json"
+    p.write_text(json.dumps(data))
+    G2 = _load_graph(str(p))
+    assert G2.number_of_nodes() == G.number_of_nodes()

@@ -45,6 +45,39 @@ def _strip_diacritics(text: str) -> str:
     return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
+def _community_summaries_from_data(graph_path: str) -> dict[int, str]:
+    """Load community_summaries from graph.json if present."""
+    try:
+        data = json.loads(Path(graph_path).resolve().read_text(encoding="utf-8"))
+        raw = data.get("community_summaries", {})
+        return {int(k): v for k, v in raw.items()}
+    except Exception:
+        return {}
+
+
+def _community_hierarchy_from_data(graph_path: str) -> dict[int, dict[int, list[str]]]:
+    """Load community_hierarchy from graph.json if present."""
+    try:
+        data = json.loads(Path(graph_path).resolve().read_text(encoding="utf-8"))
+        raw = data.get("community_hierarchy", {})
+        return {int(level): {int(cid): nodes for cid, nodes in comms.items()} for level, comms in raw.items()}
+    except Exception:
+        return {}
+
+
+def _community_relevance_score(summary: str, terms: list[str]) -> float:
+    """Score a community summary against query terms using simple term overlap.
+
+    Returns a float in [0, 1] based on the fraction of query terms found in
+    the summary text (case-insensitive).
+    """
+    if not terms or not summary:
+        return 0.0
+    summary_lower = summary.lower()
+    matches = sum(1 for t in terms if t in summary_lower)
+    return matches / len(terms)
+
+
 def _score_nodes(G: nx.Graph, terms: list[str]) -> list[tuple[float, str]]:
     scored = []
     norm_terms = [_strip_diacritics(t).lower() for t in terms]
@@ -158,6 +191,8 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
 
     G = _load_graph(graph_path)
     communities = _communities_from_graph(G)
+    community_summaries = _community_summaries_from_data(graph_path)
+    community_hierarchy = _community_hierarchy_from_data(graph_path)
 
     server = Server("graphify")
 
@@ -232,6 +267,19 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
                     "required": ["source", "target"],
                 },
             ),
+            types.Tool(
+                name="list_communities",
+                description="List all communities with their summaries. Use to browse the graph structure before querying.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "level": {
+                            "type": "integer",
+                            "description": "Hierarchy level (0=coarse, higher=finer). Omit for flat communities.",
+                        },
+                    },
+                },
+            ),
         ]
 
     def _tool_query_graph(arguments: dict) -> str:
@@ -240,6 +288,53 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
         depth = min(int(arguments.get("depth", 3)), 6)
         budget = int(arguments.get("token_budget", 2000))
         terms = [t.lower() for t in question.split() if len(t) > 2]
+
+        # Community-pruned query: if summaries exist, score communities first
+        # and restrict traversal to nodes in top-K relevant communities
+        if community_summaries and terms:
+            scored_communities = [
+                (_community_relevance_score(summary, terms), cid)
+                for cid, summary in community_summaries.items()
+            ]
+            scored_communities.sort(reverse=True)
+            # Take communities with score > 0, up to top 3
+            relevant_cids = [
+                cid for score, cid in scored_communities
+                if score > 0
+            ][:3]
+
+            if relevant_cids:
+                # Restrict to nodes in relevant communities
+                relevant_nodes = set()
+                for cid in relevant_cids:
+                    relevant_nodes.update(communities.get(cid, []))
+                # Score only within relevant community nodes
+                subgraph = G.subgraph(relevant_nodes)
+                scored = _score_nodes(subgraph, terms)
+                start_nodes = [nid for _, nid in scored[:3]]
+                if not start_nodes:
+                    # Fall back to community hub nodes (highest degree in each community)
+                    for cid in relevant_cids:
+                        c_nodes = communities.get(cid, [])
+                        if c_nodes:
+                            hub = max(c_nodes, key=lambda n: G.degree(n))
+                            start_nodes.append(hub)
+                            if len(start_nodes) >= 3:
+                                break
+                if start_nodes:
+                    nodes, edges = _dfs(G, start_nodes, depth) if mode == "dfs" else _bfs(G, start_nodes, depth)
+                    # Constrain output to relevant community scope
+                    nodes = nodes & relevant_nodes
+                    matched_summaries = [f"  Community {cid}: {community_summaries[cid]}" for cid in relevant_cids if cid in community_summaries]
+                    header = (
+                        f"Traversal: {mode.upper()} depth={depth} | "
+                        f"Pruned to {len(relevant_cids)} communities | "
+                        f"{len(nodes)} nodes found\n"
+                        f"Matched communities:\n" + "\n".join(matched_summaries) + "\n\n"
+                    )
+                    return header + _subgraph_to_text(G, nodes, edges, budget)
+
+        # Fallback: original behavior (no community summaries or no matches)
         scored = _score_nodes(G, terms)
         start_nodes = [nid for _, nid in scored[:3]]
         if not start_nodes:
@@ -338,6 +433,30 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
             segments.append(f"--{rel}{conf_str}--> {G.nodes[v].get('label', v)}")
         return f"Shortest path ({hops} hops):\n  " + " ".join(segments)
 
+    def _tool_list_communities(arguments: dict) -> str:
+        level = arguments.get("level")
+        if level is not None and community_hierarchy:
+            level = int(level)
+            level_data = community_hierarchy.get(level)
+            if level_data is None:
+                available = sorted(community_hierarchy.keys())
+                return f"Hierarchy level {level} not found. Available levels: {available}"
+            lines = [f"Communities at hierarchy level {level} ({len(level_data)} communities):"]
+            for cid, nodes in sorted(level_data.items(), key=lambda x: -len(x[1])):
+                top_labels = [G.nodes[n].get("label", n) for n in nodes[:3] if n in G]
+                lines.append(f"  Community {cid} ({len(nodes)} nodes): {', '.join(top_labels)}...")
+            return "\n".join(lines)
+
+        # Flat communities with summaries
+        lines = [f"Communities ({len(communities)} total):"]
+        for cid, nodes in sorted(communities.items(), key=lambda x: -len(x[1])):
+            summary = community_summaries.get(cid, "")
+            summary_str = f" — {summary}" if summary else ""
+            lines.append(f"  Community {cid} ({len(nodes)} nodes){summary_str}")
+        if community_hierarchy:
+            lines.append(f"\nHierarchy available ({len(community_hierarchy)} levels). Use level=0..{len(community_hierarchy)-1} to browse.")
+        return "\n".join(lines)
+
     _handlers = {
         "query_graph": _tool_query_graph,
         "get_node": _tool_get_node,
@@ -346,6 +465,7 @@ def serve(graph_path: str = "graphify-out/graph.json") -> None:
         "god_nodes": _tool_god_nodes,
         "graph_stats": _tool_graph_stats,
         "shortest_path": _tool_shortest_path,
+        "list_communities": _tool_list_communities,
     }
 
     @server.call_tool()
