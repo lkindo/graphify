@@ -117,6 +117,32 @@ def _git_root(path: Path) -> Path | None:
     return None
 
 
+def _resolve_hooks_dir(root: Path) -> Path:
+    """Return the effective hooks directory, respecting ``core.hooksPath``.
+
+    If ``core.hooksPath`` is configured (e.g. by Husky) and the path exists,
+    use it.  Otherwise fall back to ``<root>/.git/hooks``.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "config", "--get", "core.hooksPath"],
+            capture_output=True, text=True, cwd=str(root),
+        )
+        if result.returncode == 0:
+            raw = result.stdout.strip()
+            if raw:
+                candidate = Path(raw)
+                if not candidate.is_absolute():
+                    candidate = root / candidate
+                candidate = candidate.resolve()
+                if candidate.is_dir():
+                    return candidate
+    except FileNotFoundError:
+        pass  # git not on PATH
+    return root / ".git" / "hooks"
+
+
 def _install_hook(hooks_dir: Path, name: str, script: str, marker: str) -> str:
     """Install a single git hook, appending if an existing hook is present."""
     hook_path = hooks_dir / name
@@ -158,8 +184,25 @@ def install(path: Path = Path(".")) -> str:
     if root is None:
         raise RuntimeError(f"No git repository found at or above {path.resolve()}")
 
-    hooks_dir = root / ".git" / "hooks"
-    hooks_dir.mkdir(exist_ok=True)
+    # Safety: never operate on a working tree that has core.bare=true.
+    import subprocess as _sp
+    try:
+        bare_check = _sp.run(
+            ["git", "config", "--get", "core.bare"],
+            capture_output=True, text=True, cwd=str(root),
+        )
+        if bare_check.returncode == 0 and bare_check.stdout.strip().lower() == "true":
+            return (
+                "error: core.bare=true is set on this working tree.\n"
+                "graphify will not install hooks because this configuration is invalid\n"
+                "for a non-bare checkout and may cause data loss.\n"
+                "Fix with: git config --unset core.bare"
+            )
+    except (FileNotFoundError, OSError):
+        pass
+
+    hooks_dir = _resolve_hooks_dir(root)
+    hooks_dir.mkdir(parents=True, exist_ok=True)
 
     commit_msg = _install_hook(hooks_dir, "post-commit", _HOOK_SCRIPT, _HOOK_MARKER)
     checkout_msg = _install_hook(hooks_dir, "post-checkout", _CHECKOUT_SCRIPT, _CHECKOUT_MARKER)
@@ -173,7 +216,7 @@ def uninstall(path: Path = Path(".")) -> str:
     if root is None:
         raise RuntimeError(f"No git repository found at or above {path.resolve()}")
 
-    hooks_dir = root / ".git" / "hooks"
+    hooks_dir = _resolve_hooks_dir(root)
     commit_msg = _uninstall_hook(hooks_dir, "post-commit", _HOOK_MARKER, _HOOK_MARKER_END)
     checkout_msg = _uninstall_hook(hooks_dir, "post-checkout", _CHECKOUT_MARKER, _CHECKOUT_MARKER_END)
 
@@ -185,7 +228,7 @@ def status(path: Path = Path(".")) -> str:
     root = _git_root(path)
     if root is None:
         return "Not in a git repository."
-    hooks_dir = root / ".git" / "hooks"
+    hooks_dir = _resolve_hooks_dir(root)
 
     def _check(name: str, marker: str) -> str:
         p = hooks_dir / name

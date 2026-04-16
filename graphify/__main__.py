@@ -4,6 +4,7 @@ import json
 import platform
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -22,6 +23,40 @@ def _check_skill_version(skill_dst: Path) -> None:
     installed = version_file.read_text(encoding="utf-8").strip()
     if installed != __version__:
         print(f"  warning: skill is from graphify {installed}, package is {__version__}. Run 'graphify install' to update.")
+
+# Files that indicate a repo already vendors its graphify integration.
+# If any of these are tracked in git, `graphify install` should no-op to
+# avoid writing duplicate untracked files that block the next git pull.
+_INTEGRATION_MARKERS = [
+    ".claude/settings.json",
+    ".codex/hooks.json",
+    ".cursor/rules/graphify.mdc",
+    ".gemini/settings.json",
+    ".kiro/skills/graphify/SKILL.md",
+    ".agent/rules/graphify.md",
+]
+
+
+def _is_already_integrated(project_dir: Path) -> list[str]:
+    """Return tracked integration files found in *project_dir*.
+
+    Runs ``git ls-files`` to check whether integration artefacts are already
+    committed.  Returns the list of tracked paths (empty list ⇒ not integrated).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--error-unmatch"] + _INTEGRATION_MARKERS,
+            capture_output=True, text=True, cwd=str(project_dir),
+        )
+        # exit 0 → all queried paths are tracked
+        if result.returncode == 0:
+            return [p.strip() for p in result.stdout.strip().splitlines() if p.strip()]
+        # exit 1 with partial output → some are tracked
+        tracked = [p.strip() for p in result.stdout.strip().splitlines() if p.strip()]
+        return tracked
+    except (FileNotFoundError, OSError):
+        return []
+
 
 _SETTINGS_HOOK = {
     "matcher": "Glob|Grep",
@@ -115,7 +150,7 @@ _PLATFORM_CONFIG: dict[str, dict] = {
 }
 
 
-def install(platform: str = "claude") -> None:
+def install(platform: str = "claude", *, force: bool = False) -> None:
     if platform == "gemini":
         gemini_install()
         return
@@ -128,6 +163,21 @@ def install(platform: str = "claude") -> None:
             file=sys.stderr,
         )
         sys.exit(1)
+
+    # Detect repos that already vendor their graphify integration.
+    if not force:
+        tracked = _is_already_integrated(Path("."))
+        if tracked:
+            print("This repository already tracks graphify integration files:")
+            for f in tracked:
+                print(f"  - {f}")
+            print()
+            print("Re-running 'graphify install' would create duplicate untracked files")
+            print("that block the next 'git pull'. To update, edit the tracked files directly")
+            print("or remove them from git first.")
+            print()
+            print("To force install anyway, pass --force.")
+            return
 
     cfg = _PLATFORM_CONFIG[platform]
     skill_src = Path(__file__).parent / cfg["skill_file"]
@@ -897,7 +947,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor|antigravity|hermes|kiro)")
+        print("  install [--platform P] [--force]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor|antigravity|hermes|kiro)")
         print("  path \"A\" \"B\"            shortest path between two nodes in graph.json")
         print("    --graph <path>          path to graph.json (default graphify-out/graph.json)")
         print("  explain \"X\"             plain-language explanation of a node and its neighbors")
@@ -961,6 +1011,7 @@ def main() -> None:
         # Default to windows platform on Windows, claude elsewhere
         default_platform = "windows" if platform.system() == "Windows" else "claude"
         chosen_platform = default_platform
+        force = False
         args = sys.argv[2:]
         i = 0
         while i < len(args):
@@ -970,9 +1021,12 @@ def main() -> None:
             elif args[i] == "--platform" and i + 1 < len(args):
                 chosen_platform = args[i + 1]
                 i += 2
+            elif args[i] == "--force":
+                force = True
+                i += 1
             else:
                 i += 1
-        install(platform=chosen_platform)
+        install(platform=chosen_platform, force=force)
     elif cmd == "claude":
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
         if subcmd == "install":
