@@ -3027,7 +3027,12 @@ def _check_tree_sitter_version() -> None:
         )
 
 
-def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
+def extract(
+    paths: list[Path],
+    cache_root: Path | None = None,
+    *,
+    max_ambiguity_fanout: int | None = None,
+) -> dict:
     """Extract AST nodes and edges from a list of code files.
 
     Two-pass process:
@@ -3040,6 +3045,15 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
         cache_root: explicit root for graphify-out/cache/ (overrides the
             inferred common path prefix). Pass Path('.') when running on a
             subdirectory so the cache stays at ./graphify-out/cache/.
+        max_ambiguity_fanout: cap on the number of AMBIGUOUS edges the
+            cross-file call resolver will emit for a single callee label.
+            When a normalised label matches more than this many candidate
+            nodes, the resolver drops the whole fan-out and records the
+            label under ``cross_file_call_stats.truncated_examples`` — this
+            prevents generic verbs (``.get()``, ``.all()``, ``.delete()``)
+            from inflating the graph with thousands of meaningless edges.
+            ``None`` (default) falls back to the ``GRAPHIFY_MAX_AMBIGUITY_FANOUT``
+            env var, then to ``20``.
     """
     _check_tree_sitter_version()
     per_file: list[dict] = []
@@ -3147,10 +3161,30 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
     # normalised label — which is common for CRUD verbs like `.get()`, `.all()`,
     # `.delete()` and for cross-language collisions — a plain ``dict[str, str]``
     # silently drops N-1 candidates via dict-overwrite. Preserving every
-    # candidate is a prerequisite for correct resolution; the consumption site
-    # below still picks ``candidates[0]`` so this commit is behaviour-equivalent
-    # to the previous implementation.
+    # candidate is a prerequisite for correct resolution.
+    #
+    # Guardrails:
+    #  * Each bucket stores unique nids (defends against the same node id
+    #    being appended twice when two of its label variants normalise to the
+    #    same key, or when `all_nodes` transiently contains duplicates from
+    #    layered extractors).
+    #  * When the candidate pool exceeds `max_ambiguity_fanout`, the whole
+    #    fan-out is dropped instead of emitting a flood of AMBIGUOUS edges.
+    #    Picking a "random" winner at that degree would just resurrect the
+    #    old dict-overwrite bug, and keeping all N edges explodes the graph
+    #    for generic verbs that AST alone cannot disambiguate.
     from collections import defaultdict
+    import os as _os
+
+    if max_ambiguity_fanout is None:
+        _env = _os.environ.get("GRAPHIFY_MAX_AMBIGUITY_FANOUT")
+        if _env is not None:
+            try:
+                max_ambiguity_fanout = int(_env)
+            except ValueError:
+                max_ambiguity_fanout = 20
+        else:
+            max_ambiguity_fanout = 20
 
     global_label_to_nids: dict[str, list[str]] = defaultdict(list)
     _seen_per_bucket: dict[str, set[str]] = defaultdict(set)
@@ -3165,6 +3199,13 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
                 global_label_to_nids[key].append(nid)
 
     existing_pairs = {(e["source"], e["target"]) for e in all_edges}
+
+    resolved_single = 0
+    resolved_ambiguous = 0
+    truncated_high_degree = 0
+    truncated_labels_seen: list[str] = []
+    _truncated_seen_set: set[str] = set()
+
     for result in per_file:
         for rc in result.get("raw_calls", []):
             callee = rc.get("callee", "")
@@ -3201,6 +3242,16 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
                         "source_location": rc.get("source_location"),
                         "weight": 1.0,
                     })
+                    resolved_single += 1
+            elif len(candidates) > max_ambiguity_fanout:
+                # Generic verbs (``.get()``, ``.all()``, ``.delete()``) with
+                # 30+ candidates are AST-undecidable. Drop the fan-out and
+                # surface the label in stats so downstream tools can audit.
+                truncated_high_degree += 1
+                if callee not in _truncated_seen_set:
+                    _truncated_seen_set.add(callee)
+                    if len(truncated_labels_seen) < 5:
+                        truncated_labels_seen.append(callee)
             else:
                 # Multi-candidate → fan out one AMBIGUOUS edge per candidate.
                 # Picking an arbitrary winner here is indistinguishable from the
@@ -3221,12 +3272,20 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
                             "ambiguity_degree": degree,
                             "weight": 1.0,
                         })
+                        resolved_ambiguous += 1
 
     return {
         "nodes": all_nodes,
         "edges": all_edges,
         "input_tokens": 0,
         "output_tokens": 0,
+        "cross_file_call_stats": {
+            "resolved_single": resolved_single,
+            "resolved_ambiguous": resolved_ambiguous,
+            "truncated_high_degree": truncated_high_degree,
+            "truncated_examples": truncated_labels_seen,
+            "max_ambiguity_fanout": max_ambiguity_fanout,
+        },
     }
 
 
