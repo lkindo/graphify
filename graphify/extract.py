@@ -3095,6 +3095,7 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
         ".dart": extract_dart,
         ".v": extract_verilog,
         ".sv": extract_verilog,
+        ".mjs": extract_js,
     }
 
     total = len(paths)
