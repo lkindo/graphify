@@ -3141,12 +3141,28 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
     # Cross-file call resolution for all languages
     # Each extractor saved unresolved calls in raw_calls. Now that we have all
     # nodes from all files, resolve any callee that exists in another file.
-    global_label_to_nid: dict[str, str] = {}
+    #
+    # The lookup table is keyed by normalised lowercase label and stores a list
+    # of candidate nids (not just one). When multiple nodes share the same
+    # normalised label — which is common for CRUD verbs like `.get()`, `.all()`,
+    # `.delete()` and for cross-language collisions — a plain ``dict[str, str]``
+    # silently drops N-1 candidates via dict-overwrite. Preserving every
+    # candidate is a prerequisite for correct resolution; the consumption site
+    # below still picks ``candidates[0]`` so this commit is behaviour-equivalent
+    # to the previous implementation.
+    from collections import defaultdict
+
+    global_label_to_nids: dict[str, list[str]] = defaultdict(list)
+    _seen_per_bucket: dict[str, set[str]] = defaultdict(set)
     for n in all_nodes:
         raw = n.get("label", "")
         normalised = raw.strip("()").lstrip(".")
         if normalised:
-            global_label_to_nid[normalised.lower()] = n["id"]
+            key = normalised.lower()
+            nid = n["id"]
+            if nid not in _seen_per_bucket[key]:
+                _seen_per_bucket[key].add(nid)
+                global_label_to_nids[key].append(nid)
 
     existing_pairs = {(e["source"], e["target"]) for e in all_edges}
     for result in per_file:
@@ -3154,9 +3170,16 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
             callee = rc.get("callee", "")
             if not callee:
                 continue
-            tgt = global_label_to_nid.get(callee.lower())
+            # ``dict.fromkeys`` preserves order while deduping — belt-and-braces
+            # on top of the per-bucket dedup above.
+            candidates = list(dict.fromkeys(
+                global_label_to_nids.get(callee.lower(), [])
+            ))
+            if not candidates:
+                continue
+            tgt = candidates[0]
             caller = rc["caller_nid"]
-            if tgt and tgt != caller and (caller, tgt) not in existing_pairs:
+            if tgt != caller and (caller, tgt) not in existing_pairs:
                 existing_pairs.add((caller, tgt))
                 all_edges.append({
                     "source": caller,
