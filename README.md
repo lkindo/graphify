@@ -86,6 +86,24 @@ Then open your AI coding assistant and type:
 ```
 /graphify .
 ```
+### Run from a cloned checkout on Windows
+
+If you cloned this repo and want the deterministic code-only pass directly from a terminal, use the repo-local launchers:
+
+PowerShell:
+
+```powershell
+.\graphify.ps1 update .
+```
+
+CMD:
+
+```bat
+graphify.cmd update .
+```
+
+Both wrappers prefer a local `.venv\Scripts\python.exe` first, then fall back to `py -3`, then `python`.
+
 
 Note: Codex uses `$` instead of `/` for skill calling, so type `$graphify .` instead.
 
@@ -301,6 +319,7 @@ graphify add https://... --author "Name" --contributor "Name"
 # incremental update and maintenance
 graphify watch ./src                         # auto-rebuild on code changes
 graphify update ./src                        # re-extract code files, no LLM needed
+graphify --update ./src                      # same thing, PowerShell/CMD-friendly alias
 graphify cluster-only ./my-project           # rerun clustering on existing graph.json
 ```
 

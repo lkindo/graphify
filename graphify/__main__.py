@@ -14,6 +14,35 @@ except Exception:
     __version__ = "unknown"
 
 
+_TOP_LEVEL_COMMANDS = {
+    "install",
+    "claude",
+    "gemini",
+    "cursor",
+    "copilot",
+    "kiro",
+    "aider",
+    "codex",
+    "opencode",
+    "claw",
+    "droid",
+    "trae",
+    "trae-cn",
+    "hermes",
+    "antigravity",
+    "hook",
+    "query",
+    "save-result",
+    "path",
+    "explain",
+    "add",
+    "watch",
+    "cluster-only",
+    "update",
+    "benchmark",
+}
+
+
 def _check_skill_version(skill_dst: Path) -> None:
     """Warn if the installed skill is from an older graphify version."""
     version_file = skill_dst.parent / ".graphify_version"
@@ -22,6 +51,17 @@ def _check_skill_version(skill_dst: Path) -> None:
     installed = version_file.read_text(encoding="utf-8").strip()
     if installed != __version__:
         print(f"  warning: skill is from graphify {installed}, package is {__version__}. Run 'graphify install' to update.")
+
+
+def _normalize_command_token(token: str) -> str:
+    """Accept shell-friendly `--command` aliases for top-level graphify commands."""
+    if token in _TOP_LEVEL_COMMANDS:
+        return token
+    if token.startswith("--"):
+        alias = token[2:]
+        if alias in _TOP_LEVEL_COMMANDS:
+            return alias
+    return token
 
 _SETTINGS_HOOK = {
     "matcher": "Glob|Grep",
@@ -908,7 +948,9 @@ def main() -> None:
         print("    --dir <path>            target directory (default: ./raw)")
         print("  watch <path>            watch a folder and rebuild the graph on code changes")
         print("  update <path>           re-extract code files and update the graph (no LLM needed)")
+        print("    alias: --update <path>  shell-friendly form for PowerShell/CMD users")
         print("  cluster-only <path>     rerun clustering on an existing graph.json and regenerate report")
+        print("    alias: --cluster-only <path>")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -956,7 +998,7 @@ def main() -> None:
         print()
         return
 
-    cmd = sys.argv[1]
+    cmd = _normalize_command_token(sys.argv[1])
     if cmd == "install":
         # Default to windows platform on Windows, claude elsewhere
         default_platform = "windows" if platform.system() == "Windows" else "claude"
@@ -1266,7 +1308,7 @@ def main() -> None:
         try:
             saved = _ingest(url, target_dir, author=author, contributor=contributor)
             print(f"Saved to {saved}")
-            print("Run /graphify --update in your AI assistant to update the graph.")
+            print("Run graphify --update in your shell, or /graphify --update in your AI assistant, to update the graph.")
         except Exception as exc:
             print(f"error: {exc}", file=sys.stderr)
             sys.exit(1)
@@ -1324,7 +1366,7 @@ def main() -> None:
         print(f"Re-extracting code files in {watch_path} (no LLM needed)...")
         ok = _rebuild_code(watch_path)
         if ok:
-            print("Code graph updated. For doc/paper/image changes run /graphify --update in your AI assistant.")
+            print("Code graph updated. For doc/paper/image changes run graphify --update in your shell, or /graphify --update in your AI assistant.")
         else:
             print("Nothing to update or rebuild failed — check output above.", file=sys.stderr)
             sys.exit(1)
