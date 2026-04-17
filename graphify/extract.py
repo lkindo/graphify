@@ -3202,7 +3202,7 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
     global_label_to_nid: dict[str, str] = {}
     for n in all_nodes:
         raw = n.get("label", "")
-        normalised = raw.strip("()").lstrip(".")
+        normalised = raw.strip("()").lstrip(".-+")
         if normalised:
             global_label_to_nid[normalised.lower()] = n["id"]
 
