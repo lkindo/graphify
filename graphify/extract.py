@@ -3049,7 +3049,7 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
         if not paths:
             root = Path(".")
         elif len(paths) == 1:
-            root = paths[0].parent
+            root = Path(".")
         else:
             common_len = sum(
                 1 for i in range(min(len(p.parts) for p in paths))
@@ -3181,7 +3181,7 @@ def collect_files(target: Path, *, follow_symlinks: bool = False, root: Path | N
     if target.is_file():
         return [target]
     _EXTENSIONS = {
-        ".py", ".js", ".ts", ".tsx", ".go", ".rs",
+        ".py", ".js", ".mjs", ".ts", ".tsx", ".go", ".rs",
         ".java", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp",
         ".rb", ".cs", ".kt", ".kts", ".scala", ".php", ".swift",
         ".lua", ".toc", ".zig", ".ps1",

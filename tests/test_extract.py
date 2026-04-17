@@ -58,7 +58,7 @@ def test_extract_merges_multiple_files():
 
 def test_collect_files_from_dir():
     files = collect_files(FIXTURES)
-    supported = {".py", ".js", ".ts", ".tsx", ".go", ".rs",
+    supported = {".py", ".js", ".mjs", ".ts", ".tsx", ".go", ".rs",
                  ".java", ".c", ".cpp", ".cc", ".cxx", ".rb",
                  ".cs", ".kt", ".kts", ".scala", ".php", ".h", ".hpp",
                  ".swift", ".lua", ".toc", ".zig", ".ps1", ".ex", ".exs",
@@ -168,3 +168,18 @@ def test_calls_deduplication():
     result = extract_python(FIXTURES / "sample_calls.py")
     call_pairs = [(e["source"], e["target"]) for e in result["edges"] if e["relation"] == "calls"]
     assert len(call_pairs) == len(set(call_pairs)), "Duplicate calls edges found"
+
+
+def test_mjs_imports_from_edges(tmp_path):
+    """Importing from a .mjs file via relative path must produce imports_from edges."""
+    sub = tmp_path / "src"
+    sub.mkdir()
+    (sub / "utils.mjs").write_text("export function helper() { return 1; }\n")
+    (sub / "main.mjs").write_text('import { helper } from "./utils.mjs";\nconsole.log(helper());\n')
+
+    files = collect_files(sub)
+    assert any(f.suffix == ".mjs" for f in files), ".mjs files must be collected"
+
+    result = extract(files)
+    imports_from = [e for e in result["edges"] if e["relation"] == "imports_from"]
+    assert len(imports_from) > 0, "Expected imports_from edges between .mjs files"

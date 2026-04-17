@@ -1,7 +1,23 @@
 # git hook integration - install/uninstall graphify post-commit and post-checkout hooks
 from __future__ import annotations
 import re
+import subprocess
 from pathlib import Path
+
+def _hooks_dir(root: Path) -> Path:
+    """Return the git hooks directory, respecting core.hooksPath if set."""
+    hooks_dir = root / ".git" / "hooks"
+    try:
+        custom = subprocess.run(
+            ["git", "config", "core.hooksPath"],
+            capture_output=True, text=True, cwd=root
+        ).stdout.strip()
+        if custom:
+            hooks_dir = root / custom
+    except Exception:
+        pass
+    return hooks_dir
+
 
 _HOOK_MARKER = "# graphify-hook-start"
 _HOOK_MARKER_END = "# graphify-hook-end"
@@ -158,8 +174,10 @@ def install(path: Path = Path(".")) -> str:
     if root is None:
         raise RuntimeError(f"No git repository found at or above {path.resolve()}")
 
-    hooks_dir = root / ".git" / "hooks"
-    hooks_dir.mkdir(exist_ok=True)
+    hooks_dir = _hooks_dir(root)
+    if not hooks_dir.exists():
+        print(f"  warning: hooks directory {hooks_dir} does not exist, creating it")
+    hooks_dir.mkdir(parents=True, exist_ok=True)
 
     commit_msg = _install_hook(hooks_dir, "post-commit", _HOOK_SCRIPT, _HOOK_MARKER)
     checkout_msg = _install_hook(hooks_dir, "post-checkout", _CHECKOUT_SCRIPT, _CHECKOUT_MARKER)
@@ -173,7 +191,7 @@ def uninstall(path: Path = Path(".")) -> str:
     if root is None:
         raise RuntimeError(f"No git repository found at or above {path.resolve()}")
 
-    hooks_dir = root / ".git" / "hooks"
+    hooks_dir = _hooks_dir(root)
     commit_msg = _uninstall_hook(hooks_dir, "post-commit", _HOOK_MARKER, _HOOK_MARKER_END)
     checkout_msg = _uninstall_hook(hooks_dir, "post-checkout", _CHECKOUT_MARKER, _CHECKOUT_MARKER_END)
 
@@ -185,7 +203,7 @@ def status(path: Path = Path(".")) -> str:
     root = _git_root(path)
     if root is None:
         return "Not in a git repository."
-    hooks_dir = root / ".git" / "hooks"
+    hooks_dir = _hooks_dir(root)
 
     def _check(name: str, marker: str) -> str:
         p = hooks_dir / name
