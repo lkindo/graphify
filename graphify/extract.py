@@ -3932,11 +3932,34 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
         ".sv": extract_verilog,
     }
 
+    # Build resolvable module directories from HCL file paths
+    _hcl_resolvable_dirs: set[str] = set()
+    for p in paths:
+        if p.suffix in {".tf", ".tfvars"}:
+            try:
+                rel_dir = str(p.resolve().relative_to(root.resolve()).parent).replace("\\", "/")
+                if rel_dir == ".":
+                    rel_dir = ""
+                _hcl_resolvable_dirs.add(rel_dir)
+            except ValueError:
+                pass
+
     total = len(paths)
     _PROGRESS_INTERVAL = 100
     for i, path in enumerate(paths):
         if total >= _PROGRESS_INTERVAL and i % _PROGRESS_INTERVAL == 0 and i > 0:
             print(f"  AST extraction: {i}/{total} files ({i * 100 // total}%)", flush=True)
+        # HCL files need special handling (extra repo_root arg)
+        if path.suffix in {".tf", ".tfvars"}:
+            cached = load_cached(path, cache_root or root)
+            if cached is not None:
+                per_file.append(cached)
+                continue
+            result = extract_hcl(path, root, _hcl_resolvable_dirs)
+            if "error" not in result:
+                save_cached(path, result, cache_root or root)
+            per_file.append(result)
+            continue
         # .blade.php must be checked before suffix lookup since Path.suffix returns .php
         if path.name.endswith(".blade.php"):
             extractor = extract_blade
@@ -4020,6 +4043,7 @@ def collect_files(target: Path, *, follow_symlinks: bool = False, root: Path | N
         ".rb", ".cs", ".kt", ".kts", ".scala", ".php", ".swift",
         ".lua", ".toc", ".zig", ".ps1",
         ".m", ".mm",
+        ".tf", ".tfvars",
     }
     from graphify.detect import _load_graphifyignore, _is_ignored
     ignore_root = root if root is not None else target
