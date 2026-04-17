@@ -105,11 +105,14 @@ def install(platform: str = "claude") -> None:
         gemini_install()
         return
     if platform == "cursor":
-        _cursor_install()
+        _cursor_install(Path("."))
+        return
+    if platform == "vscode":
+        _vscode_install(Path("."))
         return
     if platform not in _PLATFORM_CONFIG:
         print(
-            f"error: unknown platform '{platform}'. Choose from: {', '.join(_PLATFORM_CONFIG)}, gemini, cursor",
+            f"error: unknown platform '{platform}'. Choose from: {', '.join(_PLATFORM_CONFIG)}, gemini, cursor, vscode",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -296,6 +299,64 @@ def gemini_uninstall(project_dir: Path | None = None) -> None:
         target.unlink()
         print(f"GEMINI.md was empty after removal - deleted {target.resolve()}")
     _uninstall_gemini_hook(project_dir or Path("."))
+
+
+_VSCODE_INSTRUCTIONS_PATH = Path(".github") / "copilot-instructions.md"
+_VSCODE_INSTRUCTIONS_MARKER = "<!-- graphify -->"
+_VSCODE_INSTRUCTIONS_SECTION = """\
+<!-- graphify -->
+## graphify knowledge graph
+
+This project has a graphify knowledge graph at `graphify-out/`.
+
+- Before answering architecture or codebase questions, read `graphify-out/GRAPH_REPORT.md` for god nodes and community structure
+- If `graphify-out/wiki/index.md` exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+<!-- /graphify -->
+"""
+
+
+def _vscode_install(project_dir: Path | None = None) -> None:
+    """Append graphify section to .github/copilot-instructions.md."""
+    target = (project_dir or Path(".")) / _VSCODE_INSTRUCTIONS_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        content = target.read_text(encoding="utf-8")
+        if _VSCODE_INSTRUCTIONS_MARKER in content:
+            print(f"  copilot-instructions.md  ->  already registered (no change)")
+            return
+        target.write_text(content.rstrip() + "\n\n" + _VSCODE_INSTRUCTIONS_SECTION, encoding="utf-8")
+    else:
+        target.write_text(_VSCODE_INSTRUCTIONS_SECTION, encoding="utf-8")
+    print(f"  graphify section written  ->  {target.resolve()}")
+    print()
+    print("GitHub Copilot in VS Code will now include the knowledge graph context.")
+    print("Run /graphify . first to build the graph if you haven't already.")
+
+
+def _vscode_uninstall(project_dir: Path | None = None) -> None:
+    """Remove graphify section from .github/copilot-instructions.md."""
+    target = (project_dir or Path(".")) / _VSCODE_INSTRUCTIONS_PATH
+    if not target.exists():
+        print("No .github/copilot-instructions.md found — nothing to do")
+        return
+    content = target.read_text(encoding="utf-8")
+    if _VSCODE_INSTRUCTIONS_MARKER not in content:
+        print("No graphify section found in copilot-instructions.md — nothing to do")
+        return
+    # Remove the graphify block
+    cleaned = re.sub(
+        r"\n*<!-- graphify -->.*?<!-- /graphify -->\n*",
+        "\n",
+        content,
+        flags=re.DOTALL,
+    ).rstrip()
+    if cleaned:
+        target.write_text(cleaned + "\n", encoding="utf-8")
+        print(f"graphify section removed from {target.resolve()}")
+    else:
+        target.unlink()
+        print(f"copilot-instructions.md was empty after removal - deleted {target.resolve()}")
 
 
 _CURSOR_RULE_PATH = Path(".cursor") / "rules" / "graphify.mdc"
@@ -637,7 +698,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor|vscode)")
         print("  query \"<question>\"       BFS traversal of graph.json for a question")
         print("    --dfs                   use depth-first instead of breadth-first")
         print("    --budget N              cap output at N tokens (default 2000)")
@@ -656,6 +717,8 @@ def main() -> None:
         print("  gemini uninstall        remove GEMINI.md section + BeforeTool hook")
         print("  cursor install          write .cursor/rules/graphify.mdc (Cursor)")
         print("  cursor uninstall        remove .cursor/rules/graphify.mdc")
+        print("  vscode install          write graphify section to .github/copilot-instructions.md (VS Code + GitHub Copilot)")
+        print("  vscode uninstall        remove graphify section from .github/copilot-instructions.md")
         print("  claude install          write graphify section to CLAUDE.md + PreToolUse hook (Claude Code)")
         print("  claude uninstall        remove graphify section from CLAUDE.md + PreToolUse hook")
         print("  codex install           write graphify section to AGENTS.md (Codex)")
@@ -720,6 +783,15 @@ def main() -> None:
             _cursor_uninstall(Path("."))
         else:
             print("Usage: graphify cursor [install|uninstall]", file=sys.stderr)
+            sys.exit(1)
+    elif cmd == "vscode":
+        subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
+        if subcmd == "install":
+            _vscode_install(Path("."))
+        elif subcmd == "uninstall":
+            _vscode_uninstall(Path("."))
+        else:
+            print("Usage: graphify vscode [install|uninstall]", file=sys.stderr)
             sys.exit(1)
     elif cmd == "copilot":
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
