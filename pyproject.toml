@@ -4,15 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "graphifyy"
-version = "0.4.16"
-description = "AI coding assistant skill (Claude Code, Codex, OpenCode, Cursor, Gemini CLI, Aider, OpenClaw, Factory Droid, Trae, Hermes, Kiro, Google Antigravity) - turn any folder of code, docs, papers, images, or videos into a queryable knowledge graph"
+version = "0.1.14"
+description = "Claude Code skill - turn any folder of code, docs, papers, images, or tweets into a queryable knowledge graph"
 readme = "README.md"
-license = { file = "LICENSE" }
-keywords = ["claude", "claude-code", "codex", "opencode", "cursor", "gemini", "aider", "kiro", "knowledge-graph", "rag", "graphrag", "obsidian", "community-detection", "tree-sitter", "leiden", "llm"]
+license = { text = "MIT" }
+keywords = ["claude", "claude-code", "knowledge-graph", "rag", "graphrag", "obsidian", "community-detection", "tree-sitter", "leiden", "llm"]
 requires-python = ">=3.10"
 dependencies = [
     "networkx",
-    "tree-sitter>=0.23.0",
+    "graspologic",
+    "tree-sitter",
     "tree-sitter-python",
     "tree-sitter-javascript",
     "tree-sitter-typescript",
@@ -26,14 +27,6 @@ dependencies = [
     "tree-sitter-kotlin",
     "tree-sitter-scala",
     "tree-sitter-php",
-    "tree-sitter-swift",
-    "tree-sitter-lua",
-    "tree-sitter-zig",
-    "tree-sitter-powershell",
-    "tree-sitter-elixir",
-    "tree-sitter-objc",
-    "tree-sitter-julia",
-    "tree-sitter-verilog",
 ]
 
 [project.urls]
@@ -44,13 +37,9 @@ Issues = "https://github.com/safishamsi/graphify/issues"
 [project.optional-dependencies]
 mcp = ["mcp"]
 neo4j = ["neo4j"]
-pdf = ["pypdf", "html2text"]
+pdf = ["pypdf", "pdfplumber", "html2text"]
 watch = ["watchdog"]
-svg = ["matplotlib"]
-leiden = ["graspologic; python_version < '3.13'"]
-office = ["python-docx", "openpyxl"]
-video = ["faster-whisper", "yt-dlp"]
-all = ["mcp", "neo4j", "pypdf", "html2text", "watchdog", "graspologic; python_version < '3.13'", "python-docx", "openpyxl", "faster-whisper", "yt-dlp", "matplotlib"]
+all = ["mcp", "neo4j", "pypdf", "pdfplumber", "html2text", "watchdog"]
 
 [project.scripts]
 graphify = "graphify.__main__:main"
@@ -58,7 +47,6 @@ graphify = "graphify.__main__:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["graphify*"]
-exclude = ["graphify.llm"]
 
 [tool.setuptools.package-data]
-graphify = ["skill.md", "skill-codex.md", "skill-opencode.md", "skill-aider.md", "skill-copilot.md", "skill-claw.md", "skill-windows.md", "skill-droid.md", "skill-trae.md", "skill-kiro.md", "skill-vscode.md"]
+graphify = ["skill.md"]
