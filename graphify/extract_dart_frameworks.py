@@ -17,6 +17,13 @@ from pathlib import Path
 
 from graphify.extract_dart import _make_id, _read_text
 
+# ── Pre-compiled regexes ────────────────────────────────────────────────────
+_REF_WATCH = re.compile(r'\bref\s*\.\s*watch\s*\(\s*([a-zA-Z_]\w*)')
+_REF_READ = re.compile(r'\bref\s*\.\s*read\s*\(\s*([a-zA-Z_]\w*)')
+_ON_EVENT = re.compile(r'\bon\s*<\s*([a-zA-Z_]\w*)\s*>')
+_EMIT_CALL = re.compile(r'\bemit\s*\(')
+_EMIT_STATE = re.compile(r'\bemit\s*\(\s*([A-Z][a-zA-Z_]\w*)\s*\(')
+
 # ── Framework detection table ────────────────────────────────────────────────
 # Maps import substrings (after _make_id normalisation) to framework tags.
 _FRAMEWORK_IMPORT_PATTERNS: dict[str, str] = {
@@ -55,7 +62,9 @@ def _detect_import_frameworks(result: dict) -> set[str]:
         for pattern in _ORDERED_PATTERNS:
             # Normalise the pattern the same way _make_id would
             normalised = re.sub(r"[^a-zA-Z0-9]+", "_", pattern).strip("_").lower()
-            if normalised in target:
+            # Use word-boundary matching on underscore delimiters to avoid
+            # false positives (e.g. "dio" matching "studio", "hive" matching "archive")
+            if re.search(rf'(?:^|_){re.escape(normalised)}(?:_|$)', target):
                 detected.add(_FRAMEWORK_IMPORT_PATTERNS[pattern])
                 break
     return detected
@@ -156,11 +165,6 @@ def _analyze_riverpod(root, source, stem, str_path, result,
                       node_by_id, label_to_nid, seen_ids,
                       _add_node_if_missing, _add_edge) -> None:
     """Find ref.watch(X) and ref.read(X) calls via regex on class method bodies."""
-    # Regex patterns for ref.watch(...) and ref.read(...)
-    # Capture the provider name (first identifier inside parentheses)
-    _REF_WATCH = re.compile(r'\bref\s*\.\s*watch\s*\(\s*([a-zA-Z_]\w*)')
-    _REF_READ = re.compile(r'\bref\s*\.\s*read\s*\(\s*([a-zA-Z_]\w*)')
-
     for class_node in root.children:
         if class_node.type != "class_definition":
             continue
@@ -216,9 +220,6 @@ def _analyze_riverpod(root, source, stem, str_path, result,
 
     # Also scan top-level provider definitions for ref.watch / ref.read
     # (e.g. greetingProvider that watches counterProvider)
-    source_text = source.decode("utf-8", errors="replace")
-    _REF_WATCH = re.compile(r'\bref\s*\.\s*watch\s*\(\s*([a-zA-Z_]\w*)')
-    _REF_READ = re.compile(r'\bref\s*\.\s*read\s*\(\s*([a-zA-Z_]\w*)')
 
     # Find top-level variable declarations that are providers
     for node in root.children:
@@ -321,9 +322,6 @@ def _analyze_bloc(root, source, stem, str_path, result,
                   node_by_id, label_to_nid, seen_ids,
                   _add_node_if_missing, _add_edge) -> None:
     """Find on<EventType>() and emit() patterns via regex on class bodies."""
-    _ON_EVENT = re.compile(r'\bon\s*<\s*([a-zA-Z_]\w*)\s*>')
-    _EMIT_CALL = re.compile(r'\bemit\s*\(')
-
     for class_node in root.children:
         if class_node.type != "class_definition":
             continue
@@ -351,14 +349,11 @@ def _analyze_bloc(root, source, stem, str_path, result,
                 _add_node_if_missing(event_nid, event_name, line, dart_kind="class")
             _add_edge(class_nid, event_nid, "handles_event", line)
 
-        # Find emit() calls
-        if _EMIT_CALL.search(body_text):
-            # Extract emit(SomeState(...)) - get the state class name
-            emit_state = re.compile(r'\bemit\s*\(\s*([A-Z][a-zA-Z_]\w*)\s*\(')
-            for m in emit_state.finditer(body_text):
-                state_name = m.group(1)
-                state_nid = label_to_nid.get(state_name)
-                if not state_nid:
-                    state_nid = _make_id(stem, state_name)
-                    _add_node_if_missing(state_nid, state_name, line, dart_kind="class")
-                _add_edge(class_nid, state_nid, "emits_state", line)
+        # Find emit(SomeState(...)) calls
+        for m in _EMIT_STATE.finditer(body_text):
+            state_name = m.group(1)
+            state_nid = label_to_nid.get(state_name)
+            if not state_nid:
+                state_nid = _make_id(stem, state_name)
+                _add_node_if_missing(state_nid, state_name, line, dart_kind="class")
+            _add_edge(class_nid, state_nid, "emits_state", line)

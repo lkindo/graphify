@@ -34,7 +34,6 @@ _KNOWN_WIDGETS: set[str] = {
     "StreamBuilder", "FutureBuilder", "AnimatedContainer",
     "AnimatedOpacity", "Hero", "CustomScrollView", "SliverList",
     "SliverGrid", "SliverAppBar", "RefreshIndicator",
-    "MyHomePage", "HomeScreen", "LoginScreen",
 }
 
 # Base classes that determine widget_kind
@@ -163,7 +162,7 @@ def analyze_flutter(result: dict, path: Path) -> None:
             # Found createState – get the body
             if i + 1 < len(children) and children[i + 1].type == "function_body":
                 body_text = _read_text(children[i + 1], source)
-                m = re.search(r"(\w+)\s*\(\s*\)", body_text)
+                m = re.search(r"(?:=>|return)\s+(\w+)\s*\(\s*\)", body_text)
                 if m:
                     state_class = m.group(1)
                     state_nid = label_to_nid.get(state_class)
@@ -316,7 +315,7 @@ def analyze_flutter(result: dict, path: Path) -> None:
             _walk_for_composition(child, parent_widget, owner_class,
                                   in_conditional, in_builder)
 
-    def _walk_for_inherited(node, class_nid: str, class_label: str):
+    def _walk_for_inherited(node, class_nid: str):
         """Find X.of(context) patterns -> depends_on_inherited edges."""
         # Pattern: identifier(X) + selector(.of) + selector(args with context)
         # In the AST this shows up in various expression contexts.
@@ -345,7 +344,7 @@ def analyze_flutter(result: dict, path: Path) -> None:
                                 for sc in sel2.children:
                                     if sc.type == "argument_part":
                                         arg_text = _read_text(sc, source)
-                                        if "context" in arg_text:
+                                        if re.search(r'\bcontext\b', arg_text):
                                             has_context_arg = True
                             if has_of and has_context_arg:
                                 tgt_nid = label_to_nid.get(name)
@@ -360,11 +359,11 @@ def analyze_flutter(result: dict, path: Path) -> None:
 
         # Recurse
         for child in node.children:
-            _walk_for_inherited(child, class_nid, class_label)
+            _walk_for_inherited(child, class_nid)
 
     for class_nid, class_label, body_node in _find_build_methods():
         _walk_for_composition(body_node, None, class_label, False, False)
-        _walk_for_inherited(body_node, class_nid, class_label)
+        _walk_for_inherited(body_node, class_nid)
 
     # ── 5.  Navigation edges (Navigator API) ────────────────────────────────
     #

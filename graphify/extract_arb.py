@@ -52,6 +52,13 @@ def extract_arb(path: Path) -> dict:
         if key.startswith("@"):
             continue
         msg_id = _make_id(stem, key)
+        nodes.append({
+            "id": msg_id,
+            "label": key,
+            "file_type": "config",
+            "source_file": str_path,
+            "dart_kind": "message_key",
+        })
         edges.append({
             "source": file_id,
             "target": msg_id,

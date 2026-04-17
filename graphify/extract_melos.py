@@ -51,9 +51,15 @@ def extract_melos(path: Path) -> dict:
                 continue
             # Each glob should point to directories containing pubspec.yaml
             for pubspec_path in sorted(base_dir.glob(f"{glob_pattern}/pubspec.yaml")):
+                # Security: ensure resolved path stays within the workspace
                 try:
-                    import yaml as _yaml
-                    pkg_data = _yaml.safe_load(pubspec_path.read_text(encoding="utf-8"))
+                    resolved = pubspec_path.resolve()
+                    if not str(resolved).startswith(str(base_dir.resolve())):
+                        continue
+                except (OSError, ValueError):
+                    continue
+                try:
+                    pkg_data = yaml.safe_load(pubspec_path.read_text(encoding="utf-8"))
                     if isinstance(pkg_data, dict) and "name" in pkg_data:
                         pkg_name = pkg_data["name"]
                         pkg_id = _make_id(pkg_name)

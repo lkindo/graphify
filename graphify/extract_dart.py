@@ -28,6 +28,10 @@ def _read_text(node, source: bytes) -> str:
     return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
+# Class modifier keywords recognised by Dart 3
+_CLASS_MODIFIERS = frozenset({"abstract", "sealed", "final", "base", "interface"})
+
+
 def extract_dart(path: Path) -> dict:
     """Extract classes, mixins, extensions, enums, typedefs, functions, imports, and calls from a .dart file."""
     try:
@@ -122,7 +126,6 @@ def extract_dart(path: Path) -> dict:
 
                 # Detect class modifier
                 modifier = None
-                _CLASS_MODIFIERS = {"abstract", "sealed", "final", "base", "interface"}
                 for child in node.children:
                     if child.type in _CLASS_MODIFIERS:
                         modifier = child.type
@@ -197,7 +200,7 @@ def extract_dart(path: Path) -> dict:
                     if found_on and child.type == "type_identifier":
                         constraint_name = _read_text(child, source)
                         constraint_nid = _make_id(stem, constraint_name)
-                        add_node(constraint_nid, constraint_name, child.start_point[0] + 1, dart_kind="mixin")
+                        add_node(constraint_nid, constraint_name, child.start_point[0] + 1, dart_kind="class")
                         add_edge(mixin_nid, constraint_nid, "constrained_to", child.start_point[0] + 1)
                         break
 
@@ -323,7 +326,7 @@ def extract_dart(path: Path) -> dict:
                     uri_text = _read_text(child, source).strip("'\"")
                     tgt_nid = _make_id(uri_text)
                     line = node.start_point[0] + 1
-                    add_edge(file_nid, tgt_nid, "part_of", line)
+                    add_edge(file_nid, tgt_nid, "has_part", line)
                     break
             return
 
@@ -429,7 +432,7 @@ def extract_dart(path: Path) -> dict:
     clean_edges = [
         e for e in edges
         if e["source"] in valid_ids
-        and (e["target"] in valid_ids or e["relation"] in ("imports", "imports_from", "exports", "part_of"))
+        and (e["target"] in valid_ids or e["relation"] in ("imports", "imports_from", "exports", "has_part"))
     ]
 
     return {"nodes": nodes, "edges": clean_edges}

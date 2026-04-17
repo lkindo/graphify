@@ -11,6 +11,11 @@ def _make_id(*parts: str) -> str:
     return cleaned.strip("_").lower()
 
 
+# SDK dependencies to skip (not meaningful as edges)
+_SKIP_DEPS = frozenset({"flutter"})
+_SKIP_DEV_DEPS = frozenset({"flutter_test"})
+
+
 def extract_pubspec(path: Path) -> dict:
     """Parse pubspec.yaml and return nodes/edges for the package dependency graph."""
     try:
@@ -58,7 +63,6 @@ def extract_pubspec(path: Path) -> dict:
     nodes.append(pkg_node)
 
     # --- dependencies ---
-    _SKIP_DEPS = {"flutter"}
     deps = data.get("dependencies", {})
     if isinstance(deps, dict):
         for dep_name, dep_spec in deps.items():
@@ -79,7 +83,6 @@ def extract_pubspec(path: Path) -> dict:
             })
 
     # --- dev_dependencies ---
-    _SKIP_DEV_DEPS = {"flutter_test"}
     dev_deps = data.get("dev_dependencies", {})
     if isinstance(dev_deps, dict):
         for dep_name, dep_spec in dev_deps.items():

@@ -107,7 +107,7 @@ def test_extract_dart_no_dangling_edges():
     r = extract_dart(FIXTURES / "sample.dart")
     node_ids = {n["id"] for n in r["nodes"]}
     for edge in r["edges"]:
-        if edge["relation"] in ("imports", "imports_from", "exports", "part_of"):
+        if edge["relation"] in ("imports", "imports_from", "exports", "has_part"):
             assert edge["source"] in node_ids
         else:
             assert edge["source"] in node_ids, f"Dangling source: {edge}"
@@ -148,10 +148,10 @@ def test_extract_dart_exports():
     assert "exports" in relations
 
 
-def test_extract_dart_part_of():
+def test_extract_dart_has_part():
     r = extract_dart(FIXTURES / "sample.dart")
     relations = _relations(r)
-    assert "part_of" in relations
+    assert "has_part" in relations
 
 
 def test_extract_dart_calls():
