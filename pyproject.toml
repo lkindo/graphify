@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools==82.0.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,7 +11,7 @@ license = { file = "LICENSE" }
 keywords = ["claude", "claude-code", "codex", "knowledge-graph", "rag", "graphrag", "community-detection", "tree-sitter", "leiden", "llm"]
 requires-python = ">=3.10"
 dependencies = [
-    "networkx==3.6.1",
+    "networkx==3.4.2",
     "tree-sitter==0.25.2",
     "tree-sitter-python==0.25.0",
     "tree-sitter-javascript==0.25.0",
@@ -44,13 +44,16 @@ Issues = "https://github.com/getethos/graphify/issues"
 [project.optional-dependencies]
 mcp = ["mcp==1.27.0"]
 neo4j = ["neo4j==6.1.0"]
-pdf = ["pypdf==6.10.1", "html2text==2025.4.15"]
+pdf = ["pypdf==6.10.2", "html2text==2025.4.15"]
 watch = ["watchdog==6.0.0"]
 svg = ["matplotlib==3.10.8"]
-leiden = ["graspologic; python_version < '3.13'"]
+leiden = ["graspologic==0.3.1; python_version < '3.13'"]
 office = ["python-docx==1.2.0", "openpyxl==3.1.5"]
-video = ["faster-whisper", "yt-dlp==2026.3.17"]
-all = ["mcp==1.27.0", "neo4j==6.1.0", "pypdf==6.10.1", "html2text==2025.4.15", "watchdog==6.0.0", "graspologic; python_version < '3.13'", "python-docx==1.2.0", "openpyxl==3.1.5", "faster-whisper", "yt-dlp==2026.3.17", "matplotlib==3.10.8"]
+video = ["faster-whisper==1.2.1", "yt-dlp==2026.3.17"]
+all = ["mcp==1.27.0", "neo4j==6.1.0", "pypdf==6.10.2", "html2text==2025.4.15", "watchdog==6.0.0", "graspologic==0.3.1; python_version < '3.13'", "python-docx==1.2.0", "openpyxl==3.1.5", "faster-whisper==1.2.1", "yt-dlp==2026.3.17", "matplotlib==3.10.8"]
+
+[dependency-groups]
+dev = ["pytest==9.0.3", "pip-audit==2.10.0"]
 
 [project.scripts]
 graphify = "graphify.__main__:main"

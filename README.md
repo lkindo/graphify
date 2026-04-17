@@ -1,14 +1,12 @@
 # graphify
 
-[English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja-JP.md) | [한국어](README.ko-KR.md)
-
 [![CI](https://github.com/safishamsi/graphify/actions/workflows/ci.yml/badge.svg?branch=v4)](https://github.com/safishamsi/graphify/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/graphifyy)](https://pypi.org/project/graphifyy/)
 [![Downloads](https://static.pepy.tech/badge/graphifyy/month)](https://pepy.tech/project/graphifyy)
 [![Sponsor](https://img.shields.io/badge/sponsor-safishamsi-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/safishamsi)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Safi%20Shamsi-0077B5?logo=linkedin)](https://www.linkedin.com/in/safi-shamsi)
 
-**An AI coding assistant skill.** Type `/graphify` in Claude Code, Codex, OpenCode, Cursor, Gemini CLI, GitHub Copilot CLI, Aider, OpenClaw, Factory Droid, Trae, Hermes, Kiro, or Google Antigravity - it reads your files, builds a knowledge graph, and gives you back structure you didn't know was there. Understand a codebase faster. Find the "why" behind architectural decisions.
+**An AI coding assistant skill.** Type `/graphify` in Claude Code or Codex - it reads your files, builds a knowledge graph, and gives you back structure you didn't know was there. Understand a codebase faster. Find the "why" behind architectural decisions.
 
 Fully multimodal. Drop in code, PDFs, markdown, screenshots, diagrams, whiteboard photos, images in other languages, or video and audio files - graphify extracts concepts and relationships from all of it and connects them into one graph. Videos are transcribed with Whisper using a domain-aware prompt derived from your corpus. 25 languages supported via tree-sitter AST (Python, JS, TS, Go, Rust, Java, C, C++, Ruby, C#, Kotlin, Scala, PHP, Swift, Lua, Zig, PowerShell, Elixir, Objective-C, Julia, Verilog, SystemVerilog, Vue, Svelte, Dart).
 
@@ -48,7 +46,7 @@ Every relationship is tagged `EXTRACTED` (found directly in source), `INFERRED` 
 
 ## Install
 
-**Requires:** Python 3.10+ and one of: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [Cursor](https://cursor.com), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli), [Aider](https://aider.chat), [OpenClaw](https://openclaw.ai), [Factory Droid](https://factory.ai), [Trae](https://trae.ai), [Kiro](https://kiro.dev), Hermes, or [Google Antigravity](https://antigravity.google)
+**Requires:** Python 3.10+ and either [Claude Code](https://claude.ai/code) or [Codex](https://openai.com/codex)
 
 ```bash
 pip install graphifyy && graphify install
@@ -60,23 +58,10 @@ pip install graphifyy && graphify install
 
 | Platform | Install command |
 |----------|----------------|
-| Claude Code (Linux/Mac) | `graphify install` |
-| Claude Code (Windows) | `graphify install` (auto-detected) or `graphify install --platform windows` |
+| Claude Code | `graphify install` |
 | Codex | `graphify install --platform codex` |
-| OpenCode | `graphify install --platform opencode` |
-| GitHub Copilot CLI | `graphify install --platform copilot` |
-| Aider | `graphify install --platform aider` |
-| OpenClaw | `graphify install --platform claw` |
-| Factory Droid | `graphify install --platform droid` |
-| Trae | `graphify install --platform trae` |
-| Trae CN | `graphify install --platform trae-cn` |
-| Gemini CLI | `graphify install --platform gemini` |
-| Hermes | `graphify install --platform hermes` |
-| Kiro IDE/CLI | `graphify kiro install` |
-| Cursor | `graphify cursor install` |
-| Google Antigravity | `graphify antigravity install` |
 
-Codex users also need `multi_agent = true` under `[features]` in `~/.codex/config.toml` for parallel extraction. Factory Droid uses the `Task` tool for parallel subagent dispatch. OpenClaw and Aider use sequential extraction (parallel agent support is still early on those platforms). Trae uses the Agent tool for parallel subagent dispatch and does **not** support PreToolUse hooks — AGENTS.md is the always-on mechanism. Codex supports PreToolUse hooks — `graphify codex install` installs one in `.codex/hooks.json` in addition to writing AGENTS.md.
+Codex users also need `multi_agent = true` under `[features]` in `~/.codex/config.toml` for parallel extraction. Codex supports PreToolUse hooks, so `graphify codex install` also writes `.codex/hooks.json` in addition to `AGENTS.md`.
 
 Then open your AI coding assistant and type:
 
@@ -94,38 +79,31 @@ After building a graph, run this once in your project:
 |----------|---------|
 | Claude Code | `graphify claude install` |
 | Codex | `graphify codex install` |
-| OpenCode | `graphify opencode install` |
-| GitHub Copilot CLI | `graphify copilot install` |
-| Aider | `graphify aider install` |
-| OpenClaw | `graphify claw install` |
-| Factory Droid | `graphify droid install` |
-| Trae | `graphify trae install` |
-| Trae CN | `graphify trae-cn install` |
-| Cursor | `graphify cursor install` |
-| Gemini CLI | `graphify gemini install` |
-| Hermes | `graphify hermes install` |
-| Kiro IDE/CLI | `graphify kiro install` |
-| Google Antigravity | `graphify antigravity install` |
 
 **Claude Code** does two things: writes a `CLAUDE.md` section telling Claude to read `graphify-out/GRAPH_REPORT.md` before answering architecture questions, and installs a **PreToolUse hook** (`settings.json`) that fires before every Glob and Grep call. If a knowledge graph exists, Claude sees: _"graphify: Knowledge graph exists. Read GRAPH_REPORT.md for god nodes and community structure before searching raw files."_ — so Claude navigates via the graph instead of grepping through every file.
 
 **Codex** writes to `AGENTS.md` and also installs a **PreToolUse hook** in `.codex/hooks.json` that fires before every Bash tool call — same always-on mechanism as Claude Code.
 
-**OpenCode** writes to `AGENTS.md` and also installs a **`tool.execute.before` plugin** (`.opencode/plugins/graphify.js` + `opencode.json` registration) that fires before bash tool calls and injects the graph reminder into tool output when the graph exists.
-
-**Cursor** writes `.cursor/rules/graphify.mdc` with `alwaysApply: true` — Cursor includes it in every conversation automatically, no hook needed.
-
-**Gemini CLI** copies the skill to `~/.gemini/skills/graphify/SKILL.md`, writes a `GEMINI.md` section, and installs a `BeforeTool` hook in `.gemini/settings.json` that fires before file-read tool calls — same always-on mechanism as Claude Code.
-
-**Aider, OpenClaw, Factory Droid, Trae, and Hermes** write the same rules to `AGENTS.md` in your project root and copy the skill to the platform's global skill directory. These platforms don't support tool hooks, so AGENTS.md is the always-on mechanism.
-
-**Kiro IDE/CLI** writes the skill to `.kiro/skills/graphify/SKILL.md` (invoked via `/graphify`) and a steering file to `.kiro/steering/graphify.md` with `inclusion: always` — Kiro injects this into every conversation automatically, no hook needed.
-
-**Google Antigravity** writes `.agent/rules/graphify.md` (always-on rules) and `.agent/workflows/graphify.md` (registers `/graphify` as a slash command). No hook equivalent exists in Antigravity — rules are the always-on mechanism.
-
-**GitHub Copilot CLI** copies the skill to `~/.copilot/skills/graphify/SKILL.md`. Run `graphify copilot install` to set it up.
-
 Uninstall with the matching uninstall command (e.g. `graphify claude uninstall`).
+
+## Maintainer dependency workflow
+
+End-user installs stay the same (`pip install graphifyy`), but this repository no longer relies on floating dependency resolution for development or CI.
+
+```bash
+uv sync --group dev --extra mcp --extra pdf --extra watch
+python scripts/check_pinned_dependencies.py
+uv lock --check
+```
+
+When you intentionally update dependencies:
+
+1. Edit [`pyproject.toml`](pyproject.toml) with exact `==` pins only.
+2. Regenerate the lockfile with `uv lock`.
+3. Re-sync your environment with `uv sync --group dev --extra mcp --extra pdf --extra watch`.
+4. Run the relevant tests before merging.
+
+`uv.lock` is committed on purpose, CI installs with `--frozen`, and Dependabot opens reviewable PRs for updates so upstream releases never land implicitly during install.
 
 **Always-on vs explicit trigger — what's the difference?**
 
@@ -240,27 +218,7 @@ graphify hook status
 graphify claude install            # CLAUDE.md + PreToolUse hook (Claude Code)
 graphify claude uninstall
 graphify codex install             # AGENTS.md + PreToolUse hook in .codex/hooks.json (Codex)
-graphify opencode install          # AGENTS.md + tool.execute.before plugin (OpenCode)
-graphify cursor install            # .cursor/rules/graphify.mdc (Cursor)
-graphify cursor uninstall
-graphify gemini install            # GEMINI.md + BeforeTool hook (Gemini CLI)
-graphify gemini uninstall
-graphify copilot install           # skill file (GitHub Copilot CLI)
-graphify copilot uninstall
-graphify aider install             # AGENTS.md (Aider)
-graphify aider uninstall
-graphify claw install              # AGENTS.md (OpenClaw)
-graphify droid install             # AGENTS.md (Factory Droid)
-graphify trae install              # AGENTS.md (Trae)
-graphify trae uninstall
-graphify trae-cn install           # AGENTS.md (Trae CN)
-graphify trae-cn uninstall
-graphify hermes install             # AGENTS.md + ~/.hermes/skills/ (Hermes)
-graphify hermes uninstall
-graphify kiro install               # .kiro/skills/ + .kiro/steering/graphify.md (Kiro IDE/CLI)
-graphify kiro uninstall
-graphify antigravity install       # .agent/rules + .agent/workflows (Google Antigravity)
-graphify antigravity uninstall
+graphify codex uninstall
 
 # query and navigate the graph directly from the terminal (no AI assistant needed)
 graphify query "what connects attention to the optimizer?"
