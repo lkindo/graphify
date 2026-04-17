@@ -1,5 +1,5 @@
 from pathlib import Path
-from graphify.extract import extract_python, extract, collect_files, _make_id
+from graphify.extract import extract_python, extract, collect_files, _make_id, hcl_make_file_id, hcl_make_block_id, hcl_make_target_id
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -168,3 +168,81 @@ def test_calls_deduplication():
     result = extract_python(FIXTURES / "sample_calls.py")
     call_pairs = [(e["source"], e["target"]) for e in result["edges"] if e["relation"] == "calls"]
     assert len(call_pairs) == len(set(call_pairs)), "Duplicate calls edges found"
+
+
+# --- HCL node ID tests ---
+
+def test_hcl_make_file_id_basic():
+    repo = Path("/repo")
+    fid = hcl_make_file_id(repo, Path("/repo/terraform/main.tf"))
+    assert fid == "hcl_file:terraform/main.tf"
+
+
+def test_hcl_make_file_id_forward_slashes():
+    repo = Path("/repo")
+    fid = hcl_make_file_id(repo, Path("/repo/terraform/modules/vpc/main.tf"))
+    assert "/" in fid
+    assert "\\" not in fid
+
+
+def test_hcl_make_file_id_deterministic():
+    repo = Path("/repo")
+    p = Path("/repo/modules/main.tf")
+    assert hcl_make_file_id(repo, p) == hcl_make_file_id(repo, p)
+
+
+def test_hcl_make_file_id_prefix():
+    fid = hcl_make_file_id(Path("/r"), Path("/r/a.tf"))
+    assert fid.startswith("hcl_file:")
+
+
+def test_hcl_make_block_id_resource():
+    fid = "hcl_file:modules/vpc/main.tf"
+    bid = hcl_make_block_id(fid, "resource", "aws_vpc.main")
+    assert bid == "hcl_file:modules/vpc/main.tf::resource:aws_vpc.main"
+
+
+def test_hcl_make_block_id_module():
+    fid = "hcl_file:clusters/main.tf"
+    bid = hcl_make_block_id(fid, "module", "network")
+    assert bid == "hcl_file:clusters/main.tf::module:network"
+
+
+def test_hcl_make_block_id_locals():
+    fid = "hcl_file:main.tf"
+    bid = hcl_make_block_id(fid, "locals", "locals_ab12cd34")
+    assert bid == "hcl_file:main.tf::locals:locals_ab12cd34"
+
+
+def test_hcl_make_block_id_preserves_colons():
+    """Block IDs must preserve colon namespace prefixes (not use _make_id)."""
+    fid = "hcl_file:main.tf"
+    bid = hcl_make_block_id(fid, "resource", "aws_s3_bucket.my_bucket")
+    assert "hcl_file:" in bid
+    assert "::resource:" in bid
+
+
+def test_hcl_make_target_id_local():
+    tid = hcl_make_target_id("module_source_local", "modules/vpc")
+    assert tid == "hcl_target:module_source_local:modules/vpc"
+
+
+def test_hcl_make_target_id_remote():
+    tid = hcl_make_target_id("module_source_remote", "github.com:path_sha256=abc123:ref=v1.0")
+    assert tid.startswith("hcl_target:")
+    assert "module_source_remote" in tid
+
+
+def test_hcl_make_target_id_deterministic():
+    a = hcl_make_target_id("module_source_local", "modules/vpc")
+    b = hcl_make_target_id("module_source_local", "modules/vpc")
+    assert a == b
+
+
+def test_hcl_ids_different_kinds_distinct():
+    """Identically named blocks of different kinds produce different IDs."""
+    fid = "hcl_file:main.tf"
+    resource_id = hcl_make_block_id(fid, "resource", "foo")
+    data_id = hcl_make_block_id(fid, "data", "foo")
+    module_id = hcl_make_block_id(fid, "module", "foo")
+    assert resource_id != data_id != module_id
