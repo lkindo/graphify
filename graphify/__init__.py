@@ -5,6 +5,7 @@ def __getattr__(name):
     # Lazy imports so `graphify install` works before heavy deps are in place.
     _map = {
         "extract": ("graphify.extract", "extract"),
+        "extract_pdf": ("graphify.pdf_extract", "extract_pdf"),
         "collect_files": ("graphify.extract", "collect_files"),
         "build_from_json": ("graphify.build", "build_from_json"),
         "cluster": ("graphify.cluster", "cluster"),
