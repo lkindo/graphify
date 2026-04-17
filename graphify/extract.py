@@ -4046,9 +4046,11 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
 
     all_nodes: list[dict] = []
     all_edges: list[dict] = []
+    all_diagnostics: list[dict] = []
     for result in per_file:
         all_nodes.extend(result.get("nodes", []))
         all_edges.extend(result.get("edges", []))
+        all_diagnostics.extend(result.get("diagnostics", []))
 
     # Add cross-file class-level edges (Python only - uses Python parser internally)
     py_paths = [p for p in paths if p.suffix == ".py"]
@@ -4092,12 +4094,15 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
                     "weight": 1.0,
                 })
 
-    return {
+    output = {
         "nodes": all_nodes,
         "edges": all_edges,
         "input_tokens": 0,
         "output_tokens": 0,
     }
+    if all_diagnostics:
+        output["diagnostics"] = all_diagnostics
+    return output
 
 
 def collect_files(target: Path, *, follow_symlinks: bool = False, root: Path | None = None) -> list[Path]:
