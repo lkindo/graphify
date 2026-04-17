@@ -66,6 +66,7 @@ def test_collect_files_includes_pdf():
 
 
 def test_extract_dispatch_includes_pdf_nodes():
+    pytest.importorskip("tree_sitter")
     result = extract([SAMPLE_PDF])
     assert len(result["nodes"]) > 0
     assert result["input_tokens"] == 0
