@@ -50,7 +50,7 @@ def test_surprising_connections_excludes_concept_nodes():
     G = make_graph()
     # Add a concept node with empty source_file
     G.add_node("concept_x", label="Abstract Concept", file_type="document", source_file="")
-    G.add_edge("n_transformer", "concept_x", relation="relates_to",
+    G.add_edge("transformer", "concept_x", relation="relates_to",
                confidence="INFERRED", source_file="", weight=0.5)
     communities = cluster(G)
     surprises = surprising_connections(G, communities)

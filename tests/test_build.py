@@ -17,16 +17,16 @@ def test_build_from_json_edge_count():
 
 def test_nodes_have_label():
     G = build_from_json(load_extraction())
-    assert G.nodes["n_transformer"]["label"] == "Transformer"
+    assert G.nodes["transformer"]["label"] == "Transformer"
 
 def test_edges_have_confidence():
     G = build_from_json(load_extraction())
-    data = G.edges["n_attention", "n_concept_attn"]
+    data = G.edges["multiheadattention", "attentionmechanism"]
     assert data["confidence"] == "INFERRED"
 
 def test_ambiguous_edge_preserved():
     G = build_from_json(load_extraction())
-    data = G.edges["n_layernorm", "n_concept_attn"]
+    data = G.edges["layernorm", "attentionmechanism"]
     assert data["confidence"] == "AMBIGUOUS"
 
 def test_build_merges_multiple_extractions():
