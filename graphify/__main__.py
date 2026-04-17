@@ -97,6 +97,11 @@ _PLATFORM_CONFIG: dict[str, dict] = {
         "skill_dst": Path(".hermes") / "skills" / "graphify" / "SKILL.md",
         "claude_md": False,
     },
+    "windsurf": {
+        "skill_file": "skill-copilot.md",
+        "skill_dst": Path(".windsurf") / "skills" / "graphify" / "SKILL.md",
+        "claude_md": False,
+    },
     "kiro": {
         "skill_file": "skill-kiro.md",
         "skill_dst": Path(".kiro") / "skills" / "graphify" / "SKILL.md",
@@ -137,9 +142,12 @@ def install(platform: str = "claude") -> None:
 
     skill_dst = Path.home() / cfg["skill_dst"]
     skill_dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy(skill_src, skill_dst)
-    (skill_dst.parent / ".graphify_version").write_text(__version__, encoding="utf-8")
-    print(f"  skill installed  ->  {skill_dst}")
+    if skill_dst.exists() and skill_dst.read_bytes() == skill_src.read_bytes():
+        print(f"  skill already up to date  ->  {skill_dst}")
+    else:
+        shutil.copy(skill_src, skill_dst)
+        (skill_dst.parent / ".graphify_version").write_text(__version__, encoding="utf-8")
+        print(f"  skill installed  ->  {skill_dst}")
 
     if cfg["claude_md"]:
         # Register in ~/.claude/CLAUDE.md (Claude Code only)
@@ -710,6 +718,9 @@ def _install_codex_hook(project_dir: Path) -> None:
         existing = {}
 
     pre_tool = existing.setdefault("hooks", {}).setdefault("PreToolUse", [])
+    if all(hook in pre_tool for hook in _CODEX_HOOK["hooks"]["PreToolUse"]):
+        print("  graphify hook already configured in .codex/hooks.json (no change)")
+        return
     existing["hooks"]["PreToolUse"] = [h for h in pre_tool if "graphify" not in str(h)]
     existing["hooks"]["PreToolUse"].extend(_CODEX_HOOK["hooks"]["PreToolUse"])
     hooks_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
@@ -831,6 +842,9 @@ def _install_claude_hook(project_dir: Path) -> None:
     hooks = settings.setdefault("hooks", {})
     pre_tool = hooks.setdefault("PreToolUse", [])
 
+    if _SETTINGS_HOOK in pre_tool:
+        print("  graphify hook already configured in .claude/settings.json (no change)")
+        return
     hooks["PreToolUse"] = [h for h in pre_tool if not (h.get("matcher") == "Glob|Grep" and "graphify" in str(h))]
     hooks["PreToolUse"].append(_SETTINGS_HOOK)
     settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
@@ -897,7 +911,7 @@ def main() -> None:
         print("Usage: graphify <command>")
         print()
         print("Commands:")
-        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor|antigravity|hermes|kiro)")
+        print("  install [--platform P]  copy skill to platform config dir (claude|windows|codex|opencode|aider|claw|droid|trae|trae-cn|gemini|cursor|antigravity|hermes|kiro|windsurf)")
         print("  path \"A\" \"B\"            shortest path between two nodes in graph.json")
         print("    --graph <path>          path to graph.json (default graphify-out/graph.json)")
         print("  explain \"X\"             plain-language explanation of a node and its neighbors")
@@ -1040,7 +1054,7 @@ def main() -> None:
         else:
             print("Usage: graphify kiro [install|uninstall]", file=sys.stderr)
             sys.exit(1)
-    elif cmd in ("aider", "codex", "opencode", "claw", "droid", "trae", "trae-cn", "hermes"):
+    elif cmd in ("aider", "codex", "opencode", "claw", "droid", "trae", "trae-cn", "hermes", "windsurf"):
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
         if subcmd == "install":
             _agents_install(Path("."), cmd)

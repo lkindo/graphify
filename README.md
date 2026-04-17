@@ -48,13 +48,20 @@ Every relationship is tagged `EXTRACTED` (found directly in source), `INFERRED` 
 
 ## Install
 
-**Requires:** Python 3.10+ and one of: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [Cursor](https://cursor.com), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli), [VS Code Copilot Chat](https://code.visualstudio.com/docs/copilot/overview), [Aider](https://aider.chat), [OpenClaw](https://openclaw.ai), [Factory Droid](https://factory.ai), [Trae](https://trae.ai), [Kiro](https://kiro.dev), Hermes, or [Google Antigravity](https://antigravity.google)
+**Requires:** Python 3.10+ and one of: [Claude Code](https://claude.ai/code), [Codex](https://openai.com/codex), [OpenCode](https://opencode.ai), [Cursor](https://cursor.com), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli), [VS Code Copilot Chat](https://code.visualstudio.com/docs/copilot/overview), [Aider](https://aider.chat), [OpenClaw](https://openclaw.ai), [Factory Droid](https://factory.ai), [Trae](https://trae.ai), [Kiro](https://kiro.dev), Hermes, [Windsurf](https://windsurf.com), or [Google Antigravity](https://antigravity.google)
 
 ```bash
 pip install graphifyy && graphify install
 ```
 
 > **Official package:** The PyPI package is named `graphifyy` (install with `pip install graphifyy`). Other packages named `graphify*` on PyPI are not affiliated with this project. The only official repository is [safishamsi/graphify](https://github.com/safishamsi/graphify). The CLI and skill command are still `graphify`.
+
+> **Windows users:** pip may install `graphify.exe` in a `Scripts` directory that isn't on your PATH, so the `graphify` command won't be recognized. Recommended fix: use `pipx install graphifyy` — it handles PATH automatically. Alternatively, run via `python -m graphify install` (no PATH needed). If you prefer pip directly, add the Scripts directory to your PATH:
+> ```powershell
+> # Temporary (current session only):
+> $env:Path += ";$(python -m site --user-site)\..\Scripts"
+> ```
+> Or use the full path shown in pip's install warning.
 
 ### Platform support
 
@@ -73,6 +80,7 @@ pip install graphifyy && graphify install
 | Trae CN | `graphify install --platform trae-cn` |
 | Gemini CLI | `graphify install --platform gemini` |
 | Hermes | `graphify install --platform hermes` |
+| Windsurf | `graphify install --platform windsurf` |
 | Kiro IDE/CLI | `graphify kiro install` |
 | Cursor | `graphify cursor install` |
 | Google Antigravity | `graphify antigravity install` |

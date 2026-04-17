@@ -124,3 +124,23 @@ def test_body_content_no_frontmatter():
     """_body_content returns content unchanged when no frontmatter present."""
     content = b"No frontmatter here."
     assert _body_content(content) == content
+
+
+def test_single_file_extract_uses_project_root(tmp_path, monkeypatch):
+    """extract() with a single file should use Path('.') as root, not the file's parent dir."""
+    monkeypatch.chdir(tmp_path)
+    # Create a nested source file, mimicking a Java project layout
+    nested = tmp_path / "src" / "main" / "java" / "pkg"
+    nested.mkdir(parents=True)
+    src_file = nested / "App.py"
+    src_file.write_text("def hello():\n    pass\n")
+
+    from graphify.extract import extract
+
+    extract([src_file])
+
+    # Cache should be at project root (tmp_path), NOT under the source file's parent
+    project_cache = tmp_path / "graphify-out" / "cache"
+    nested_cache = nested / "graphify-out" / "cache"
+    assert project_cache.exists(), "Cache dir should exist at project root (./graphify-out/cache/)"
+    assert not nested_cache.exists(), "Cache dir must NOT be created under the source file's parent"
