@@ -1524,37 +1524,25 @@ def extract_dart(path: Path) -> dict:
 
     def _process_supertypes(node, class_nid: str) -> None:
         line = node.start_point[0] + 1
+
+        def _link_supertype(type_node):
+            name = _read_text(type_node, source)
+            tgt = _make_id(stem, name)
+            if tgt not in seen_ids:
+                tgt = _make_id(name)
+                if tgt not in seen_ids:
+                    add_node(tgt, name, line)
+            add_edge(class_nid, tgt, "inherits", line)
+
         sup = _first_child_of_type(node, "superclass")
         if sup:
             for child in sup.children:
                 if child.type == "type_identifier":
-                    name = _read_text(child, source)
-                    tgt = _make_id(stem, name)
-                    if tgt not in seen_ids:
-                        tgt = _make_id(name)
-                        if tgt not in seen_ids:
-                            add_node(tgt, name, line)
-                    add_edge(class_nid, tgt, "inherits", line)
-                elif child.type == "mixins":
-                    for mc in child.children:
-                        if mc.type == "type_identifier":
-                            mname = _read_text(mc, source)
-                            mtgt = _make_id(stem, mname)
-                            if mtgt not in seen_ids:
-                                mtgt = _make_id(mname)
-                                if mtgt not in seen_ids:
-                                    add_node(mtgt, mname, line)
-                            add_edge(class_nid, mtgt, "inherits", line)
-                elif child.type == "interfaces":
-                    for ic in child.children:
-                        if ic.type == "type_identifier":
-                            iname = _read_text(ic, source)
-                            itgt = _make_id(stem, iname)
-                            if itgt not in seen_ids:
-                                itgt = _make_id(iname)
-                                if itgt not in seen_ids:
-                                    add_node(itgt, iname, line)
-                            add_edge(class_nid, itgt, "inherits", line)
+                    _link_supertype(child)
+                elif child.type in ("mixins", "interfaces"):
+                    for sub in child.children:
+                        if sub.type == "type_identifier":
+                            _link_supertype(sub)
 
     def _extract_sig_name(sig_node) -> str | None:
         """Extract name from method_signature, function_signature, or constructor_signature."""
@@ -1563,53 +1551,44 @@ def extract_dart(path: Path) -> dict:
             inner = _first_child_of_type(sig_node, "function_signature", "constructor_signature",
                                          "factory_constructor_signature", "getter_signature", "setter_signature")
             return _extract_sig_name(inner) if inner else None
-        if t in ("function_signature", "getter_signature", "setter_signature"):
-            ident = _first_child_of_type(sig_node, "identifier")
-            return _read_text(ident, source) if ident else None
-        if t in ("constructor_signature", "factory_constructor_signature"):
+        if t in ("function_signature", "getter_signature", "setter_signature",
+                 "constructor_signature", "factory_constructor_signature"):
             ident = _first_child_of_type(sig_node, "identifier")
             return _read_text(ident, source) if ident else None
         return None
 
     def _process_body_children(children_list, parent_nid: str) -> None:
         """Pair method_signature/declaration with sibling function_body in class/mixin/enum/extension body."""
+
+        def _register_method(sig_node, idx: int) -> int:
+            """Register a method node and optionally consume the next sibling function_body.
+            Returns the number of extra children consumed (0 or 1)."""
+            name = _extract_sig_name(sig_node)
+            if not name:
+                return 0
+            line = sig_node.start_point[0] + 1
+            func_nid = _make_id(parent_nid, name)
+            add_node(func_nid, f".{name}()", line)
+            add_edge(parent_nid, func_nid, "method", line)
+            if idx + 1 < len(children_list) and children_list[idx + 1].type == "function_body":
+                function_bodies.append((func_nid, children_list[idx + 1]))
+                return 1
+            return 0
+
         i = 0
         while i < len(children_list):
             child = children_list[i]
             if child.type == "method_signature":
-                name = _extract_sig_name(child)
-                if name:
-                    line = child.start_point[0] + 1
-                    func_nid = _make_id(parent_nid, name)
-                    add_node(func_nid, f".{name}()", line)
-                    add_edge(parent_nid, func_nid, "method", line)
-                    if i + 1 < len(children_list) and children_list[i + 1].type == "function_body":
-                        function_bodies.append((func_nid, children_list[i + 1]))
-                        i += 2
-                        continue
+                skip = _register_method(child, i)
+                i += 1 + skip
+                continue
             elif child.type == "declaration":
-                # Constructor declarations (constructor_signature as child of declaration)
-                csig = _first_child_of_type(child, "constructor_signature", "factory_constructor_signature")
-                if csig:
-                    name = _extract_sig_name(csig)
-                    if name:
-                        line = child.start_point[0] + 1
-                        func_nid = _make_id(parent_nid, name)
-                        add_node(func_nid, f".{name}()", line)
-                        add_edge(parent_nid, func_nid, "method", line)
-                        if i + 1 < len(children_list) and children_list[i + 1].type == "function_body":
-                            function_bodies.append((func_nid, children_list[i + 1]))
-                            i += 2
-                            continue
-                # Abstract method declarations (function_signature as child of declaration, no body)
-                fsig = _first_child_of_type(child, "function_signature")
-                if fsig:
-                    name = _extract_sig_name(fsig)
-                    if name:
-                        line = child.start_point[0] + 1
-                        func_nid = _make_id(parent_nid, name)
-                        add_node(func_nid, f".{name}()", line)
-                        add_edge(parent_nid, func_nid, "method", line)
+                sig = _first_child_of_type(child, "constructor_signature", "factory_constructor_signature",
+                                           "function_signature")
+                if sig:
+                    skip = _register_method(sig, i)
+                    i += 1 + skip
+                    continue
             i += 1
 
     # ── Main walk ────────────────────────────────────────────────────────────
@@ -1676,17 +1655,15 @@ def extract_dart(path: Path) -> dict:
                 seen_call_pairs.add(pair)
                 add_edge(caller_nid, tgt_nid, "calls", line)
 
-    def walk_calls(node, caller_nid: str) -> None:
-        # Don't cross into nested function definitions
-        if node.type in ("method_signature", "function_signature"):
-            return
-
-        # Detect calls from expression_statement / local_variable_declaration children
-        if node.type in ("expression_statement", "initialized_variable_definition"):
-            _extract_calls_from_children(list(node.children), caller_nid)
-
-        for child in node.children:
-            walk_calls(child, caller_nid)
+    def walk_calls(start_node, caller_nid: str) -> None:
+        stack = [start_node]
+        while stack:
+            node = stack.pop()
+            if node.type in ("method_signature", "function_signature"):
+                continue
+            if node.type in ("expression_statement", "initialized_variable_definition"):
+                _extract_calls_from_children(node.children, caller_nid)
+            stack.extend(node.children)
 
     def _extract_calls_from_children(children_list, caller_nid: str) -> None:
         """Detect calls in Dart selector chains.
@@ -1716,7 +1693,7 @@ def extract_dart(path: Path) -> dict:
     # Clean dangling edges
     clean_edges = [e for e in edges
                    if e["source"] in seen_ids and
-                   (e["target"] in seen_ids or e["relation"] == "imports")]
+                   (e["target"] in seen_ids or e["relation"] in ("imports", "imports_from"))]
 
     return {"nodes": nodes, "edges": clean_edges}
 
