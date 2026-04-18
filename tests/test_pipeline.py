@@ -6,6 +6,8 @@ Catches regressions in how modules connect, not just individual module behaviour
 import json
 import tempfile
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -156,3 +158,24 @@ def test_pipeline_no_self_loops(tmp_path):
     G = result["graph"]
     for u, v in G.edges():
         assert u != v, f"Self-loop found on node {u!r}"
+
+
+def test_query_cli_rejects_graph_outside_graphify_out(tmp_path):
+    (tmp_path / "graphify-out").mkdir()
+    secret = tmp_path / "secret.json"
+    secret.write_text(json.dumps({
+        "directed": False,
+        "multigraph": False,
+        "graph": {},
+        "nodes": [{"id": "n1", "label": "TOPSECRET", "file_type": "document", "source_file": "/sensitive/path"}],
+        "links": [],
+    }), encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "graphify", "query", "TOPSECRET", "--graph", str(secret)],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+    )
+    assert result.returncode != 0
+    assert "Only paths inside graphify-out/" in result.stderr

@@ -1094,7 +1094,7 @@ def main() -> None:
             print("Usage: graphify query \"<question>\" [--dfs] [--budget N] [--graph path]", file=sys.stderr)
             sys.exit(1)
         from graphify.serve import _score_nodes, _bfs, _dfs, _subgraph_to_text
-        from graphify.security import sanitize_label
+        from graphify.security import sanitize_label, validate_graph_path
         from networkx.readwrite import json_graph
         question = sys.argv[2]
         use_dfs = "--dfs" in sys.argv
@@ -1121,14 +1121,11 @@ def main() -> None:
                 graph_path = args[i + 1]; i += 2
             else:
                 i += 1
-        gp = Path(graph_path).resolve()
-        if not gp.exists():
-            print(f"error: graph file not found: {gp}", file=sys.stderr)
-            sys.exit(1)
-        if not gp.suffix == ".json":
-            print(f"error: graph file must be a .json file", file=sys.stderr)
-            sys.exit(1)
         try:
+            gp = validate_graph_path(graph_path)
+            if not gp.suffix == ".json":
+                print(f"error: graph file must be a .json file", file=sys.stderr)
+                sys.exit(1)
             import json as _json
             import networkx as _nx
             _raw = _json.loads(gp.read_text(encoding="utf-8"))
@@ -1171,6 +1168,7 @@ def main() -> None:
             print("Usage: graphify path \"<source>\" \"<target>\" [--graph path]", file=sys.stderr)
             sys.exit(1)
         from graphify.serve import _score_nodes
+        from graphify.security import validate_graph_path
         from networkx.readwrite import json_graph
         import networkx as _nx
         source_label = sys.argv[2]
@@ -1180,10 +1178,7 @@ def main() -> None:
         for i, a in enumerate(args):
             if a == "--graph" and i + 1 < len(args):
                 graph_path = args[i + 1]
-        gp = Path(graph_path).resolve()
-        if not gp.exists():
-            print(f"error: graph file not found: {gp}", file=sys.stderr)
-            sys.exit(1)
+        gp = validate_graph_path(graph_path)
         _raw = json.loads(gp.read_text(encoding="utf-8"))
         try:
             G = json_graph.node_link_graph(_raw, edges="links")
@@ -1221,6 +1216,7 @@ def main() -> None:
             print("Usage: graphify explain \"<node>\" [--graph path]", file=sys.stderr)
             sys.exit(1)
         from graphify.serve import _find_node
+        from graphify.security import validate_graph_path
         from networkx.readwrite import json_graph
         label = sys.argv[2]
         graph_path = "graphify-out/graph.json"
@@ -1228,10 +1224,7 @@ def main() -> None:
         for i, a in enumerate(args):
             if a == "--graph" and i + 1 < len(args):
                 graph_path = args[i + 1]
-        gp = Path(graph_path).resolve()
-        if not gp.exists():
-            print(f"error: graph file not found: {gp}", file=sys.stderr)
-            sys.exit(1)
+        gp = validate_graph_path(graph_path)
         _raw = json.loads(gp.read_text(encoding="utf-8"))
         try:
             G = json_graph.node_link_graph(_raw, edges="links")
