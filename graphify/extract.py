@@ -3179,6 +3179,104 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
             import logging
             logging.getLogger(__name__).warning("Cross-file import resolution failed, skipping: %s", exc)
 
+    # ── Disambiguate colliding node IDs across files ─────────────────────────
+    # _make_id(stem, name) collides when two files have the same stem (e.g.
+    # Program.cs in different projects). Detect and rename with parent dir.
+    id_to_files: dict[str, list[dict]] = {}
+    for n in all_nodes:
+        nid = n["id"]
+        id_to_files.setdefault(nid, []).append(n)
+
+    rename_map: dict[str, str] = {}
+    dedup_nodes: list[dict] = []
+    seen_final_ids: set[str] = set()
+    for nid, node_list in id_to_files.items():
+        real_nodes = [n for n in node_list if n.get("source_file")]
+        unique_files = {n["source_file"] for n in real_nodes}
+        if len(unique_files) > 1:
+            for n in node_list:
+                sf = n.get("source_file", "")
+                if sf:
+                    parent = Path(sf).parent.name
+                    new_id = _make_id(parent, nid)
+                    if new_id not in seen_final_ids:
+                        n["id"] = new_id
+                        rename_map[nid + "|" + sf] = new_id
+                        seen_final_ids.add(new_id)
+                        dedup_nodes.append(n)
+                else:
+                    if nid not in seen_final_ids:
+                        seen_final_ids.add(nid)
+                        dedup_nodes.append(n)
+        else:
+            for n in node_list:
+                if nid not in seen_final_ids:
+                    seen_final_ids.add(nid)
+                    dedup_nodes.append(n)
+
+    if rename_map:
+        file_to_renames: dict[str, dict[str, str]] = {}
+        for key, new_id in rename_map.items():
+            old_id, sf = key.rsplit("|", 1)
+            file_to_renames.setdefault(sf, {})[old_id] = new_id
+
+        all_nodes = dedup_nodes
+        for e in all_edges:
+            sf = e.get("source_file", "")
+            renames = file_to_renames.get(sf, {})
+            if e["source"] in renames:
+                e["source"] = renames[e["source"]]
+            if e["target"] in renames:
+                e["target"] = renames[e["target"]]
+    else:
+        first_seen: set[str] = set()
+        unique_nodes: list[dict] = []
+        for n in all_nodes:
+            if n["id"] not in first_seen:
+                first_seen.add(n["id"])
+                unique_nodes.append(n)
+        all_nodes = unique_nodes
+
+
+    # ── Cross-language node merge ─────────────────────────────────────────────
+    # C# extractors create stub nodes (empty source_file) for base types that
+    # may actually be defined in F# files (or other C# files). Merge stubs
+    # into real definitions so edges point to the canonical node.
+    #
+    # Priority: prefer nodes from definition files (Interfaces.fs, Domain.fs)
+    # over implementation files, so inherits edges point to abstract types.
+    _DEFINITION_FILES = {"interfaces", "domain", "types", "contracts", "abstractions"}
+
+    real_by_label: dict[str, str] = {}
+    for n in all_nodes:
+        sf = n.get("source_file", "")
+        if sf:
+            lbl = n["label"].strip("()").lower()
+            stem_lower = Path(sf).stem.lower()
+            existing = real_by_label.get(lbl)
+            if existing is None:
+                real_by_label[lbl] = n["id"]
+            elif stem_lower in _DEFINITION_FILES:
+                real_by_label[lbl] = n["id"]
+
+    stub_ids: set[str] = set()
+    stub_to_real: dict[str, str] = {}
+    for n in all_nodes:
+        if not n.get("source_file"):
+            lbl = n["label"].strip("()").lower()
+            real_nid = real_by_label.get(lbl)
+            if real_nid and real_nid != n["id"]:
+                stub_to_real[n["id"]] = real_nid
+                stub_ids.add(n["id"])
+
+    if stub_to_real:
+        all_nodes = [n for n in all_nodes if n["id"] not in stub_ids]
+        for e in all_edges:
+            if e["source"] in stub_to_real:
+                e["source"] = stub_to_real[e["source"]]
+            if e["target"] in stub_to_real:
+                e["target"] = stub_to_real[e["target"]]
+
     # Cross-file call resolution for all languages
     # Each extractor saved unresolved calls in raw_calls. Now that we have all
     # nodes from all files, resolve any callee that exists in another file.
