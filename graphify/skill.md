@@ -185,7 +185,7 @@ for f in detect.get('files', {}).get('code', []):
     code_files.extend(collect_files(Path(f)) if Path(f).is_dir() else [Path(f)])
 
 if code_files:
-    result = extract(code_files)
+    result = extract(code_files, cache_root=Path('.'))
     Path('graphify-out/.graphify_ast.json').write_text(json.dumps(result, indent=2))
     print(f'AST: {len(result[\"nodes\"])} nodes, {len(result[\"edges\"])} edges')
 else:
@@ -862,6 +862,17 @@ if deleted:
 # Merge: new nodes/edges into existing graph
 G_existing.update(G_new)
 print(f'Merged: {G_existing.number_of_nodes()} nodes, {G_existing.number_of_edges()} edges')
+
+# Write merged result back to .graphify_extract.json so Step 4 sees the full graph
+merged_out = {
+    'nodes': [{'id': n, **d} for n, d in G_existing.nodes(data=True)],
+    'edges': [{'source': u, 'target': v, **d} for u, v, d in G_existing.edges(data=True)],
+    'hyperedges': new_extraction.get('hyperedges', []),
+    'input_tokens': new_extraction.get('input_tokens', 0),
+    'output_tokens': new_extraction.get('output_tokens', 0),
+}
+Path('graphify-out/.graphify_extract.json').write_text(json.dumps(merged_out))
+print(f'[graphify update] Merged extraction written ({len(merged_out[\"nodes\"])} nodes, {len(merged_out[\"edges\"])} edges)')
 " 
 ```
 
