@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 import pytest
 
-from graphify.watch import _notify_only, _WATCHED_EXTENSIONS
+from graphify.watch import _notify_only, _rebuild_code, _WATCHED_EXTENSIONS
 
 
 # --- _notify_only ---
@@ -25,6 +25,41 @@ def test_notify_only_idempotent(tmp_path):
     _notify_only(tmp_path)
     flag = tmp_path / "graphify-out" / "needs_update"
     assert flag.read_text() == "1"
+
+
+def test_rebuild_code_writes_project_relative_paths(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "a.py").write_text("def hello():\n    return 1\n", encoding="utf-8")
+
+    assert _rebuild_code(Path("."))
+
+    graph_json = (tmp_path / "graphify-out" / "graph.json").read_text(encoding="utf-8")
+    report = (tmp_path / "graphify-out" / "GRAPH_REPORT.md").read_text(encoding="utf-8")
+    html = (tmp_path / "graphify-out" / "graph.html").read_text(encoding="utf-8")
+    cache_entries = list((tmp_path / "graphify-out" / "cache").glob("*.json"))
+
+    assert '"source_file": "pkg/a.py"' in graph_json
+    assert str(tmp_path) not in graph_json
+    assert str(tmp_path) not in report
+    assert tmp_path.name in report.splitlines()[0]
+    assert str(tmp_path) not in html
+    assert cache_entries
+    for entry in cache_entries:
+        assert str(tmp_path) not in entry.read_text(encoding="utf-8")
+
+
+def test_rebuild_code_keeps_subdir_prefix_relative_to_cwd(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "a.py").write_text("def hello():\n    return 1\n", encoding="utf-8")
+
+    assert _rebuild_code(Path("pkg"))
+
+    graph_json = (tmp_path / "pkg" / "graphify-out" / "graph.json").read_text(encoding="utf-8")
+    assert '"source_file": "pkg/a.py"' in graph_json
 
 
 # --- _WATCHED_EXTENSIONS ---
