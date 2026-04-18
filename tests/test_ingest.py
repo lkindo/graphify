@@ -48,9 +48,10 @@ def test_source_nodes_capped_at_10(tmp_path):
     nodes = [f"Node{i}" for i in range(20)]
     out = save_query_result("q", "a", mem, source_nodes=nodes)
     content = out.read_text()
-    # Only first 10 should appear in frontmatter source_nodes line
-    fm_line = [l for l in content.splitlines() if l.startswith("source_nodes:")][0]
-    assert fm_line.count('"Node') == 10
+    lines = content.splitlines()
+    start = lines.index("source_nodes:")
+    list_items = [line for line in lines[start + 1:start + 11] if line.startswith('  - "Node')]
+    assert len(list_items) == 10
 
 
 def test_memory_dir_created(tmp_path):
@@ -66,3 +67,12 @@ def test_answer_in_body(tmp_path):
     out = save_query_result("what is the answer?", answer, mem)
     content = out.read_text()
     assert answer in content
+
+
+def test_source_nodes_are_yaml_escaped(tmp_path):
+    mem = tmp_path / "memory"
+    out = save_query_result("q", "a", mem, source_nodes=['node"x', "line\nbreak"])
+    content = out.read_text()
+    assert 'source_nodes:' in content
+    assert '  - "node\\"x"' in content
+    assert '  - "line break"' in content

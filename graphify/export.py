@@ -11,6 +11,20 @@ from networkx.readwrite import json_graph
 from graphify.security import sanitize_label
 from graphify.analyze import _node_community_map
 
+
+def _yaml_scalar(value: str) -> str:
+    """Render a string as a YAML-safe quoted scalar."""
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _community_slug(label: str) -> str:
+    """Stable slug for tags / Dataview queries / graph color groups."""
+    cleaned = _strip_diacritics(label)
+    cleaned = re.sub(r"[^A-Za-z0-9_-]+", "_", cleaned)
+    cleaned = re.sub(r"_+", "_", cleaned).strip("_")
+    return cleaned or "community"
+
+
 def _strip_diacritics(text: str) -> str:
     import unicodedata
     nfkd = unicodedata.normalize("NFKD", text)
@@ -528,7 +542,7 @@ def to_obsidian(
         ftype_tag = _FTYPE_TAG.get(ftype, f"graphify/{ftype}" if ftype else "graphify/document")
         dom_conf = _dominant_confidence(node_id)
         conf_tag = f"graphify/{dom_conf}"
-        comm_tag = f"community/{community_name.replace(' ', '_')}"
+        comm_tag = f"community/{_community_slug(community_name)}"
         node_tags = [ftype_tag, conf_tag, comm_tag]
 
         lines: list[str] = []
@@ -536,12 +550,12 @@ def to_obsidian(
         # YAML frontmatter - readable in Obsidian's properties panel
         lines += [
             "---",
-            f'source_file: "{data.get("source_file", "")}"',
-            f'type: "{ftype}"',
-            f'community: "{community_name}"',
+            f"source_file: {_yaml_scalar(data.get('source_file', ''))}",
+            f"type: {_yaml_scalar(ftype)}",
+            f"community: {_yaml_scalar(community_name)}",
         ]
         if data.get("source_location"):
-            lines.append(f'location: "{data["source_location"]}"')
+            lines.append(f"location: {_yaml_scalar(data['source_location'])}")
         # Add tags list to frontmatter
         lines.append("tags:")
         for tag in node_tags:
@@ -640,7 +654,7 @@ def to_obsidian(
         lines.append("")
 
         # Dataview live query (improvement 2)
-        comm_tag_name = community_name.replace(" ", "_")
+        comm_tag_name = _community_slug(community_name)
         lines.append("## Live Query (requires Dataview plugin)")
         lines.append("")
         lines.append("```dataview")
@@ -691,7 +705,7 @@ def to_obsidian(
     graph_config = {
         "colorGroups": [
             {
-                "query": f"tag:#community/{label.replace(' ', '_')}",
+                "query": f"tag:#community/{_community_slug(label)}",
                 "color": {"a": 1, "rgb": int(COMMUNITY_COLORS[cid % len(COMMUNITY_COLORS)].lstrip('#'), 16)}
             }
             for cid, label in sorted((community_labels or {}).items())

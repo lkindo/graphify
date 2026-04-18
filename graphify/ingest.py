@@ -15,6 +15,11 @@ def _yaml_str(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ").replace("\r", " ")
 
 
+def _yaml_list_items(values: list[str]) -> list[str]:
+    """Render YAML list items using the same escaping as scalar fields."""
+    return [f'  - "{_yaml_str(value)}"' for value in values]
+
+
 def _safe_filename(url: str, suffix: str) -> str:
     """Turn a URL into a safe filename."""
     parsed = urllib.parse.urlparse(url)
@@ -263,8 +268,8 @@ def save_query_result(
         'contributor: "graphify"',
     ]
     if source_nodes:
-        nodes_str = ", ".join(f'"{n}"' for n in source_nodes[:10])
-        frontmatter_lines.append(f"source_nodes: [{nodes_str}]")
+        frontmatter_lines.append("source_nodes:")
+        frontmatter_lines.extend(_yaml_list_items(source_nodes[:10]))
     frontmatter_lines.append("---")
 
     body_lines = [

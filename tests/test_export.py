@@ -1,9 +1,10 @@
 import json
 import tempfile
 from pathlib import Path
+import networkx as nx
 from graphify.build import build_from_json
 from graphify.cluster import cluster
-from graphify.export import to_json, to_cypher, to_graphml, to_html
+from graphify.export import to_json, to_cypher, to_graphml, to_html, to_obsidian
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -125,3 +126,28 @@ def test_to_html_contains_nodes_and_edges():
         content = out.read_text()
         assert "RAW_NODES" in content
         assert "RAW_EDGES" in content
+
+
+def test_to_obsidian_escapes_yaml_and_slugs_community_tags(tmp_path):
+    G = nx.Graph()
+    G.add_node(
+        "n1",
+        label='bad"label',
+        source_file='src/evil"file.py',
+        file_type="code",
+        source_location="L1",
+    )
+    communities = {0: ["n1"]}
+    labels = {0: 'Comm"One / Beta'}
+
+    to_obsidian(G, communities, str(tmp_path), community_labels=labels)
+
+    node_note = (tmp_path / "badlabel.md").read_text(encoding="utf-8")
+    community_note = (tmp_path / "_COMMUNITY_CommOne  Beta.md").read_text(encoding="utf-8")
+    graph_conf = json.loads((tmp_path / ".obsidian" / "graph.json").read_text(encoding="utf-8"))
+
+    assert 'source_file: "src/evil\\"file.py"' in node_note
+    assert 'community: "Comm\\"One / Beta"' in node_note
+    assert "#community/Comm_One_Beta" in node_note
+    assert "TABLE source_file, type FROM #community/Comm_One_Beta" in community_note
+    assert graph_conf["colorGroups"][0]["query"] == "tag:#community/Comm_One_Beta"
