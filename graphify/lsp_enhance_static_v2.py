@@ -19,6 +19,43 @@ from pathlib import Path
 from typing import Any
 
 
+# Language feature descriptions for --list-languages
+LANGUAGE_FEATURES = {
+    "lua": [
+        "metamethods (__call, __index, __add, etc.)",
+        "self context tracking (obj:method vs obj.method)",
+        "require return value tracking",
+        "string method calls (obj['method']())",
+        "chain calls (a.b.c())",
+    ],
+    "python": [
+        "decorator detection (@property, @staticmethod, @classmethod)",
+        "context manager support (with statements)",
+        "self/cls method resolution",
+        "import alias resolution (from X import Y as Z)",
+        "chain calls (a.b.c())",
+    ],
+    "cpp": [
+        "arrow operator (ptr->method)",
+        "scope resolution (Class::method)",
+        "template calls (func<T>())",
+        "smart pointers (unique_ptr, shared_ptr)",
+        "STL calls (std::cout, std::vector)",
+        "operator overloads (operator(), operator+)",
+    ],
+    "javascript": [
+        "method calls (obj.method())",
+        "chain calls (a.b.c())",
+        "require/import patterns",
+    ],
+    "typescript": [
+        "method calls (obj.method())",
+        "chain calls (a.b.c())",
+        "import patterns",
+    ],
+}
+
+
 @dataclass
 class CallSite:
     """Represents a function/method call site in code."""
