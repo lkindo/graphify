@@ -940,6 +940,11 @@ def main() -> None:
         print("  hook install            install post-commit/post-checkout git hooks (all platforms)")
         print("  hook uninstall          remove git hooks")
         print("  hook status             check if git hooks are installed")
+        print("  lsp-import [path]       enhance graph with LSP references (complete call graph)")
+        print("    --graph <path>          path to graph.json (default graphify-out/graph.json)")
+        print("    --language <lang>       specific language(s) to process (default: auto-detect)")
+        print("    --dry-run               extract data without modifying graph")
+        print("    --list-languages        show supported LSP servers")
         print("  gemini install          write GEMINI.md section + BeforeTool hook (Gemini CLI)")
         print("  gemini uninstall        remove GEMINI.md section + BeforeTool hook")
         print("  cursor install          write .cursor/rules/graphify.mdc (Cursor)")
@@ -1346,6 +1351,18 @@ def main() -> None:
         else:
             print("Nothing to update or rebuild failed — check output above.", file=sys.stderr)
             sys.exit(1)
+
+    elif cmd == "lsp-import":
+        from graphify.lsp_enhance_static import main as lsp_main
+
+        # Delegate to the module's CLI for proper argument parsing
+        import sys as _sys
+        # Replace command name
+        if len(sys.argv) > 2:
+            _sys.argv = ["graphify-lsp"] + sys.argv[2:]
+        else:
+            _sys.argv = ["graphify-lsp"]
+        lsp_main()
 
     elif cmd == "benchmark":
         from graphify.benchmark import run_benchmark, print_benchmark
