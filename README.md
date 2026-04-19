@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/safishamsi/graphify/actions/workflows/ci.yml/badge.svg?branch=v4)](https://github.com/safishamsi/graphify/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/graphifyy)](https://pypi.org/project/graphifyy/)
-[![Downloads](https://static.pepy.tech/badge/graphifyy/month)](https://pepy.tech/project/graphifyy)
+[![Downloads](https://static.pepy.tech/badge/graphifyy)](https://pepy.tech/project/graphifyy)
 [![Sponsor](https://img.shields.io/badge/sponsor-safishamsi-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/safishamsi)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Safi%20Shamsi-0077B5?logo=linkedin)](https://www.linkedin.com/in/safi-shamsi)
 
@@ -20,7 +20,7 @@ Fully multimodal. Drop in code, PDFs, markdown, screenshots, diagrams, whiteboar
 
 ```
 graphify-out/
-├── graph.html       interactive graph - click nodes, search, filter by community
+├── graph.html       interactive graph - open in any browser, click nodes, search, filter by community
 ├── GRAPH_REPORT.md  god nodes, surprising connections, suggested questions
 ├── graph.json       persistent graph - query weeks later without re-reading
 └── cache/           SHA256 cache - re-runs only process changed files
@@ -52,9 +52,13 @@ Every relationship is tagged `EXTRACTED` (found directly in source), `INFERRED` 
 
 ```bash
 pip install graphifyy && graphify install
+# or with pipx (keeps the CLI isolated from your project environments)
+pipx install graphifyy && graphify install
 ```
 
 > **Official package:** The PyPI package is named `graphifyy` (install with `pip install graphifyy`). Other packages named `graphify*` on PyPI are not affiliated with this project. The only official repository is [safishamsi/graphify](https://github.com/safishamsi/graphify). The CLI and skill command are still `graphify`.
+
+> **`graphify: command not found`?** On Windows, pip user scripts land in `%APPDATA%\Python\PythonXY\Scripts` — add that to your PATH or use `python -m graphify` instead. On macOS with pipx, run `pipx ensurepath` then restart your terminal.
 
 ### Platform support
 
@@ -142,6 +146,24 @@ The always-on hook surfaces `GRAPH_REPORT.md` — a one-page summary of god node
 `/graphify query`, `/graphify path`, and `/graphify explain` go deeper: they traverse the raw `graph.json` hop by hop, trace exact paths between nodes, and surface edge-level detail (relation type, confidence score, source location). Use them when you want a specific question answered from the graph rather than a general orientation.
 
 Think of it this way: the always-on hook gives your assistant a map. The `/graphify` commands let it navigate the map precisely.
+
+### Team workflows
+
+`graphify-out/` is designed to be committed to git so every teammate starts with a fresh map.
+
+**Recommended `.gitignore` additions:**
+```
+# commit graph outputs, ignore the extraction cache
+graphify-out/cache/
+```
+
+**Shared setup:**
+1. One person runs `/graphify .` to build the initial graph and commits `graphify-out/`.
+2. Everyone else pulls — their assistant reads `GRAPH_REPORT.md` immediately with no extra steps.
+3. Install the post-commit hook (`graphify hook install`) so the graph rebuilds automatically after code changes — no LLM calls needed for code-only updates.
+4. For doc/paper changes, whoever edits the files runs `/graphify --update` to refresh semantic nodes.
+
+**Excluding paths** — create `.graphifyignore` in your project root (same syntax as `.gitignore`). Files matching those patterns are skipped during detection and extraction.
 
 ## Using `graph.json` with an LLM
 
@@ -292,8 +314,8 @@ Works with any mix of file types:
 
 | Type | Extensions | Extraction |
 |------|-----------|------------|
-| Code | `.py .ts .js .jsx .tsx .go .rs .java .c .cpp .rb .cs .kt .scala .php .swift .lua .zig .ps1 .ex .exs .m .mm .jl .vue .svelte` | AST via tree-sitter + call-graph (cross-file for all languages) + docstring/comment rationale |
-| Docs | `.md .txt .rst` | Concepts + relationships + design rationale via Claude |
+| Code | `.py .ts .js .jsx .tsx .mjs .go .rs .java .c .cpp .rb .cs .kt .scala .php .swift .lua .zig .ps1 .ex .exs .m .mm .jl .vue .svelte` | AST via tree-sitter + call-graph (cross-file for all languages) + docstring/comment rationale |
+| Docs | `.md .mdx .html .txt .rst` | Concepts + relationships + design rationale via Claude |
 | Office | `.docx .xlsx` | Converted to markdown then extracted via Claude (requires `pip install graphifyy[office]`) |
 | Papers | `.pdf` | Citation mining + concept extraction |
 | Images | `.png .jpg .webp .gif` | Claude vision - screenshots, diagrams, any language |

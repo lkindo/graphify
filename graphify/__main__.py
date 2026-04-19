@@ -23,6 +23,19 @@ def _check_skill_version(skill_dst: Path) -> None:
     if installed != __version__:
         print(f"  warning: skill is from graphify {installed}, package is {__version__}. Run 'graphify install' to update.")
 
+
+def _refresh_all_version_stamps() -> None:
+    """After a successful install, update .graphify_version in all other known skill dirs.
+
+    Prevents stale-version warnings from platforms that were installed previously
+    but not explicitly re-installed during this upgrade.
+    """
+    for cfg in _PLATFORM_CONFIG.values():
+        vf = Path.home() / cfg["skill_dst"]
+        vf = vf.parent / ".graphify_version"
+        if vf.exists():
+            vf.write_text(__version__, encoding="utf-8")
+
 _SETTINGS_HOOK = {
     "matcher": "Glob|Grep",
     "hooks": [
@@ -166,6 +179,10 @@ def install(platform: str = "claude") -> None:
 
     if platform == "opencode":
         _install_opencode_plugin(Path("."))
+
+    # Refresh version stamps in all other previously-installed skill dirs so
+    # stale-version warnings don't fire for platforms not explicitly re-installed.
+    _refresh_all_version_stamps()
 
     print()
     print("Done. Open your AI coding assistant and type:")
@@ -1449,7 +1466,7 @@ def main() -> None:
         from graphify.cluster import cluster, score_all
         from graphify.analyze import god_nodes, surprising_connections, suggest_questions
         from graphify.report import generate
-        from graphify.export import to_json
+        from graphify.export import to_json, to_html
         print("Loading existing graph...")
         _raw = json.loads(graph_json.read_text(encoding="utf-8"))
         G = build_from_json(_raw)
@@ -1463,11 +1480,13 @@ def main() -> None:
         questions = suggest_questions(G, communities, labels)
         tokens = {"input": 0, "output": 0}
         report = generate(G, communities, cohesion, labels, gods, surprises,
-                          {}, tokens, str(watch_path), suggested_questions=questions)
+                          {"warning": "cluster-only mode — file stats not available"},
+                          tokens, str(watch_path), suggested_questions=questions)
         out = watch_path / "graphify-out"
         (out / "GRAPH_REPORT.md").write_text(report, encoding="utf-8")
         to_json(G, communities, str(out / "graph.json"))
-        print(f"Done — {len(communities)} communities. GRAPH_REPORT.md and graph.json updated.")
+        to_html(G, communities, str(out / "graph.html"), community_labels=labels or None)
+        print(f"Done — {len(communities)} communities. GRAPH_REPORT.md, graph.json and graph.html updated.")
 
     elif cmd == "update":
         watch_path = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(".")
