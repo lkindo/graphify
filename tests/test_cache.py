@@ -1,7 +1,7 @@
 """Tests for graphify/cache.py."""
 import pytest
 from pathlib import Path
-from graphify.cache import file_hash, cache_dir, load_cached, save_cached, cached_files, clear_cache, _body_content
+from graphify.cache import file_hash, cache_dir, load_cached, save_cached, save_semantic_cache, cached_files, clear_cache, _body_content
 
 
 @pytest.fixture
@@ -124,3 +124,36 @@ def test_body_content_no_frontmatter():
     """_body_content returns content unchanged when no frontmatter present."""
     content = b"No frontmatter here."
     assert _body_content(content) == content
+
+
+def test_save_cached_noop_on_directory(tmp_path, cache_root):
+    """save_cached silently skips directory paths instead of erroring."""
+    d = tmp_path / "some_dir"
+    d.mkdir()
+    # Should not raise IsADirectoryError (errno 21) and should not write anything.
+    save_cached(d, {"nodes": [], "edges": []}, root=cache_root)
+    cache_files = list((cache_root / "graphify-out" / "cache").glob("*.json"))
+    assert cache_files == []
+
+
+def test_save_semantic_cache_skips_directory_source_file(tmp_path, cache_root):
+    """Nodes whose source_file points at a directory don't abort the batch."""
+    # Real file + a directory masquerading as source_file
+    real = tmp_path / "real.ts"
+    real.write_text("export const x = 1;")
+    bogus_dir = tmp_path / "abstracts"
+    bogus_dir.mkdir()
+
+    nodes = [
+        {"id": "n_real", "source_file": str(real)},
+        {"id": "n_bogus", "source_file": str(bogus_dir)},
+    ]
+    saved = save_semantic_cache(nodes, [], [], root=cache_root)
+    assert saved == 1  # only the real file got cached
+
+
+def test_save_semantic_cache_skips_missing_file(tmp_path, cache_root):
+    """Nodes referencing a non-existent source_file are ignored."""
+    nodes = [{"id": "n_missing", "source_file": str(tmp_path / "does_not_exist.ts")}]
+    saved = save_semantic_cache(nodes, [], [], root=cache_root)
+    assert saved == 0
