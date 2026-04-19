@@ -1353,16 +1353,40 @@ def main() -> None:
             sys.exit(1)
 
     elif cmd == "lsp-import":
-        from graphify.lsp_enhance_static import main as lsp_main
+        from graphify.lsp_enhance_static_v2 import run_static_enhancement
 
-        # Delegate to the module's CLI for proper argument parsing
-        import sys as _sys
-        # Replace command name
-        if len(sys.argv) > 2:
-            _sys.argv = ["graphify-lsp"] + sys.argv[2:]
-        else:
-            _sys.argv = ["graphify-lsp"]
-        lsp_main()
+        import_path = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(".")
+        graph_path = None
+        language = "auto"
+        output_path = None
+
+        # Parse additional args
+        args = sys.argv[3:]
+        i = 0
+        while i < len(args):
+            if args[i] == "--graph" and i + 1 < len(args):
+                graph_path = Path(args[i + 1])
+                i += 2
+            elif args[i] == "--language" and i + 1 < len(args):
+                language = args[i + 1]
+                i += 2
+            elif args[i] == "--output" and i + 1 < len(args):
+                output_path = Path(args[i + 1])
+                i += 2
+            else:
+                i += 1
+
+        try:
+            run_static_enhancement(
+                root_path=import_path,
+                graph_path=graph_path,
+                language=language,
+                output_path=output_path,
+            )
+        except FileNotFoundError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            print("\nPlease run '/graphify' first to create the initial graph.", file=sys.stderr)
+            sys.exit(1)
 
     elif cmd == "benchmark":
         from graphify.benchmark import run_benchmark, print_benchmark
