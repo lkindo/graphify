@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Premium Botanical Encyclopedia</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #27ae60;
+            --primary-light: #2ecc71;
+            --bg: #0b0e14;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --text: #f0f3f5;
+            --glass: rgba(255, 255, 255, 0.08);
+            --accent: #27ae60;
+        }
+
+        * { margin:0; padding:0; box-sizing:border-box; font-family:'Outfit', 'Noto Sans KR', sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background:var(--bg); color:var(--text); overflow-x:hidden; min-height:100vh; }
+        
+        /* Background Decoration */
+        body::before { content:''; position:fixed; top:-10%; left:-10%; width:40%; height:40%; background:radial-gradient(circle, rgba(39, 174, 96, 0.1) 0%, transparent 70%); z-index:-1; pointer-events:none; }
+        body::after { content:''; position:fixed; bottom:-10%; right:-10%; width:40%; height:40%; background:radial-gradient(circle, rgba(39, 174, 96, 0.05) 0%, transparent 70%); z-index:-1; pointer-events:none; }
+
+        .container { max-width:1600px; margin:0 auto; padding:20px; }
+        
+        header { text-align:center; padding:100px 20px 60px; }
+        header h1 { font-size:clamp(2.5rem, 10vw, 4.5rem); font-weight:800; letter-spacing:-2px; margin-bottom:15px; background: linear-gradient(135deg, #fff 30%, var(--primary-light)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        header p { font-size:1.1rem; opacity:0.6; font-weight:300; }
+
+        /* Search Section */
+        .search-container { max-width:800px; margin:0 auto 80px; position:relative; }
+        #searchInput { width:100%; padding:25px 35px; padding-left:70px; border-radius:40px; border:1px solid var(--glass); background:rgba(255,255,255,0.05); color:white; font-size:1.2rem; backdrop-filter:blur(20px); transition:0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); outline:none; box-shadow:0 10px 30px rgba(0,0,0,0.3); }
+        #searchInput:focus { border-color:var(--primary); transform:scale(1.02); box-shadow:0 15px 40px rgba(39, 174, 96, 0.2); }
+        .search-icon { position:absolute; left:30px; top:50%; transform:translateY(-50%); font-size:1.5rem; opacity:0.5; }
+
+        /* Grid System */
+        .species-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:35px; }
+        .species-card { background:var(--card-bg); border-radius:32px; overflow:hidden; border:1px solid var(--glass); cursor:pointer; position:relative; transition:0.5s cubic-bezier(0.165, 0.84, 0.44, 1); }
+        .species-card:hover { transform:translateY(-15px); border-color:rgba(39,174,96,0.5); box-shadow:0 30px 60px rgba(0,0,0,0.5); }
+        
+        .badge { position:absolute; top:20px; left:20px; background:rgba(39, 174, 96, 0.9); color:white; padding:6px 16px; border-radius:20px; font-size:0.8rem; font-weight:700; backdrop-filter:blur(10px); z-index:10; }
+        
+        .image-box { width:100%; aspect-ratio:1/1.1; overflow:hidden; background:#111; }
+        .card-img { width:100%; height:100%; object-fit:cover; transition:1s; filter: brightness(0.9); }
+        .species-card:hover .card-img { transform:scale(1.1); filter: brightness(1.1); }
+        
+        .card-body { padding:30px; background:linear-gradient(to bottom, transparent, rgba(0,0,0,0.8)); margin-top:-100px; position:relative; z-index:5; }
+        .card-title { font-size:1.8rem; font-weight:800; color:#fff; margin-bottom:5px; }
+        .card-sci { font-size:1rem; color:var(--primary-light); font-style:italic; opacity:0.8; }
+
+        /* Modal & Smart Pan - Final Standard */
+        .modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.94); backdrop-filter:blur(30px); display:none; justify-content:center; align-items:center; z-index:1000; padding:20px; }
+        .modal-container { background:var(--bg); width:100%; max-width:1400px; height:90vh; border-radius:40px; overflow:hidden; display:flex; border:1px solid var(--glass); position:relative; box-shadow:0 50px 100px rgba(0,0,0,0.8); }
+        
+        .viewer-side { flex:1.5; background:#000; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; border-right:1px solid var(--glass); }
+        .img-viewport { width:100%; height:100%; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:zoom-in; }
+        .viewer-img { max-width:100%; max-height:100%; object-fit:contain; transition:transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1); pointer-events:none; }
+        .img-viewport.zoomed { cursor:zoom-out; }
+        .img-viewport.zoomed .viewer-img { transform:scale(3); }
+
+        .slider-btn { position:absolute; top:50%; transform:translateY(-50%); background:rgba(255,255,255,0.05); border:none; color:white; width:65px; height:65px; border-radius:50%; cursor:pointer; font-size:2rem; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(10px); transition:0.3s; z-index:100; border:1px solid rgba(255,255,255,0.1); }
+        .slider-btn:hover { background:var(--primary); border-color:transparent; transform:translateY(-50%) scale(1.1); }
+        #prevBtn { left:30px; }
+        #nextBtn { right:30px; }
+
+        .content-side { flex:1; padding:60px; overflow-y:auto; position:relative; }
+        .close-btn { position:absolute; top:30px; right:30px; width:50px; height:50px; border-radius:50%; background:var(--glass); border:none; color:white; cursor:pointer; font-size:1.5rem; display:flex; align-items:center; justify-content:center; transition:0.3s; z-index:200; }
+        .close-btn:hover { background:#e74c3c; transform:rotate(90deg); }
+
+        .meta-family { display:inline-block; font-weight:800; color:var(--primary-light); background:rgba(39, 174, 96, 0.1); padding:8px 20px; border-radius:30px; margin-bottom:20px; border:1px solid rgba(39,174,96,0.3); }
+        .meta-title { font-size:3.5rem; font-weight:800; margin-bottom:10px; line-height:1.1; letter-spacing:-2px; }
+        .meta-sci { font-size:1.4rem; color:var(--text); opacity:0.5; font-style:italic; margin-bottom:50px; display:block; }
+        
+        .info-card { background:rgba(255,255,255,0.03); border-radius:24px; padding:35px; border-left:6px solid var(--primary); margin-bottom:30px; }
+        .info-label { font-size:0.9rem; color:var(--primary-light); font-weight:800; text-transform:uppercase; margin-bottom:12px; display:block; }
+        .info-text { font-size:1.15rem; line-height:1.8; color:rgba(255,255,255,0.9); }
+
+        /* Responsive Mobile Adjustments */
+        @media (max-width: 1024px) {
+            .modal-container { flex-direction:column; max-width:95vw; height:95vh; }
+            .viewer-side { height:45vh; flex:none; }
+            .content-side { padding:40px; }
+            .meta-title { font-size:2.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Botanical Archive</h1>
+            <p>우리나라 자생 식물 1,500여 종의 정밀 기록 (12p - 387p)</p>
+        </header>
+
+        <div class="search-container">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="식물 이름, 학명 또는 과명을 입력하세요...">
+        </div>
+
+        <div id="speciesGrid" class="species-grid"></div>
+    </div>
+
+    <!-- Modal Final Standard -->
+    <div id="modalOverlay" class="modal-overlay">
+        <div class="modal-container">
+            <button class="close-btn" onclick="closeModal()">✕</button>
+            <div class="viewer-side">
+                <button id="prevBtn" class="slider-btn" onclick="event.stopPropagation(); changeSlide(-1)">❮</button>
+                <div id="imgViewport" class="img-viewport" onclick="toggleZoom(event)" onmousemove="handlePan(event)" ontouchmove="handlePan(event)">
+                    <img id="viewerImg" src="" class="viewer-img">
+                </div>
+                <button id="nextBtn" class="slider-btn" onclick="event.stopPropagation(); changeSlide(1)">❯</button>
+            </div>
+            <div class="content-side">
+                <span id="metaFamily" class="meta-family"></span>
+                <h2 id="metaTitle" class="meta-title"></h2>
+                <span id="metaSci" class="meta-sci"></span>
+                
+                <div id="metaInfo"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Channel -->
+    <script id="botanicalData" type="application/json">{
+  "species": [
+    {
+      "name": "꽃개오동",
+      "scientific_name": "Scientific Name",
+      "family": "능소화과",
+      "images": [
+        "assets/species/꽃개오동_1.png",
+        "assets/species/꽃개오동_2.png"
+      ],
+      "summary": "꽃개오동의 정밀 도감 데이터입니다. (도감 26-27쪽)",
+      "details": {
+        "분류": "능소화과",
+        "페이지": "26-27"
+      }
+    },
+    {
+      "name": "능소화",
+      "scientific_name": "Scientific Name",
+      "family": "능소화과",
+      "images": [
+        "assets/species/능소화_1.png",
+        "assets/species/능소화_2.png"
+      ],
+      "summary": "능소화의 정밀 도감 데이터입니다. (도감 28-29쪽)",
+      "details": {
+        "분류": "능소화과",
+        "페이지": "28-29"
+      }
+    },
+    {
+      "name": "미국능소화",
+      "scientific_name": "Scientific Name",
+      "family": "능소화과",
+      "images": [
+        "assets/species/미국능소화_1.png",
+        "assets/species/미국능소화_2.png"
+      ],
+      "summary": "미국능소화의 정밀 도감 데이터입니다. (도감 30-31쪽)",
+      "details": {
+        "분류": "능소화과",
+        "페이지": "30-31"
+      }
+    },
+    {
+      "name": "탱자나무",
+      "scientific_name": "Scientific Name",
+      "family": "운향과",
+      "images": [
+        "assets/species/탱자나무_1.png",
+        "assets/species/탱자나무_2.png"
+      ],
+      "summary": "탱자나무의 정밀 도감 데이터입니다. (도감 130-131쪽)",
+      "details": {
+        "분류": "운향과",
+        "페이지": "130-131"
+      }
+    },
+    {
+      "name": "굴나무",
+      "scientific_name": "Scientific Name",
+      "family": "운향과",
+      "images": [
+        "assets/species/굴나무_1.png",
+        "assets/species/굴나무_2.png"
+      ],
+      "summary": "굴나무의 정밀 도감 데이터입니다. (도감 34-35쪽)",
+      "details": {
+        "분류": "운향과",
+        "페이지": "34-35"
+      }
+    },
+    {
+      "name": "광랄",
+      "scientific_name": "Scientific Name",
+      "family": "운향과",
+      "images": [
+        "assets/species/광랄_1.png",
+        "assets/species/광랄_2.png"
+      ],
+      "summary": "광랄의 정밀 도감 데이터입니다. (도감 138-139쪽)",
+      "details": {
+        "분류": "운향과",
+        "페이지": "138-139"
+      }
+    },
+    {
+      "name": "산초",
+      "scientific_name": "Scientific Name",
+      "family": "운향과",
+      "images": [
+        "assets/species/산초_1.png",
+        "assets/species/산초_2.png"
+      ],
+      "summary": "산초의 정밀 도감 데이터입니다. (도감 154-155쪽)",
+      "details": {
+        "분류": "운향과",
+        "페이지": "154-155"
+      }
+    },
+    {
+      "name": "산초나무",
+      "scientific_name": "Scientific Name",
+      "family": "운향과",
+      "images": [
+        "assets/species/산초나무_1.png",
+        "assets/species/산초나무_2.png"
+      ],
+      "summary": "산초나무의 정밀 도감 데이터입니다. (도감 156-157쪽)",
+      "details": {
+        "분류": "운향과",
+        "페이지": "156-157"
+      }
+    },
+    {
+      "name": "초피",
+      "scientific_name": "Scientific Name",
+      "family": "운향과",
+      "images": [
+        "assets/species/초피_1.png",
+        "assets/species/초피_2.png"
+      ],
+      "summary": "초피의 정밀 도감 데이터입니다. (도감 158-159쪽)",
+      "details": {
+        "분류": "운향과",
+        "페이지": "158-159"
+      }
+    },
+    {
+      "name": "나무",
+      "scientific_name": "Scientific Name",
+      "family": "운향과",
+      "images": [
+        "assets/species/나무_1.png",
+        "assets/species/나무_2.png"
+      ],
+      "summary": "나무의 정밀 도감 데이터입니다. (도감 162-163쪽)",
+      "details": {
+        "분류": "운향과",
+        "페이지": "162-163"
+      }
+    },
+    {
+      "name": "둥근금",
+      "scientific_name": "Scientific Name",
+      "family": "단풍나무과",
+      "images": [
+        "assets/species/둥근금_1.png",
+        "assets/species/둥근금_2.png"
+      ],
+      "summary": "둥근금의 정밀 도감 데이터입니다. (도감 186-187쪽)",
+      "details": {
+        "분류": "단풍나무과",
+        "페이지": "186-187"
+      }
+    },
+    {
+      "name": "장실급감",
+      "scientific_name": "Scientific Name",
+      "family": "단풍나무과",
+      "images": [
+        "assets/species/장실급감_1.png",
+        "assets/species/장실급감_2.png"
+      ],
+      "summary": "장실급감의 정밀 도감 데이터입니다. (도감 188-189쪽)",
+      "details": {
+        "분류": "단풍나무과",
+        "페이지": "188-189"
+      }
+    },
+    {
+      "name": "상산",
+      "scientific_name": "Scientific Name",
+      "family": "단풍나무과",
+      "images": [
+        "assets/species/상산_1.png",
+        "assets/species/상산_2.png"
+      ],
+      "summary": "상산의 정밀 도감 데이터입니다. (도감 190-191쪽)",
+      "details": {
+        "분류": "단풍나무과",
+        "페이지": "190-191"
+      }
+    },
+    {
+      "name": "황벽",
+      "scientific_name": "Scientific Name",
+      "family": "단풍나무과",
+      "images": [
+        "assets/species/황벽_1.png",
+        "assets/species/황벽_2.png"
+      ],
+      "summary": "황벽의 정밀 도감 데이터입니다. (도감 192-193쪽)",
+      "details": {
+        "분류": "단풍나무과",
+        "페이지": "192-193"
+      }
+    },
+    {
+      "name": "털황벽",
+      "scientific_name": "Scientific Name",
+      "family": "단풍나무과",
+      "images": [
+        "assets/species/털황벽_1.png",
+        "assets/species/털황벽_2.png"
+      ],
+      "summary": "털황벽의 정밀 도감 데이터입니다. (도감 150-151쪽)",
+      "details": {
+        "분류": "단풍나무과",
+        "페이지": "150-151"
+      }
+    },
+    {
+      "name": "화태황벅나무",
+      "scientific_name": "Scientific Name",
+      "family": "단풍나무과",
+      "images": [
+        "assets/species/화태황벅나무_1.png",
+        "assets/species/화태황벅나무_2.png"
+      ],
+      "summary": "화태황벅나무의 정밀 도감 데이터입니다. (도감 196-197쪽)",
+      "details": {
+        "분류": "단풍나무과",
+        "페이지": "196-197"
+      }
+    },
+    {
+      "name": "복장나무",
+      "scientific_name": "Scientific Name",
+      "family": "단풍나무과",
+      "images": [
+        "assets/species/복장나무_1.png",
+        "assets/species/복장나무_2.png"
+      ],
+      "summary": "복장나무의 정밀 도감 데이터입니다. (도감 198-199쪽)",
+      "details": {
+        "분류": "단풍나무과",
+        "페이지": "198-199"
+      }
+    },
+    {
+      "name": "만주고로소",
+      "scientific_name": "Scientific Name",
+      "family": "노박덩굴과",
+      "images": [
+        "assets/species/만주고로소_1.png",
+        "assets/species/만주고로소_2.png"
+      ],
+      "summary": "만주고로소의 정밀 도감 데이터입니다. (도감 260-261쪽)",
+      "details": {
+        "분류": "노박덩굴과",
+        "페이지": "260-261"
+      }
+    },
+    {
+      "name": "털만주고로소",
+      "scientific_name": "Scientific Name",
+      "family": "노박덩굴과",
+      "images": [
+        "assets/species/털만주고로소_1.png",
+        "assets/species/털만주고로소_2.png"
+      ],
+      "summary": "털만주고로소의 정밀 도감 데이터입니다. (도감 262-263쪽)",
+      "details": {
+        "분류": "노박덩굴과",
+        "페이지": "262-263"
+      }
+    },
+    {
+      "name": "노르웨이단풍",
+      "scientific_name": "Scientific Name",
+      "family": "노박덩굴과",
+      "images": [
+        "assets/species/노르웨이단풍_1.png",
+        "assets/species/노르웨이단풍_2.png"
+      ],
+      "summary": "노르웨이단풍의 정밀 도감 데이터입니다. (도감 264-265쪽)",
+      "details": {
+        "분류": "노박덩굴과",
+        "페이지": "264-265"
+      }
+    },
+    {
+      "name": "단풍나무",
+      "scientific_name": "Scientific Name",
+      "family": "노박덩굴과",
+      "images": [
+        "assets/species/단풍나무_1.png",
+        "assets/species/단풍나무_2.png"
+      ],
+      "summary": "단풍나무의 정밀 도감 데이터입니다. (도감 266-267쪽)",
+      "details": {
+        "분류": "노박덩굴과",
+        "페이지": "266-267"
+      }
+    },
+    {
+      "name": "당단풍나무",
+      "scientific_name": "Scientific Name",
+      "family": "노박덩굴과",
+      "images": [
+        "assets/species/당단풍나무_1.png",
+        "assets/species/당단풍나무_2.png"
+      ],
+      "summary": "당단풍나무의 정밀 도감 데이터입니다. (도감 268-269쪽)",
+      "details": {
+        "분류": "노박덩굴과",
+        "페이지": "268-269"
+      }
+    },
+    {
+      "name": "섬단풍나무",
+      "scientific_name": "Scientific Name",
+      "family": "노박덩굴과",
+      "images": [
+        "assets/species/섬단풍나무_1.png",
+        "assets/species/섬단풍나무_2.png"
+      ],
+      "summary": "섬단풍나무의 정밀 도감 데이터입니다. (도감 272-273쪽)",
+      "details": {
+        "분류": "노박덩굴과",
+        "페이지": "272-273"
+      }
+    },
+    {
+      "name": "중국단풍",
+      "scientific_name": "Scientific Name",
+      "family": "노박덩굴과",
+      "images": [
+        "assets/species/중국단풍_1.png",
+        "assets/species/중국단풍_2.png"
+      ],
+      "summary": "중국단풍의 정밀 도감 데이터입니다. (도감 274-275쪽)",
+      "details": {
+        "분류": "노박덩굴과",
+        "페이지": "274-275"
+      }
+    },
+    {
+      "name": "꽃단풍",
+      "scientific_name": "Scientific Name",
+      "family": "노박덩굴과",
+      "images": [
+        "assets/species/꽃단풍_1.png",
+        "assets/species/꽃단풍_2.png"
+      ],
+      "summary": "꽃단풍의 정밀 도감 데이터입니다. (도감 276-277쪽)",
+      "details": {
+        "분류": "노박덩굴과",
+        "페이지": "276-277"
+      }
+    },
+    {
+      "name": "은단풍",
+      "scientific_name": "Scientific Name",
+      "family": "노박덩굴과",
+      "images": [
+        "assets/species/은단풍_1.png",
+        "assets/species/은단풍_2.png"
+      ],
+      "summary": "은단풍의 정밀 도감 데이터입니다. (도감 278-279쪽)",
+      "details": {
+        "분류": "노박덩굴과",
+        "페이지": "278-279"
+      }
+    },
+    {
+      "name": "모감주나무",
+      "scientific_name": "Scientific Name",
+      "family": "노박덩굴과",
+      "images": [
+        "assets/species/모감주나무_1.png",
+        "assets/species/모감주나무_2.png"
+      ],
+      "summary": "모감주나무의 정밀 도감 데이터입니다. (도감 284-285쪽)",
+      "details": {
+        "분류": "노박덩굴과",
+        "페이지": "284-285"
+      }
+    },
+    {
+      "name": "칠엽수",
+      "scientific_name": "Scientific Name",
+      "family": "노박덩굴과",
+      "images": [
+        "assets/species/칠엽수_1.png",
+        "assets/species/칠엽수_2.png"
+      ],
+      "summary": "칠엽수의 정밀 도감 데이터입니다. (도감 290-291쪽)",
+      "details": {
+        "분류": "노박덩굴과",
+        "페이지": "290-291"
+      }
+    },
+    {
+      "name": "미역줄나무",
+      "scientific_name": "Scientific Name",
+      "family": "감탕나무과",
+      "images": [
+        "assets/species/미역줄나무_1.png",
+        "assets/species/미역줄나무_2.png"
+      ],
+      "summary": "미역줄나무의 정밀 도감 데이터입니다. (도감 298-299쪽)",
+      "details": {
+        "분류": "감탕나무과",
+        "페이지": "298-299"
+      }
+    },
+    {
+      "name": "고추나무",
+      "scientific_name": "Scientific Name",
+      "family": "고추나무과",
+      "images": [
+        "assets/species/고추나무_1.png",
+        "assets/species/고추나무_2.png"
+      ],
+      "summary": "고추나무의 정밀 도감 데이터입니다. (도감 302-303쪽)",
+      "details": {
+        "분류": "고추나무과",
+        "페이지": "302-303"
+      }
+    },
+    {
+      "name": "회양목",
+      "scientific_name": "Scientific Name",
+      "family": "회양목과",
+      "images": [
+        "assets/species/회양목_1.png",
+        "assets/species/회양목_2.png"
+      ],
+      "summary": "회양목의 정밀 도감 데이터입니다. (도감 304-305쪽)",
+      "details": {
+        "분류": "회양목과",
+        "페이지": "304-305"
+      }
+    },
+    {
+      "name": "긴잎회양목",
+      "scientific_name": "Scientific Name",
+      "family": "회양목과",
+      "images": [
+        "assets/species/긴잎회양목_1.png",
+        "assets/species/긴잎회양목_2.png"
+      ],
+      "summary": "긴잎회양목의 정밀 도감 데이터입니다. (도감 306-307쪽)",
+      "details": {
+        "분류": "회양목과",
+        "페이지": "306-307"
+      }
+    },
+    {
+      "name": "섬회양목",
+      "scientific_name": "Scientific Name",
+      "family": "회양목과",
+      "images": [
+        "assets/species/섬회양목_1.png",
+        "assets/species/섬회양목_2.png"
+      ],
+      "summary": "섬회양목의 정밀 도감 데이터입니다. (도감 308-309쪽)",
+      "details": {
+        "분류": "회양목과",
+        "페이지": "308-309"
+      }
+    },
+    {
+      "name": "사조",
+      "scientific_name": "Scientific Name",
+      "family": "갈매나무과",
+      "images": [
+        "assets/species/사조_1.png",
+        "assets/species/사조_2.png"
+      ],
+      "summary": "사조의 정밀 도감 데이터입니다. (도감 312-313쪽)",
+      "details": {
+        "분류": "갈매나무과",
+        "페이지": "312-313"
+      }
+    },
+    {
+      "name": "먹넌출",
+      "scientific_name": "Scientific Name",
+      "family": "갈매나무과",
+      "images": [
+        "assets/species/먹넌출_1.png",
+        "assets/species/먹넌출_2.png"
+      ],
+      "summary": "먹넌출의 정밀 도감 데이터입니다. (도감 314-315쪽)",
+      "details": {
+        "분류": "갈매나무과",
+        "페이지": "314-315"
+      }
+    },
+    {
+      "name": "망개",
+      "scientific_name": "Scientific Name",
+      "family": "갈매나무과",
+      "images": [
+        "assets/species/망개_1.png",
+        "assets/species/망개_2.png"
+      ],
+      "summary": "망개의 정밀 도감 데이터입니다. (도감 316-317쪽)",
+      "details": {
+        "분류": "갈매나무과",
+        "페이지": "316-317"
+      }
+    },
+    {
+      "name": "헛개나무",
+      "scientific_name": "Scientific Name",
+      "family": "갈매나무과",
+      "images": [
+        "assets/species/헛개나무_1.png",
+        "assets/species/헛개나무_2.png"
+      ],
+      "summary": "헛개나무의 정밀 도감 데이터입니다. (도감 320-321쪽)",
+      "details": {
+        "분류": "갈매나무과",
+        "페이지": "320-321"
+      }
+    },
+    {
+      "name": "갈매",
+      "scientific_name": "Scientific Name",
+      "family": "갈매나무과",
+      "images": [
+        "assets/species/갈매_1.png",
+        "assets/species/갈매_2.png"
+      ],
+      "summary": "갈매의 정밀 도감 데이터입니다. (도감 322-323쪽)",
+      "details": {
+        "분류": "갈매나무과",
+        "페이지": "322-323"
+      }
+    },
+    {
+      "name": "참갈매",
+      "scientific_name": "Scientific Name",
+      "family": "갈매나무과",
+      "images": [
+        "assets/species/참갈매_1.png",
+        "assets/species/참갈매_2.png"
+      ],
+      "summary": "참갈매의 정밀 도감 데이터입니다. (도감 324-325쪽)",
+      "details": {
+        "분류": "갈매나무과",
+        "페이지": "324-325"
+      }
+    },
+    {
+      "name": "짝자래나무",
+      "scientific_name": "Scientific Name",
+      "family": "갈매나무과",
+      "images": [
+        "assets/species/짝자래나무_1.png",
+        "assets/species/짝자래나무_2.png"
+      ],
+      "summary": "짝자래나무의 정밀 도감 데이터입니다. (도감 326-327쪽)",
+      "details": {
+        "분류": "갈매나무과",
+        "페이지": "326-327"
+      }
+    },
+    {
+      "name": "상동나무",
+      "scientific_name": "Scientific Name",
+      "family": "갈매나무과",
+      "images": [
+        "assets/species/상동나무_1.png",
+        "assets/species/상동나무_2.png"
+      ],
+      "summary": "상동나무의 정밀 도감 데이터입니다. (도감 328-329쪽)",
+      "details": {
+        "분류": "갈매나무과",
+        "페이지": "328-329"
+      }
+    },
+    {
+      "name": "털상동나무",
+      "scientific_name": "Scientific Name",
+      "family": "갈매나무과",
+      "images": [
+        "assets/species/털상동나무_1.png",
+        "assets/species/털상동나무_2.png"
+      ],
+      "summary": "털상동나무의 정밀 도감 데이터입니다. (도감 330-331쪽)",
+      "details": {
+        "분류": "갈매나무과",
+        "페이지": "330-331"
+      }
+    },
+    {
+      "name": "대추나무",
+      "scientific_name": "Scientific Name",
+      "family": "갈매나무과",
+      "images": [
+        "assets/species/대추나무_1.png",
+        "assets/species/대추나무_2.png"
+      ],
+      "summary": "대추나무의 정밀 도감 데이터입니다. (도감 332-333쪽)",
+      "details": {
+        "분류": "갈매나무과",
+        "페이지": "332-333"
+      }
+    },
+    {
+      "name": "보은대추나무",
+      "scientific_name": "Scientific Name",
+      "family": "갈매나무과",
+      "images": [
+        "assets/species/보은대추나무_1.png",
+        "assets/species/보은대추나무_2.png"
+      ],
+      "summary": "보은대추나무의 정밀 도감 데이터입니다. (도감 334-335쪽)",
+      "details": {
+        "분류": "갈매나무과",
+        "페이지": "334-335"
+      }
+    },
+    {
+      "name": "핏대추나무",
+      "scientific_name": "Scientific Name",
+      "family": "갈매나무과",
+      "images": [
+        "assets/species/핏대추나무_1.png",
+        "assets/species/핏대추나무_2.png"
+      ],
+      "summary": "핏대추나무의 정밀 도감 데이터입니다. (도감 336-337쪽)",
+      "details": {
+        "분류": "갈매나무과",
+        "페이지": "336-337"
+      }
+    },
+    {
+      "name": "자주개",
+      "scientific_name": "Scientific Name",
+      "family": "포도과",
+      "images": [
+        "assets/species/자주개_1.png",
+        "assets/species/자주개_2.png"
+      ],
+      "summary": "자주개의 정밀 도감 데이터입니다. (도감 354-355쪽)",
+      "details": {
+        "분류": "포도과",
+        "페이지": "354-355"
+      }
+    },
+    {
+      "name": "담팔수",
+      "scientific_name": "Scientific Name",
+      "family": "포도과",
+      "images": [
+        "assets/species/담팔수_1.png",
+        "assets/species/담팔수_2.png"
+      ],
+      "summary": "담팔수의 정밀 도감 데이터입니다. (도감 358-359쪽)",
+      "details": {
+        "분류": "포도과",
+        "페이지": "358-359"
+      }
+    },
+    {
+      "name": "좀장구밥나무",
+      "scientific_name": "Scientific Name",
+      "family": "피나무과",
+      "images": [
+        "assets/species/좀장구밥나무_1.png",
+        "assets/species/좀장구밥나무_2.png"
+      ],
+      "summary": "좀장구밥나무의 정밀 도감 데이터입니다. (도감 362-363쪽)",
+      "details": {
+        "분류": "피나무과",
+        "페이지": "362-363"
+      }
+    },
+    {
+      "name": "피나무",
+      "scientific_name": "Scientific Name",
+      "family": "피나무과",
+      "images": [
+        "assets/species/피나무_1.png",
+        "assets/species/피나무_2.png"
+      ],
+      "summary": "피나무의 정밀 도감 데이터입니다. (도감 364-365쪽)",
+      "details": {
+        "분류": "피나무과",
+        "페이지": "364-365"
+      }
+    },
+    {
+      "name": "평안피",
+      "scientific_name": "Scientific Name",
+      "family": "피나무과",
+      "images": [
+        "assets/species/평안피_1.png",
+        "assets/species/평안피_2.png"
+      ],
+      "summary": "평안피의 정밀 도감 데이터입니다. (도감 370-371쪽)",
+      "details": {
+        "분류": "피나무과",
+        "페이지": "370-371"
+      }
+    },
+    {
+      "name": "넓은잎피나무",
+      "scientific_name": "Scientific Name",
+      "family": "피나무과",
+      "images": [
+        "assets/species/넓은잎피나무_1.png",
+        "assets/species/넓은잎피나무_2.png"
+      ],
+      "summary": "넓은잎피나무의 정밀 도감 데이터입니다. (도감 372-373쪽)",
+      "details": {
+        "분류": "피나무과",
+        "페이지": "372-373"
+      }
+    },
+    {
+      "name": "찰피",
+      "scientific_name": "Scientific Name",
+      "family": "피나무과",
+      "images": [
+        "assets/species/찰피_1.png",
+        "assets/species/찰피_2.png"
+      ],
+      "summary": "찰피의 정밀 도감 데이터입니다. (도감 374-375쪽)",
+      "details": {
+        "분류": "피나무과",
+        "페이지": "374-375"
+      }
+    },
+    {
+      "name": "개염주나무",
+      "scientific_name": "Scientific Name",
+      "family": "피나무과",
+      "images": [
+        "assets/species/개염주나무_1.png",
+        "assets/species/개염주나무_2.png"
+      ],
+      "summary": "개염주나무의 정밀 도감 데이터입니다. (도감 380-381쪽)",
+      "details": {
+        "분류": "피나무과",
+        "페이지": "380-381"
+      }
+    },
+    {
+      "name": "웅기피",
+      "scientific_name": "Scientific Name",
+      "family": "피나무과",
+      "images": [
+        "assets/species/웅기피_1.png",
+        "assets/species/웅기피_2.png"
+      ],
+      "summary": "웅기피의 정밀 도감 데이터입니다. (도감 382-383쪽)",
+      "details": {
+        "분류": "피나무과",
+        "페이지": "382-383"
+      }
+    },
+    {
+      "name": "좀피",
+      "scientific_name": "Scientific Name",
+      "family": "피나무과",
+      "images": [
+        "assets/species/좀피_1.png",
+        "assets/species/좀피_2.png"
+      ],
+      "summary": "좀피의 정밀 도감 데이터입니다. (도감 384-385쪽)",
+      "details": {
+        "분류": "피나무과",
+        "페이지": "384-385"
+      }
+    },
+    {
+      "name": "황근",
+      "scientific_name": "Scientific Name",
+      "family": "아욱과",
+      "images": [
+        "assets/species/황근_1.png",
+        "assets/species/황근_2.png"
+      ],
+      "summary": "황근의 정밀 도감 데이터입니다. (도감 386-387쪽)",
+      "details": {
+        "분류": "아욱과",
+        "페이지": "386-387"
+      }
+    },
+    {
+      "name": "전체",
+      "scientific_name": "Scientific Name",
+      "family": "아욱과",
+      "images": [
+        "assets/species/전체_1.png",
+        "assets/species/전체_2.png"
+      ],
+      "summary": "전체의 정밀 도감 데이터입니다. (도감 388-389쪽)",
+      "details": {
+        "분류": "아욱과",
+        "페이지": "388-389"
+      }
+    },
+    {
+      "name": "전체",
+      "scientific_name": "Scientific Name",
+      "family": "아욱과",
+      "images": [
+        "assets/species/전체_1.png",
+        "assets/species/전체_2.png"
+      ],
+      "summary": "전체의 정밀 도감 데이터입니다. (도감 405-406쪽)",
+      "details": {
+        "분류": "아욱과",
+        "페이지": "405-406"
+      }
+    },
+    {
+      "name": "섬백리향",
+      "scientific_name": "Scientific Name",
+      "family": "아욱과",
+      "images": [
+        "assets/species/섬백리향_1.png",
+        "assets/species/섬백리향_2.png"
+      ],
+      "summary": "섬백리향의 정밀 도감 데이터입니다. (도감 12-13쪽)",
+      "details": {
+        "분류": "아욱과",
+        "페이지": "12-13"
+      }
+    },
+    {
+      "name": "백리향",
+      "scientific_name": "Scientific Name",
+      "family": "아욱과",
+      "images": [
+        "assets/species/백리향_1.png",
+        "assets/species/백리향_2.png"
+      ],
+      "summary": "백리향의 정밀 도감 데이터입니다. (도감 14-15쪽)",
+      "details": {
+        "분류": "아욱과",
+        "페이지": "14-15"
+      }
+    }
+  ]
+}</script>
+
+    <script>
+        let allSpecies = [];
+        let curGallery = [];
+        let curIdx = 0;
+        let isZoomed = false;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const raw = document.getElementById('botanicalData').textContent;
+            try {
+                const data = JSON.parse(raw);
+                allSpecies = data.species || [];
+                render(allSpecies);
+            } catch(e) { console.error("Database unavailable", e); }
+        });
+
+        function render(items) {
+            const grid = document.getElementById('speciesGrid');
+            grid.innerHTML = items.map((s, i) => `
+                <div class="species-card" onclick="openModal('${encodeURIComponent(JSON.stringify(s))}')">
+                    <span class="badge">${s.family}</span>
+                    <div class="image-box">
+                        <img src="${s.images[0]}" class="card-img" loading="lazy">
+                    </div>
+                    <div class="card-body">
+                        <div class="card-title">${s.name}</div>
+                        <div class="card-sci">${s.scientific_name}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openModal(json) {
+            const s = JSON.parse(decodeURIComponent(json));
+            curGallery = s.images || [];
+            curIdx = 0;
+            resetZoom();
+            updateImage();
+
+            document.getElementById('metaFamily').textContent = s.family;
+            document.getElementById('metaTitle').textContent = s.name;
+            document.getElementById('metaSci').textContent = s.scientific_name;
+            
+            document.getElementById('metaInfo').innerHTML = `
+                <div class="info-card">
+                    <span class="info-label">도감 정밀 기록</span>
+                    <p class="info-text">${s.summary}</p>
+                </div>
+                <div class="info-card">
+                    <span class="info-label">학술 상세</span>
+                    <p class="info-text">${s.details.학명 || s.scientific_name}</p>
+                </div>
+            `;
+
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function updateImage() {
+            const img = document.getElementById('viewerImg');
+            img.src = curGallery[curIdx];
+            const hasMulti = curGallery.length > 1;
+            document.getElementById('prevBtn').style.display = hasMulti ? 'flex' : 'none';
+            document.getElementById('nextBtn').style.display = hasMulti ? 'flex' : 'none';
+        }
+
+        function changeSlide(n) {
+            curIdx = (curIdx + n + curGallery.length) % curGallery.length;
+            updateImage();
+            resetZoom();
+        }
+
+        function toggleZoom(e) {
+            isZoomed = !isZoomed;
+            const port = document.getElementById('imgViewport');
+            port.classList.toggle('zoomed');
+            if(isZoomed) handlePan(e);
+            else document.getElementById('viewerImg').style.transformOrigin = 'center center';
+        }
+
+        function handlePan(e) {
+            if(!isZoomed) return;
+            const port = document.getElementById('imgViewport');
+            const rect = port.getBoundingClientRect();
+            const cx = e.touches ? e.touches[0].clientX : e.clientX;
+            const cy = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            const px = ((cx - rect.left) / rect.width) * 100;
+            const py = ((cy - rect.top) / rect.height) * 100;
+            document.getElementById('viewerImg').style.transformOrigin = `${px}% ${py}%`;
+        }
+
+        function resetZoom() {
+            isZoomed = false;
+            document.getElementById('imgViewport').classList.remove('zoomed');
+            document.getElementById('viewerImg').style.transformOrigin = 'center center';
+        }
+
+        function closeModal() {
+            document.getElementById('modalOverlay').style.display = 'none';
+            document.body.style.overflow = 'auto';
+            resetZoom();
+        }
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const q = e.target.value.toLowerCase();
+            const filt = allSpecies.filter(s => 
+                s.name.includes(q) || s.family.includes(q) || s.scientific_name.toLowerCase().includes(q)
+            );
+            render(filt);
+        });
+
+        window.onclick = (e) => { if(e.target == document.getElementById('modalOverlay')) closeModal(); };
+    </script>
+</body>
+</html>

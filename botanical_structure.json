@@ -1,0 +1,54 @@
+{
+  "book": "한국의 나무",
+  "total_count": 35,
+  "large_categories": [
+    {
+      "name": "전체 수종",
+      "middle_categories": [
+        {
+          "name": "식물 목록",
+          "small_categories": [
+            {
+              "name": "주요 수종",
+              "species": [
+                {
+                  "name": "참싸리",
+                  "scientific_name": "Lespedeza cyrtobotrya",
+                  "page": 70,
+                  "image": "assets/species/참싸리.png",
+                  "summary": "낙엽 관목으로 산기슭에 자생",
+                  "details": {
+                    "distribution": "한국, 일본, 중국",
+                    "form": "키는 2m 정도이며 잎은 3출엽이다. 꽃은 7-8월에 적자색으로 핀다."
+                  }
+                },
+                {
+                  "name": "능소화",
+                  "scientific_name": "Campsis grandiflora",
+                  "page": 28,
+                  "image": "assets/species/능소화.png",
+                  "summary": "낙엽 덩굴식물로 화려한 주황색 꽃",
+                  "details": {
+                    "distribution": "중국 원산, 한국 전역 식재",
+                    "form": "길이는 10m에 달하며 흡착근이 있다. 꽃은 7-9월에 깔때기 모양으로 핀다."
+                  }
+                },
+                {
+                  "name": "조록싸리",
+                  "scientific_name": "Lespedeza maximowiczii",
+                  "page": 78,
+                  "image": "assets/species/조록싸리.png",
+                  "summary": "싸리나무류 중 하나로 잎 뒷면에 털이 있음",
+                  "details": {
+                    "distribution": "한국 특산",
+                    "form": "전국 산야에 자생하며 꽃은 6-7월에 핀다."
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
