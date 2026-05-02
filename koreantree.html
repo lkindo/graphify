@@ -1,4 +1,129 @@
-{
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Premium Botanical Encyclopedia</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #27ae60;
+            --primary-light: #2ecc71;
+            --bg: #0b0e14;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --text: #f0f3f5;
+            --glass: rgba(255, 255, 255, 0.08);
+            --accent: #27ae60;
+        }
+
+        * { margin:0; padding:0; box-sizing:border-box; font-family:'Outfit', 'Noto Sans KR', sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background:var(--bg); color:var(--text); overflow-x:hidden; min-height:100vh; }
+        
+        /* Background Decoration */
+        body::before { content:''; position:fixed; top:-10%; left:-10%; width:40%; height:40%; background:radial-gradient(circle, rgba(39, 174, 96, 0.1) 0%, transparent 70%); z-index:-1; pointer-events:none; }
+        body::after { content:''; position:fixed; bottom:-10%; right:-10%; width:40%; height:40%; background:radial-gradient(circle, rgba(39, 174, 96, 0.05) 0%, transparent 70%); z-index:-1; pointer-events:none; }
+
+        .container { max-width:1600px; margin:0 auto; padding:20px; }
+        
+        header { text-align:center; padding:100px 20px 60px; }
+        header h1 { font-size:clamp(2.5rem, 10vw, 4.5rem); font-weight:800; letter-spacing:-2px; margin-bottom:15px; background: linear-gradient(135deg, #fff 30%, var(--primary-light)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        header p { font-size:1.1rem; opacity:0.6; font-weight:300; }
+
+        /* Search Section */
+        .search-container { max-width:800px; margin:0 auto 80px; position:relative; }
+        #searchInput { width:100%; padding:25px 35px; padding-left:70px; border-radius:40px; border:1px solid var(--glass); background:rgba(255,255,255,0.05); color:white; font-size:1.2rem; backdrop-filter:blur(20px); transition:0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); outline:none; box-shadow:0 10px 30px rgba(0,0,0,0.3); }
+        #searchInput:focus { border-color:var(--primary); transform:scale(1.02); box-shadow:0 15px 40px rgba(39, 174, 96, 0.2); }
+        .search-icon { position:absolute; left:30px; top:50%; transform:translateY(-50%); font-size:1.5rem; opacity:0.5; }
+
+        /* Grid System */
+        .species-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:35px; }
+        .species-card { background:var(--card-bg); border-radius:32px; overflow:hidden; border:1px solid var(--glass); cursor:pointer; position:relative; transition:0.5s cubic-bezier(0.165, 0.84, 0.44, 1); }
+        .species-card:hover { transform:translateY(-15px); border-color:rgba(39,174,96,0.5); box-shadow:0 30px 60px rgba(0,0,0,0.5); }
+        
+        .badge { position:absolute; top:20px; left:20px; background:rgba(39, 174, 96, 0.9); color:white; padding:6px 16px; border-radius:20px; font-size:0.8rem; font-weight:700; backdrop-filter:blur(10px); z-index:10; }
+        
+        .image-box { width:100%; aspect-ratio:1/1.1; overflow:hidden; background:#111; }
+        .card-img { width:100%; height:100%; object-fit:cover; transition:1s; filter: brightness(0.9); }
+        .species-card:hover .card-img { transform:scale(1.1); filter: brightness(1.1); }
+        
+        .card-body { padding:30px; background:linear-gradient(to bottom, transparent, rgba(0,0,0,0.8)); margin-top:-100px; position:relative; z-index:5; }
+        .card-title { font-size:1.8rem; font-weight:800; color:#fff; margin-bottom:5px; }
+        .card-sci { font-size:1rem; color:var(--primary-light); font-style:italic; opacity:0.8; }
+
+        /* Modal & Smart Pan - Final Standard */
+        .modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.94); backdrop-filter:blur(30px); display:none; justify-content:center; align-items:center; z-index:1000; padding:20px; }
+        .modal-container { background:var(--bg); width:100%; max-width:1400px; height:90vh; border-radius:40px; overflow:hidden; display:flex; border:1px solid var(--glass); position:relative; box-shadow:0 50px 100px rgba(0,0,0,0.8); }
+        
+        .viewer-side { flex:1.5; background:#000; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; border-right:1px solid var(--glass); }
+        .img-viewport { width:100%; height:100%; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:zoom-in; }
+        .viewer-img { max-width:100%; max-height:100%; object-fit:contain; transition:transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1); pointer-events:none; }
+        .img-viewport.zoomed { cursor:zoom-out; }
+        .img-viewport.zoomed .viewer-img { transform:scale(3); }
+
+        .slider-btn { position:absolute; top:50%; transform:translateY(-50%); background:rgba(255,255,255,0.05); border:none; color:white; width:65px; height:65px; border-radius:50%; cursor:pointer; font-size:2rem; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(10px); transition:0.3s; z-index:100; border:1px solid rgba(255,255,255,0.1); }
+        .slider-btn:hover { background:var(--primary); border-color:transparent; transform:translateY(-50%) scale(1.1); }
+        #prevBtn { left:30px; }
+        #nextBtn { right:30px; }
+
+        .content-side { flex:1; padding:60px; overflow-y:auto; position:relative; }
+        .close-btn { position:absolute; top:30px; right:30px; width:50px; height:50px; border-radius:50%; background:var(--glass); border:none; color:white; cursor:pointer; font-size:1.5rem; display:flex; align-items:center; justify-content:center; transition:0.3s; z-index:200; }
+        .close-btn:hover { background:#e74c3c; transform:rotate(90deg); }
+
+        .meta-family { display:inline-block; font-weight:800; color:var(--primary-light); background:rgba(39, 174, 96, 0.1); padding:8px 20px; border-radius:30px; margin-bottom:20px; border:1px solid rgba(39,174,96,0.3); }
+        .meta-title { font-size:3.5rem; font-weight:800; margin-bottom:10px; line-height:1.1; letter-spacing:-2px; }
+        .meta-sci { font-size:1.4rem; color:var(--text); opacity:0.5; font-style:italic; margin-bottom:50px; display:block; }
+        
+        .info-card { background:rgba(255,255,255,0.03); border-radius:24px; padding:35px; border-left:6px solid var(--primary); margin-bottom:30px; }
+        .info-label { font-size:0.9rem; color:var(--primary-light); font-weight:800; text-transform:uppercase; margin-bottom:12px; display:block; }
+        .info-text { font-size:1.15rem; line-height:1.8; color:rgba(255,255,255,0.9); }
+
+        /* Responsive Mobile Adjustments */
+        @media (max-width: 1024px) {
+            .modal-container { flex-direction:column; max-width:95vw; height:95vh; }
+            .viewer-side { height:45vh; flex:none; }
+            .content-side { padding:40px; }
+            .meta-title { font-size:2.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Botanical Archive</h1>
+            <p>우리나라 자생 식물 1,500여 종의 정밀 기록 (12p - 387p)</p>
+        </header>
+
+        <div class="search-container">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="식물 이름, 학명 또는 과명을 입력하세요...">
+        </div>
+
+        <div id="speciesGrid" class="species-grid"></div>
+    </div>
+
+    <!-- Modal Final Standard -->
+    <div id="modalOverlay" class="modal-overlay">
+        <div class="modal-container">
+            <button class="close-btn" onclick="closeModal()">✕</button>
+            <div class="viewer-side">
+                <button id="prevBtn" class="slider-btn" onclick="event.stopPropagation(); changeSlide(-1)">❮</button>
+                <div id="imgViewport" class="img-viewport" onclick="toggleZoom(event)" onmousemove="handlePan(event)" ontouchmove="handlePan(event)">
+                    <img id="viewerImg" src="" class="viewer-img">
+                </div>
+                <button id="nextBtn" class="slider-btn" onclick="event.stopPropagation(); changeSlide(1)">❯</button>
+            </div>
+            <div class="content-side">
+                <span id="metaFamily" class="meta-family"></span>
+                <h2 id="metaTitle" class="meta-title"></h2>
+                <span id="metaSci" class="meta-sci"></span>
+                
+                <div id="metaInfo"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Channel -->
+    <script id="botanicalData" type="application/json">{
   "species": [
     {
       "name": "오리나무",
@@ -6871,4 +6996,120 @@
       "details": "황근의 사진입니다. (출처: koreantree4.pdf 387페이지)"
     }
   ]
-}
+}</script>
+
+    <script>
+        let allSpecies = [];
+        let curGallery = [];
+        let curIdx = 0;
+        let isZoomed = false;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const raw = document.getElementById('botanicalData').textContent;
+            try {
+                const data = JSON.parse(raw);
+                allSpecies = data.species || [];
+                render(allSpecies);
+            } catch(e) { console.error("Database unavailable", e); }
+        });
+
+        function render(items) {
+            const grid = document.getElementById('speciesGrid');
+            grid.innerHTML = items.map((s, i) => `
+                <div class="species-card" onclick="openModal('${encodeURIComponent(JSON.stringify(s))}')">
+                    <span class="badge">${s.category || '한국의 나무'}</span>
+                    <div class="image-box">
+                        <img src="${encodeURIComponent((s.images ? s.images[0] : s.image).split('/').pop())}" class="card-img" loading="lazy">
+                    </div>
+                    <div class="card-body">
+                        <div class="card-title">${s.name}</div>
+                        <div class="card-sci">${s.scientific_name || ''}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openModal(json) {
+            const s = JSON.parse(decodeURIComponent(json));
+            curGallery = s.images || [s.image];
+            curIdx = 0;
+            resetZoom();
+            updateImage();
+
+            document.getElementById('metaFamily').textContent = s.category || '한국의 나무';
+            document.getElementById('metaTitle').textContent = s.name;
+            document.getElementById('metaSci').textContent = s.scientific_name || '';
+            
+            document.getElementById('metaInfo').innerHTML = `
+                <div class="info-card">
+                    <span class="info-label">도감 정밀 기록</span>
+                    <p class="info-text">${s.summary}</p>
+                </div>
+                <div class="info-card">
+                    <span class="info-label">출처 및 상세</span>
+                    <p class="info-text">${s.details}</p>
+                </div>
+            `;
+
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function updateImage() {
+            const img = document.getElementById('viewerImg');
+            img.src = encodeURIComponent(curGallery[curIdx].split('/').pop());
+            const hasMulti = curGallery.length > 1;
+            document.getElementById('prevBtn').style.display = hasMulti ? 'flex' : 'none';
+            document.getElementById('nextBtn').style.display = hasMulti ? 'flex' : 'none';
+        }
+
+        function changeSlide(n) {
+            curIdx = (curIdx + n + curGallery.length) % curGallery.length;
+            updateImage();
+            resetZoom();
+        }
+
+        function toggleZoom(e) {
+            isZoomed = !isZoomed;
+            const port = document.getElementById('imgViewport');
+            port.classList.toggle('zoomed');
+            if(isZoomed) handlePan(e);
+            else document.getElementById('viewerImg').style.transformOrigin = 'center center';
+        }
+
+        function handlePan(e) {
+            if(!isZoomed) return;
+            const port = document.getElementById('imgViewport');
+            const rect = port.getBoundingClientRect();
+            const cx = e.touches ? e.touches[0].clientX : e.clientX;
+            const cy = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            const px = ((cx - rect.left) / rect.width) * 100;
+            const py = ((cy - rect.top) / rect.height) * 100;
+            document.getElementById('viewerImg').style.transformOrigin = `${px}% ${py}%`;
+        }
+
+        function resetZoom() {
+            isZoomed = false;
+            document.getElementById('imgViewport').classList.remove('zoomed');
+            document.getElementById('viewerImg').style.transformOrigin = 'center center';
+        }
+
+        function closeModal() {
+            document.getElementById('modalOverlay').style.display = 'none';
+            document.body.style.overflow = 'auto';
+            resetZoom();
+        }
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const q = e.target.value.toLowerCase();
+            const filt = allSpecies.filter(s => 
+                s.name.includes(q) || (s.category && s.category.includes(q)) || (s.scientific_name && s.scientific_name.toLowerCase().includes(q))
+            );
+            render(filt);
+        });
+
+        window.onclick = (e) => { if(e.target == document.getElementById('modalOverlay')) closeModal(); };
+    </script>
+</body>
+</html>

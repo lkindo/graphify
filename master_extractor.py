@@ -317,7 +317,7 @@ def extract_from_pdf(pdf_path, category, global_results, toc_pages, content_rang
             global_results.append({
                 "name": plant['name'],
                 "category": category,
-                "image": f"assets/species/{img_filenames[0]}",
+                "images": [f"assets/species/{f}" for f in img_filenames],
                 "summary": f"{plant['name']}에 대한 도감 정보입니다.",
                 "details": f"{plant['name']}의 사진입니다. (출처: {os.path.basename(pdf_path)} {start_p}페이지)"
             })
