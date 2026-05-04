@@ -48,13 +48,11 @@
         .card-sci { font-size:1rem; color:var(--primary-light); font-style:italic; opacity:0.8; }
 
         .modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.94); backdrop-filter:blur(30px); display:none; justify-content:center; align-items:center; z-index:1000; padding:20px; }
-        .modal-container { background:var(--bg); width:100%; max-width:1400px; height:90vh; border-radius:40px; overflow:hidden; display:flex; border:1px solid var(--glass); position:relative; box-shadow:0 50px 100px rgba(0,0,0,0.8); }
+        .modal-container { background:#000; width:100%; height:100vh; border-radius:0; overflow:hidden; display:flex; border:none; position:relative; box-shadow:none; }
         
-        .viewer-side { flex:1.5; background:#000; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; border-right:1px solid var(--glass); }
+        .viewer-side { flex:1; width:100%; height:100%; background:#000; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; }
         .img-viewport { width:100%; height:100%; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:zoom-in; }
-        .viewer-img { max-width:100%; max-height:100%; object-fit:contain; transition:transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1); pointer-events:none; }
-        .img-viewport.zoomed { cursor:zoom-out; }
-        .img-viewport.zoomed .viewer-img { transform:scale(3); }
+        .viewer-img { width:100%; height:100%; object-fit:contain; transition:transform 0.1s ease-out; pointer-events:none; }
 
         .slider-btn { position:absolute; top:50%; transform:translateY(-50%); background:rgba(255,255,255,0.05); border:none; color:white; width:65px; height:65px; border-radius:50%; cursor:pointer; font-size:2rem; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(10px); transition:0.3s; z-index:100; border:1px solid rgba(255,255,255,0.1); }
         .slider-btn:hover { background:var(--primary); border-color:transparent; transform:translateY(-50%) scale(1.1); }
@@ -74,10 +72,9 @@
         .info-text { font-size:1.15rem; line-height:1.8; color:rgba(255,255,255,0.9); }
 
         @media (max-width: 1024px) {
-            .modal-container { flex-direction:column; max-width:95vw; height:95vh; }
-            .viewer-side { height:45vh; flex:none; }
-            .content-side { padding:40px; }
-            .meta-title { font-size:2.5rem; }
+            .modal-container { height:100vh; }
+            .viewer-side { height:100%; }
+            .slider-btn { width:50px; height:50px; font-size:1.5rem; }
         }
     </style>
 </head>
@@ -96,21 +93,15 @@
         <div id="speciesGrid" class="species-grid"></div>
     </div>
 
-    <div id="modalOverlay" class="modal-overlay">
+    <div id="modalOverlay" class="modal-overlay" style="padding:0;">
         <div class="modal-container">
             <button class="close-btn" onclick="closeModal()">✕</button>
             <div class="viewer-side">
                 <button id="prevBtn" class="slider-btn" onclick="event.stopPropagation(); changeSlide(-1)">❮</button>
-                <div id="imgViewport" class="img-viewport" onclick="toggleZoom(event)" onmousemove="handlePan(event)" ontouchmove="handlePan(event)">
+                <div id="imgViewport" class="img-viewport">
                     <img id="viewerImg" src="" class="viewer-img">
                 </div>
                 <button id="nextBtn" class="slider-btn" onclick="event.stopPropagation(); changeSlide(1)">❯</button>
-            </div>
-            <div class="content-side">
-                <span id="metaFamily" class="meta-family"></span>
-                <h2 id="metaTitle" class="meta-title"></h2>
-                <span id="metaSci" class="meta-sci"></span>
-                <div id="metaInfo"></div>
             </div>
         </div>
     </div>
@@ -7035,20 +7026,6 @@
             resetZoom();
             updateImage();
 
-            document.getElementById('metaFamily').textContent = s.category || '한국의 나무';
-            document.getElementById('metaTitle').textContent = s.name;
-            document.getElementById('metaSci').textContent = s.scientific_name || '';
-            
-            document.getElementById('metaInfo').innerHTML = `
-                <div class="info-card">
-                    <span class="info-label">도감 정밀 기록</span>
-                    <p class="info-text">${s.summary}</p>
-                </div>
-                <div class="info-card">
-                    <span class="info-label">출처 및 상세</span>
-                    <p class="info-text">${s.details}</p>
-                </div>
-            `;
 
             document.getElementById('modalOverlay').style.display = 'flex';
             document.body.style.overflow = 'hidden';
@@ -7068,28 +7045,103 @@
             resetZoom();
         }
 
-        function toggleZoom(e) {
-            isZoomed = !isZoomed;
-            document.getElementById('imgViewport').classList.toggle('zoomed');
-            if(isZoomed) handlePan(e);
-        }
+        let scale = 1;
+        let posX = 0;
+        let posY = 0;
+        let lastX = 0;
+        let lastY = 0;
+        let startDist = 0;
+        let isDragging = false;
+        let lastScale = 1;
 
-        function handlePan(e) {
-            if(!isZoomed) return;
-            const port = document.getElementById('imgViewport');
-            const rect = port.getBoundingClientRect();
-            const cx = e.touches ? e.touches[0].clientX : e.clientX;
-            const cy = e.touches ? e.touches[0].clientY : e.clientY;
-            const px = ((cx - rect.left) / rect.width) * 100;
-            const py = ((cy - rect.top) / rect.height) * 100;
-            document.getElementById('viewerImg').style.transformOrigin = `${px}% ${py}%`;
+        function updateTransform() {
+            const img = document.getElementById('viewerImg');
+            if (!img) return;
+            img.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+            document.getElementById('imgViewport').style.cursor = scale > 1 ? 'zoom-out' : 'zoom-in';
         }
 
         function resetZoom() {
-            isZoomed = false;
-            document.getElementById('imgViewport').classList.remove('zoomed');
-            document.getElementById('viewerImg').style.transformOrigin = 'center center';
+            scale = 1;
+            lastScale = 1;
+            posX = 0;
+            posY = 0;
+            updateTransform();
         }
+
+        // Initialize events after DOM is ready
+        setTimeout(() => {
+            const viewport = document.getElementById('imgViewport');
+            if (!viewport) return;
+
+            // Click to toggle zoom
+            viewport.addEventListener('click', (e) => {
+                if (scale > 1) resetZoom();
+                else {
+                    scale = 3;
+                    lastScale = 3;
+                    updateTransform();
+                }
+            });
+
+            // Touch Events for Mobile
+            viewport.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2) {
+                    startDist = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+                } else if (e.touches.length === 1) {
+                    isDragging = true;
+                    lastX = e.touches[0].pageX - posX;
+                    lastY = e.touches[0].pageY - posY;
+                }
+            });
+
+            viewport.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 2) {
+                    e.preventDefault();
+                    const dist = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+                    scale = Math.min(Math.max(1, lastScale * (dist / startDist)), 5);
+                    updateTransform();
+                } else if (e.touches.length === 1 && isDragging && scale > 1) {
+                    e.preventDefault();
+                    posX = e.touches[0].pageX - lastX;
+                    posY = e.touches[0].pageY - lastY;
+                    updateTransform();
+                }
+            }, { passive: false });
+
+            viewport.addEventListener('touchend', () => {
+                isDragging = false;
+                lastScale = scale;
+            });
+
+            // Mouse Drag for Desktop
+            viewport.addEventListener('mousedown', (e) => {
+                if (scale > 1) {
+                    isDragging = true;
+                    lastX = e.pageX - posX;
+                    lastY = e.pageY - posY;
+                    e.preventDefault();
+                }
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (isDragging && scale > 1) {
+                    posX = e.pageX - lastX;
+                    posY = e.pageY - lastY;
+                    updateTransform();
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+        }, 100);
 
         function closeModal() {
             document.getElementById('modalOverlay').style.display = 'none';
