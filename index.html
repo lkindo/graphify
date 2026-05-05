@@ -7048,16 +7048,18 @@
         let scale = 1;
         let posX = 0;
         let posY = 0;
+        let lastScale = 1;
         let lastX = 0;
         let lastY = 0;
         let startDist = 0;
         let isDragging = false;
-        let lastScale = 1;
+        let isPinching = false;
 
-        function updateTransform() {
+        function updateTransform(smooth = false) {
             const img = document.getElementById('viewerImg');
             if (!img) return;
-            img.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+            img.style.transition = smooth ? 'transform 0.3s cubic-bezier(0.2, 0, 0.2, 1)' : 'none';
+            img.style.transform = `translate3d(${posX}px, ${posY}px, 0) scale(${scale})`;
             document.getElementById('imgViewport').style.cursor = scale > 1 ? 'zoom-out' : 'zoom-in';
         }
 
@@ -7066,27 +7068,17 @@
             lastScale = 1;
             posX = 0;
             posY = 0;
-            updateTransform();
+            updateTransform(true);
         }
 
-        // Initialize events after DOM is ready
-        setTimeout(() => {
+        // Event Listeners for ImgViewport
+        document.addEventListener('DOMContentLoaded', () => {
             const viewport = document.getElementById('imgViewport');
             if (!viewport) return;
 
-            // Click to toggle zoom
-            viewport.addEventListener('click', (e) => {
-                if (scale > 1) resetZoom();
-                else {
-                    scale = 3;
-                    lastScale = 3;
-                    updateTransform();
-                }
-            });
-
-            // Touch Events for Mobile
             viewport.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 2) {
+                    isPinching = true;
                     startDist = Math.hypot(
                         e.touches[0].pageX - e.touches[1].pageX,
                         e.touches[0].pageY - e.touches[1].pageY
@@ -7096,16 +7088,16 @@
                     lastX = e.touches[0].pageX - posX;
                     lastY = e.touches[0].pageY - posY;
                 }
-            });
+            }, { passive: true });
 
             viewport.addEventListener('touchmove', (e) => {
-                if (e.touches.length === 2) {
+                if (e.touches.length === 2 && isPinching) {
                     e.preventDefault();
                     const dist = Math.hypot(
                         e.touches[0].pageX - e.touches[1].pageX,
                         e.touches[0].pageY - e.touches[1].pageY
                     );
-                    scale = Math.min(Math.max(1, lastScale * (dist / startDist)), 5);
+                    scale = Math.min(Math.max(1, lastScale * (dist / startDist)), 6);
                     updateTransform();
                 } else if (e.touches.length === 1 && isDragging && scale > 1) {
                     e.preventDefault();
@@ -7115,12 +7107,15 @@
                 }
             }, { passive: false });
 
-            viewport.addEventListener('touchend', () => {
+            viewport.addEventListener('touchend', (e) => {
                 isDragging = false;
-                lastScale = scale;
+                if (e.touches.length < 2) {
+                    isPinching = false;
+                    lastScale = scale;
+                }
             });
 
-            // Mouse Drag for Desktop
+            // Desktop Mouse Events
             viewport.addEventListener('mousedown', (e) => {
                 if (scale > 1) {
                     isDragging = true;
@@ -7138,10 +7133,45 @@
                 }
             });
 
-            window.addEventListener('mouseup', () => {
-                isDragging = false;
+            window.addEventListener('mouseup', () => isDragging = false);
+
+            // Double Tap / Double Click to Zoom
+            let lastTap = 0;
+            viewport.addEventListener('touchend', (e) => {
+                const now = Date.now();
+                if (now - lastTap < 300 && e.changedTouches.length === 1) {
+                    if (scale > 1) resetZoom();
+                    else {
+                        scale = 3;
+                        lastScale = 3;
+                        updateTransform(true);
+                    }
+                }
+                lastTap = now;
             });
-        }, 100);
+
+            viewport.addEventListener('dblclick', () => {
+                if (scale > 1) resetZoom();
+                else {
+                    scale = 3;
+                    lastScale = 3;
+                    updateTransform(true);
+                }
+            });
+            
+            // Single click for fallback if not dragging
+            viewport.addEventListener('click', (e) => {
+                // If it's a mobile device, we rely on double tap to avoid conflicts
+                if (window.innerWidth > 1024) {
+                    if (scale > 1) resetZoom();
+                    else {
+                        scale = 3;
+                        lastScale = 3;
+                        updateTransform(true);
+                    }
+                }
+            });
+        });
 
         function closeModal() {
             document.getElementById('modalOverlay').style.display = 'none';
