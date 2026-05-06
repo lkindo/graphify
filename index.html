@@ -3,465 +3,281 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Premium Tree Encyclopedia - Botanical Archive</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
+    <title>한국의 나무 - Botanical Encyclopedia</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #00ff88;
-            --secondary: #00d4ff;
-            --bg-dark: #050a09;
-            --card-bg: rgba(255, 255, 255, 0.05);
+            --bg-color: #0b0f19;
+            --card-bg: #1e293b;
+            --accent: #10b981;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --modal-bg: rgba(10, 15, 25, 0.98);
             --glass-border: rgba(255, 255, 255, 0.1);
-            --text-main: #e0e0e0;
-            --text-dim: #a0a0a0;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-font-smoothing: antialiased;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            background: var(--bg-dark);
-            background-image: 
-                radial-gradient(circle at 20% 30%, rgba(0, 255, 136, 0.05) 0%, transparent 40%),
-                radial-gradient(circle at 80% 70%, rgba(0, 212, 255, 0.05) 0%, transparent 40%);
+            background-color: var(--bg-color);
             color: var(--text-main);
-            font-family: 'Outfit', 'Noto Sans KR', sans-serif;
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
             overflow-x: hidden;
-            min-height: 100vh;
         }
-
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #0a0a0a; }
-        ::-webkit-scrollbar-thumb { 
-            background: #222; 
-            border-radius: 10px;
-            border: 2px solid #0a0a0a;
-        }
-        ::-webkit-scrollbar-thumb:hover { background: #333; }
 
         header {
-            padding: 60px 20px 40px;
-            text-align: center;
-            position: relative;
-            z-index: 10;
-        }
-
-        header h1 {
-            font-size: 3.5rem;
-            font-weight: 600;
-            margin-bottom: 10px;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            letter-spacing: -1px;
-        }
-
-        header p {
-            color: var(--text-dim);
-            font-size: 1.1rem;
-            max-width: 600px;
-            margin: 0 auto 30px;
-            line-height: 1.6;
-        }
-
-        .search-container {
-            max-width: 500px;
-            margin: 0 auto;
-            position: relative;
-        }
-
-        #searchInput {
-            width: 100%;
-            padding: 15px 25px;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--glass-border);
-            border-radius: 50px;
-            color: white;
-            font-size: 1rem;
-            outline: none;
-            backdrop-filter: blur(10px);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        #searchInput:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 20px rgba(0, 255, 136, 0.1);
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .main-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .tree-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 25px;
-            padding: 20px 0;
-        }
-
-        .tree-card {
-            background: var(--card-bg);
-            border: 1px solid var(--glass-border);
-            border-radius: 20px;
-            padding: 10px;
-            cursor: pointer;
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            overflow: hidden;
-            backdrop-filter: blur(5px);
-        }
-
-        .tree-card:hover {
-            transform: translateY(-8px);
-            border-color: rgba(0, 255, 136, 0.3);
-            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3);
-            background: rgba(255, 255, 255, 0.08);
-        }
-
-        .image-preview {
-            width: 100%;
-            height: 200px;
-            border-radius: 15px;
-            overflow: hidden;
-            background: #000;
-            position: relative;
-        }
-
-        .image-preview img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .tree-card:hover .image-preview img {
-            transform: scale(1.1);
-        }
-
-        .tree-info {
-            padding: 15px 10px 5px;
-        }
-
-        .tree-info h3 {
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin-bottom: 5px;
-            color: white;
-        }
-
-        .tree-info .id-badge {
-            display: inline-block;
-            font-size: 0.75rem;
-            color: var(--primary);
-            background: rgba(0, 255, 136, 0.1);
-            padding: 2px 8px;
-            border-radius: 4px;
-            margin-bottom: 8px;
-        }
-
-        /* Modal Styles */
-        .modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.95);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
+            background: rgba(11, 15, 25, 0.8);
             backdrop-filter: blur(15px);
-        }
-
-        .modal-content {
-            width: 95%;
-            max-width: 1200px;
-            height: 90vh;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            position: relative;
-        }
-
-        .modal-header {
+            border-bottom: 1px solid var(--glass-border);
+            padding: 1.2rem 5%;
+            position: sticky;
+            top: 0; z-index: 100;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0 10px;
         }
 
-        .modal-header h2 {
-            font-size: 2rem;
-            background: linear-gradient(135deg, white, #888);
+        .logo {
+            font-size: 1.6rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #10b981, #3b82f6);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
-        .close-btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: none;
+        .search-container { width: 350px; }
+        .search-container input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 0.8rem 1.2rem;
             color: white;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            cursor: pointer;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 1.5rem;
+            font-size: 0.95rem;
             transition: all 0.3s;
         }
-
-        .close-btn:hover {
-            background: #ff3366;
-            transform: rotate(90deg);
+        .search-container input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
         }
 
-        .image-viewer {
-            flex: 1;
+        .container {
+            max-width: 1400px;
+            margin: 3rem auto;
+            padding: 0 5%;
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            overflow-y: auto;
-            padding: 10px;
-            touch-action: none; /* Disable default browser touch actions for custom zoom */
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 2rem;
         }
 
-        .zoom-container {
-            width: 100%;
+        .card {
+            background: var(--card-bg);
+            border-radius: 20px;
             overflow: hidden;
-            border-radius: 10px;
-            background: #000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .zoomable {
-            width: 100%;
-            height: auto;
-            transition: transform 0.1s ease-out;
-            transform-origin: center center;
-            touch-action: none;
-            cursor: zoom-in;
-        }
-
-        .image-viewer img {
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             border: 1px solid var(--glass-border);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
+        .card:hover { transform: translateY(-12px); border-color: var(--accent); }
+        .card-img { width: 100%; aspect-ratio: 1/1; object-fit: cover; border-bottom: 1px solid var(--glass-border); background: #000; }
+        .card-content { padding: 1.2rem; }
+        .card-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .card-category { font-size: 0.85rem; color: var(--accent); font-weight: 600; }
+
+        .modal {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: var(--modal-bg);
+            z-index: 2000;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .modal.active { display: flex; flex-direction: column; opacity: 1; }
+        .modal-header { width: 100%; padding: 1.5rem 5%; display: flex; justify-content: space-between; align-items: center; }
+        .modal-title { font-size: 1.8rem; font-weight: 700; }
+        .close-btn { font-size: 2.5rem; cursor: pointer; color: var(--text-muted); padding: 0 10px; }
+
+        .viewer-main { flex: 1; position: relative; width: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .image-wrapper { position: relative; width: 90vw; height: 75vh; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: zoom-in; }
+        .image-wrapper.zoomed { cursor: zoom-out; }
+        .main-img { max-width: 100%; max-height: 100%; object-fit: contain; transition: transform 0.2s ease-out; }
+
+        .modal-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 100%; padding: 0 5%; display: flex; justify-content: space-between; pointer-events: none; }
+        .nav-arrow { width: 60px; height: 60px; background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid var(--glass-border); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: white; cursor: pointer; pointer-events: auto; }
+        .nav-arrow:hover { background: var(--accent); transform: scale(1.1); }
+
+        .modal-footer { padding: 1.5rem 5%; text-align: center; }
+        .modal-footer p { color: var(--text-muted); max-width: 800px; margin: 0 auto; }
+
+        .error-msg { grid-column: 1/-1; text-align: center; padding: 100px 20px; }
+        .error-msg h2 { color: #ef4444; margin-bottom: 15px; }
 
         @media (max-width: 768px) {
-            header h1 { font-size: 2.5rem; }
-            .image-viewer { grid-template-columns: 1fr; }
-            .modal-content { height: 95vh; }
-        }
-
-        /* Animation */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .tree-card {
-            animation: fadeIn 0.6s backwards;
+            .search-container { width: 100%; margin-top: 1rem; }
+            header { flex-direction: column; }
+            .modal-title { font-size: 1.4rem; }
+            .nav-arrow { width: 45px; height: 45px; font-size: 1.2rem; }
         }
     </style>
 </head>
 <body>
+    <header>
+        <div class="logo">KOREAN TREES</div>
+        <div class="search-container">
+            <input type="text" id="search-input" placeholder="나무 이름을 입력하세요...">
+        </div>
+    </header>
 
-<header>
-    <h1>Botanical Archive</h1>
-    <p>우리 땅에서 자라는 소중한 나무 188종을<br>고해상도 도감 이미지로 만나보세요.</p>
-    <div class="search-container">
-        <input type="text" id="searchInput" placeholder="나무 이름을 검색하세요 (예: 소나무, 은행나무...)">
-    </div>
-</header>
+    <div class="container" id="card-grid"></div>
 
-<div class="main-container">
-    <div class="tree-grid" id="treeGrid">
-        <!-- Trees will be generated here -->
-    </div>
-</div>
-
-<div class="modal" id="imageModal">
-    <div class="modal-content">
+    <div id="modal" class="modal">
         <div class="modal-header">
-            <h2 id="modalTitle">Tree Name</h2>
-            <button class="close-btn" id="closeModal">&times;</button>
+            <div class="modal-title" id="modal-name">나무 이름</div>
+            <div class="close-btn" id="close-modal">&times;</div>
         </div>
-        <div class="image-viewer" id="imageViewer">
-            <!-- Images will be loaded here -->
+        <div class="viewer-main">
+            <div class="image-wrapper" id="image-wrapper">
+                <img id="main-image" class="main-img" src="" alt="상세 이미지">
+            </div>
+            <div class="modal-nav">
+                <div class="nav-arrow" id="prev-btn">&#10094;</div>
+                <div class="nav-arrow" id="next-btn">&#10095;</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <p id="modal-desc"></p>
         </div>
     </div>
-</div>
 
-<script>
-    const treeList = [
-        "소철", "은행나무", "전나무", "구상나무", "솔송나무", "독일가문비", "잣나무", "소나무", "소나무속 나무의 비교", "일본잎갈나무", 
-        "개잎갈나무", "메타세쿼이아", "삼나무", "측백나무", "편백", "향나무", "비자나무", "주목", "오미자", "붓순나무", 
-        "등칡", "자주받침꽃", "생강나무", "비목나무", "녹나무", "후박나무", "백목련", "함박꽃나무", "일본목련", "태산목", 
-        "튤립나무", "청미래덩굴", "종려나무", "야자나무 종류의 비교", "매자나무", "매발톱나무", "으름덩굴", "멀꿀", "종덩굴", "버드나무_84", 
-        "회양목", "계수나무", "굴거리나무", "까마귀밥여름나무", "조록나무", "히어리", "모란", "개머루", "담쟁이덩굴", "사철나무", 
-        "화살나무", "산나물로 먹는 나무", "회나무", "노박덩굴", "예덕나무", "사람주나무", "유동", "망종화", "버드나무_122", "은사시나무", 
-        "사시나무속 나무의 비교", "황철나무", "버드나무_128", "갯버들", "자귀나무", "박태기나무", "칡", "골담초", "아까시나무", "등", 
-        "족제비싸리", "싸리", "회화나무", "다릅나무", "오리나무", "사방오리", "박달나무", "자작나무", "자작나무속 나무의 비교", "물박달나무", 
-        "개암나무", "서어나무", "밤나무", "구실잣밤나무", "상수리나무", "참나무속 나무의 비교", "굴참나무", "가시나무", "굴피나무", "중국굴피나무", 
-        "가래나무", "소귀나무", "팽나무", "보리수나무", "꾸지뽕나무_188", "닥나무", "산뽕나무_192", "천선과나무", "무화과", "대추나무", 
-        "갯대추나무", "가침박달", "조팝나무", "조팝나무속 나무의 비교", "국수나무", "매실나무", "살구나무", "복숭아나무", "왕벚나무", "앵두나무", 
-        "찔레꽃", "해당화", "산딸기", "산딸기속 나무의 비교", "뱀딸기", "황매화", "비파나무", "다정큼나무", "모과나무", "사과나무", 
-        "산사나무", "아그배나무", "콩배나무", "팥배나무", "마가목", "윤노리나무", "병아리꽃나무", "명자나무", "풀명자", "쉬땅나무", 
-        "느릅나무", "느티나무", "시무나무", "참느릅나무", "뽕나무", "산뽕나무_270", "꾸지뽕나무_272", "무궁화", "부용", "피나무", 
-        "삼지닥나무", "고로쇠나무", "단풍나무", "단풍나무속 나무의 비교", "당단풍나무", "신나무", "가죽나무", "소태나무", "겨우살이", "산딸나무", 
-        "산수유", "층층나무", "층층나무속 나무의 비교", "매발톱나무_302", "수국", "산수국", "다래", "산에서 따 먹는 열매", "개다래", "감나무", 
-        "철쭉", "진달래", "정금나무", "사스레피나무", "자금우", "쪽동백나무", "노린재나무", "동백나무", "노각나무", "차나무", 
-        "두충", "마삭줄", "치자나무", "구슬꽃나무", "계요등", "능소화", "개오동", "작살나무", "층꽃나무", "누리장나무", 
-        "순비기나무", "물푸레나무", "들메나무", "미선나무", "개나리", "우리나라에서만 자생하는 특산나무", "라일락", "이팝나무", "쥐똥나무", "참오동", 
-        "구기자나무", "감탕나무", "먼나무", "호랑가시나무", "딱총나무", "가막살나무", "분꽃나무", "백당나무", "댕강나무", "병꽃나무", 
-        "괴불나무", "인동덩굴", "송악", "팔손이", "황칠나무", "오갈피나무", "돈나무"
-    ];
+    <script>
+        let speciesData = [];
+        let currentTree = null;
+        let currentImgIdx = 0;
+        let isZoomed = false;
 
-    const grid = document.getElementById('treeGrid');
-    const searchInput = document.getElementById('searchInput');
-    const modal = document.getElementById('imageModal');
-    const closeModal = document.getElementById('closeModal');
+        const grid = document.getElementById('card-grid');
+        const searchInput = document.getElementById('search-input');
+        const modal = document.getElementById('modal');
+        const mainImage = document.getElementById('main-image');
+        const wrapper = document.getElementById('image-wrapper');
+        const modalName = document.getElementById('modal-name');
+        const modalDesc = document.getElementById('modal-desc');
 
-    function createCard(name, index) {
-        const card = document.createElement('div');
-        card.className = 'tree-card';
-        card.style.animationDelay = `${(index % 20) * 0.05}s`;
-        
-        card.innerHTML = `
-            <div class="image-preview">
-                <img src="assets/trees/${name}_1.jpg" alt="${name}" loading="lazy">
-            </div>
-            <div class="tree-info">
-                <span class="id-badge">No. ${String(index + 1).padStart(3, '0')}</span>
-                <h3>${name}</h3>
-            </div>
-        `;
-
-        card.addEventListener('click', () => openModal(name));
-        return card;
-    }
-
-    function renderTrees(filter = '') {
-        grid.innerHTML = '';
-        treeList.forEach((name, index) => {
-            if (name.includes(filter)) {
-                grid.appendChild(createCard(name, index));
+        async function init() {
+            try {
+                const res = await fetch('botanical_index.json');
+                if (!res.ok) throw new Error("JSON 파일을 찾을 수 없습니다.");
+                const data = await res.json();
+                speciesData = data.species;
+                renderGrid(speciesData);
+            } catch (e) {
+                grid.innerHTML = `
+                    <div class="error-msg">
+                        <h2>⚠️ 데이터를 불러올 수 없습니다</h2>
+                        <p style="color: var(--text-muted);">
+                            브라우저 보안 정책상 파일을 직접 열면 데이터를 읽을 수 없습니다.<br>
+                            터미널에서 <b>python -m http.server 8000</b> 실행 후 
+                            <b>localhost:8000</b>으로 접속하시거나,<br>
+                            깃허브(GitHub Pages)에 업로드하여 확인해 주세요.
+                        </p>
+                    </div>`;
             }
-        });
-    }
+        }
 
-    function openModal(name) {
-        document.getElementById('modalTitle').innerText = name;
-        const viewer = document.getElementById('imageViewer');
-        viewer.innerHTML = `
-            <div class="zoom-container"><img src="assets/trees/${name}_1.jpg" alt="${name} 1" class="zoomable"></div>
-            <div class="zoom-container"><img src="assets/trees/${name}_2.jpg" alt="${name} 2" class="zoomable"></div>
-        `;
-        modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
-        initZoom();
-    }
-
-    function initZoom() {
-        const zoomables = document.querySelectorAll('.zoomable');
-        
-        zoomables.forEach(img => {
-            let scale = 1;
-            let lastScale = 1;
-            let startDist = 0;
-            let posX = 0, posY = 0;
-            let lastPosX = 0, lastPosY = 0;
-            let startX = 0, startY = 0;
-            let isDragging = false;
-
-            img.addEventListener('touchstart', (e) => {
-                if (e.touches.length === 2) {
-                    startDist = Math.hypot(
-                        e.touches[0].pageX - e.touches[1].pageX,
-                        e.touches[0].pageY - e.touches[1].pageY
-                    );
-                } else if (e.touches.length === 1) {
-                    isDragging = true;
-                    startX = e.touches[0].pageX - posX;
-                    startY = e.touches[0].pageY - posY;
-                }
+        function renderGrid(data) {
+            grid.innerHTML = '';
+            data.forEach((tree) => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <img src="${tree.images[0]}" class="card-img" alt="${tree.name}" onerror="this.src='https://via.placeholder.com/300x300?text=Image+Missing'">
+                    <div class="card-content">
+                        <div class="card-category">한국의 나무</div>
+                        <div class="card-title">${tree.name}</div>
+                    </div>
+                `;
+                card.onclick = () => openModal(tree);
+                grid.appendChild(card);
             });
+        }
 
-            img.addEventListener('touchmove', (e) => {
-                if (e.touches.length === 2) {
-                    e.preventDefault();
-                    const dist = Math.hypot(
-                        e.touches[0].pageX - e.touches[1].pageX,
-                        e.touches[0].pageY - e.touches[1].pageY
-                    );
-                    scale = Math.min(Math.max(1, lastScale * (dist / startDist)), 4);
-                    updateTransform();
-                } else if (e.touches.length === 1 && isDragging && scale > 1) {
-                    e.preventDefault();
-                    posX = e.touches[0].pageX - startX;
-                    posY = e.touches[0].pageY - startY;
-                    updateTransform();
-                }
-            });
+        function openModal(tree) {
+            currentTree = tree;
+            currentImgIdx = 0;
+            isZoomed = false;
+            modalName.textContent = tree.name;
+            modalDesc.textContent = tree.details || tree.summary;
+            updateImage();
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
 
-            img.addEventListener('touchend', (e) => {
-                lastScale = scale;
-                isDragging = false;
-                if (scale <= 1) {
-                    posX = 0;
-                    posY = 0;
-                    updateTransform();
-                }
-            });
+        function updateImage() {
+            mainImage.src = currentTree.images[currentImgIdx];
+            resetZoom();
+        }
 
-            function updateTransform() {
-                img.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+        function resetZoom() {
+            isZoomed = false;
+            wrapper.classList.remove('zoomed');
+            mainImage.style.transform = 'translate(0, 0) scale(1)';
+        }
+
+        document.getElementById('prev-btn').onclick = (e) => {
+            e.stopPropagation();
+            currentImgIdx = (currentImgIdx - 1 + currentTree.images.length) % currentTree.images.length;
+            updateImage();
+        };
+
+        document.getElementById('next-btn').onclick = (e) => {
+            e.stopPropagation();
+            currentImgIdx = (currentImgIdx + 1) % currentTree.images.length;
+            updateImage();
+        };
+
+        wrapper.onclick = () => {
+            isZoomed = !isZoomed;
+            wrapper.classList.toggle('zoomed', isZoomed);
+            if (!isZoomed) {
+                mainImage.style.transform = 'translate(0, 0) scale(1)';
+            } else {
+                mainImage.style.transform = 'scale(2.5)';
             }
+        };
 
-            // Double tap to reset
-            let lastTap = 0;
-            img.addEventListener('click', (e) => {
-                const now = new Date().getTime();
-                if (now - lastTap < 300) {
-                    scale = scale > 1 ? 1 : 2;
-                    lastScale = scale;
-                    posX = 0; posY = 0;
-                    updateTransform();
-                }
-                lastTap = now;
-            });
-        });
-    }
+        wrapper.onmousemove = (e) => {
+            if (!isZoomed) return;
+            const { left, top, width, height } = wrapper.getBoundingClientRect();
+            const x = (e.clientX - left) / width;
+            const y = (e.clientY - top) / height;
+            const panX = (0.5 - x) * 100;
+            const panY = (0.5 - y) * 100;
+            mainImage.style.transform = `translate(${panX}%, ${panY}%) scale(2.5)`;
+        };
 
-    closeModal.addEventListener('click', () => {
-        modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
-    });
+        document.getElementById('close-modal').onclick = () => {
+            modal.classList.remove('active');
+            document.body.style.overflow = 'auto';
+        };
 
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) closeModal.click();
-    });
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.classList.remove('active');
+                document.body.style.overflow = 'auto';
+            }
+        }
 
-    searchInput.addEventListener('input', (e) => {
-        renderTrees(e.target.value);
-    });
+        searchInput.oninput = (e) => {
+            const term = e.target.value.trim().toLowerCase();
+            const filtered = speciesData.filter(t => t.name.toLowerCase().includes(term));
+            renderGrid(filtered);
+        };
 
-    // Initial Render
-    renderTrees();
-</script>
-
+        init();
+    </script>
 </body>
 </html>
