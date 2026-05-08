@@ -269,6 +269,13 @@
         let zoomStage = 0; // 0: Normal, 1: Fullscreen (No UI), 2: Max Zoom
         let currentScale = 1;
         let startDist = 0;
+        let translateX = 0;
+        let translateY = 0;
+        let isPanning = false;
+        let startX = 0;
+        let startY = 0;
+        let dragMoved = false;
+        let evCache = [];
 
         function renderGrid(data) {
             grid.innerHTML = data.map(item => `
@@ -298,7 +305,7 @@
             if (zoomStage === 0) {
                 closeBtn.style.opacity = '1';
                 closeBtn.style.pointerEvents = 'auto';
-                modalBadge.style.opacity = '1';
+                modalBadge.style.opacity = '0'; // Hidden on initial view (zoomStage 0)
                 zoomOverlay.classList.remove('active');
                 modalContent.style.width = '90%';
                 modalContent.style.height = '90vh';
@@ -315,14 +322,26 @@
                 modalContent.style.borderRadius = '0';
             } else if (zoomStage === 2) {
                 zoomOverlay.classList.add('active');
-                zoomedImg.style.transform = `scale(2)`;
+                currentScale = 2.5;
+                translateX = 0;
+                translateY = 0;
+                zoomedImg.style.transform = `translate(0, 0) scale(${currentScale})`;
             }
         }
 
         imgWrapper.onclick = (e) => {
+            if (zoomStage === 2) return; // Handled by zoomOverlay
             e.stopPropagation();
             zoomStage = (zoomStage + 1) % 3;
             updateZoomStage();
+        };
+
+        zoomOverlay.onclick = (e) => {
+            e.stopPropagation();
+            if (!dragMoved) {
+                zoomStage = 0;
+                updateZoomStage();
+            }
         };
 
         closeBtn.onclick = (e) => {
@@ -331,35 +350,49 @@
             document.body.style.overflow = 'auto';
         };
 
-        // Pan and Zoom logic
-        zoomOverlay.onmousemove = (e) => {
+        zoomOverlay.onpointerdown = (e) => {
             if (zoomStage !== 2) return;
-            const { width, height } = zoomOverlay.getBoundingClientRect();
-            const x = (e.clientX - width/2) / (width/2);
-            const y = (e.clientY - height/2) / (height/2);
-            zoomedImg.style.transform = `scale(2.5) translate(${-x * 20}%, ${-y * 20}%)`;
+            evCache.push(e);
+            if (evCache.length === 1) {
+                isPanning = true;
+                dragMoved = false;
+                startX = e.clientX - translateX;
+                startY = e.clientY - translateY;
+            }
+            zoomOverlay.setPointerCapture(e.pointerId);
         };
 
-        // Mobile Pinch Support
-        let evCache = [];
-        zoomOverlay.onpointerdown = (e) => { evCache.push(e); };
         zoomOverlay.onpointermove = (e) => {
+            if (zoomStage !== 2) return;
             const index = evCache.findIndex(ev => ev.pointerId === e.pointerId);
             if (index > -1) evCache[index] = e;
 
             if (evCache.length === 2) {
+                isPanning = false;
                 const curDist = Math.hypot(evCache[0].clientX - evCache[1].clientX, evCache[0].clientY - evCache[1].clientY);
                 if (startDist > 0) {
                     const scaleFactor = curDist / startDist;
                     currentScale = Math.min(Math.max(currentScale * scaleFactor, 1), 5);
-                    zoomedImg.style.transform = `scale(${currentScale})`;
+                    dragMoved = true;
                 }
                 startDist = curDist;
+            } else if (evCache.length === 1 && isPanning) {
+                const dx = e.clientX - (startX + translateX);
+                const dy = e.clientY - (startY + translateY);
+                if (Math.hypot(dx, dy) > 5) dragMoved = true;
+                
+                translateX = e.clientX - startX;
+                translateY = e.clientY - startY;
             }
+            
+            zoomedImg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${currentScale})`;
         };
+
         zoomOverlay.onpointerup = zoomOverlay.onpointerout = zoomOverlay.onpointercancel = (e) => {
             evCache = evCache.filter(ev => ev.pointerId !== e.pointerId);
             if (evCache.length < 2) startDist = 0;
+            if (evCache.length === 0) isPanning = false;
+            zoomOverlay.releasePointerCapture(e.pointerId);
         };
 
         searchInput.oninput = (e) => {
